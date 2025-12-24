@@ -955,13 +955,16 @@ HTML_TEMPLATE = '''
                     <div id="keyboard-shortcuts" style="background:var(--bg3);padding:10px;border-radius:6px;margin-bottom:12px;display:none;">
                         <div class="text-sm"><strong>Keyboard Shortcuts:</strong> <kbd>M</kbd> = Messaged | <kbd>F</kbd> = Followed Only | <kbd>S</kbd> = Skip | <kbd>W</kbd> = Wrong Twitter | <kbd>C</kbd> = Re-copy</div>
                     </div>
-                    <div class="flex gap-2" style="flex-wrap:wrap;">
+                    <div class="flex gap-2" style="flex-wrap:wrap;align-items:center;">
                         <button class="btn" id="btn-start-dm" onclick="startDMSession()">▶ Start DM Session</button>
                         <button class="btn btn-outline" id="btn-end-dm" onclick="endDMSession()" style="display:none;">⏹ End Session</button>
                         <button class="btn btn-success" id="btn-followed-messaged" onclick="markDM('messaged')" style="display:none;">✓ Messaged (M)</button>
                         <button class="btn btn-outline" id="btn-followed-only" onclick="markDM('followed')" style="display:none;">👤 Followed Only (F)</button>
                         <button class="btn btn-outline" id="btn-skip" onclick="markDM('skipped')" style="display:none;">→ Skip (S)</button>
                         <button class="btn" id="btn-wrong-twitter" onclick="markWrongTwitter()" style="display:none;background:var(--err);">✗ Wrong Twitter (W)</button>
+                        <label id="auto-advance-label" style="display:none;margin-left:12px;font-size:13px;cursor:pointer;">
+                            <input type="checkbox" id="auto-advance-toggle" style="margin-right:4px;"> Auto-advance (8s)
+                        </label>
                     </div>
                     <div id="dm-progress" class="text-sm text-muted mt-4" style="display:none;"></div>
                 </div>
@@ -2165,6 +2168,28 @@ HTML_TEMPLATE = '''
             document.getElementById('btn-wrong-twitter').style.display = '';
             document.getElementById('dm-progress').style.display = '';
             document.getElementById('keyboard-shortcuts').style.display = '';
+            document.getElementById('auto-advance-label').style.display = '';
+        }
+
+        // Auto-advance timer
+        let autoAdvanceTimer = null;
+
+        function startAutoAdvanceTimer() {
+            if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+            if (!document.getElementById('auto-advance-toggle').checked) return;
+
+            autoAdvanceTimer = setTimeout(() => {
+                if (dmSessionActive) {
+                    markDM('messaged');
+                }
+            }, 8000);  // 8 seconds
+        }
+
+        function clearAutoAdvanceTimer() {
+            if (autoAdvanceTimer) {
+                clearTimeout(autoAdvanceTimer);
+                autoAdvanceTimer = null;
+            }
         }
         
         // Store the Twitter popup window reference
@@ -2206,10 +2231,11 @@ HTML_TEMPLATE = '''
                     // Copy to clipboard BEFORE opening popup
                     await copyToClipboard(data.message);
                     showToast('✓ Message copied! Opening Twitter...', 'success');
-                    
+
                     // Now open Twitter in a popup window (positioned to the right)
                     setTimeout(() => {
                         openTwitterPopup(twitterUrl);
+                        startAutoAdvanceTimer();  // Start auto-advance if enabled
                     }, 300);
                 }
             } catch(e) {
@@ -2268,7 +2294,8 @@ HTML_TEMPLATE = '''
         
         async function markDM(status) {
             if (!dmSessionActive || dmCurrentIndex >= dmQueue.length) return;
-            
+            clearAutoAdvanceTimer();  // Clear timer when user acts
+
             const coach = dmQueue[dmCurrentIndex];
             
             try {
@@ -2305,12 +2332,13 @@ HTML_TEMPLATE = '''
         function endDMSession() {
             dmSessionActive = false;
             dmCurrentIndex = -1;
-            
+            clearAutoAdvanceTimer();  // Clear any pending timer
+
             // Close popup if open
             if (twitterPopup && !twitterPopup.closed) {
                 twitterPopup.close();
             }
-            
+
             document.getElementById('current-coach-info').innerHTML = '<p class="text-success">✓ Session ended.</p>';
             document.getElementById('dm-message-preview').style.display = 'none';
             document.getElementById('btn-start-dm').style.display = '';
@@ -2321,6 +2349,7 @@ HTML_TEMPLATE = '''
             document.getElementById('btn-wrong-twitter').style.display = 'none';
             document.getElementById('keyboard-shortcuts').style.display = 'none';
             document.getElementById('dm-progress').style.display = 'none';
+            document.getElementById('auto-advance-label').style.display = 'none';
             
             refreshDMQueue();
             showToast('DM session ended', 'success');
@@ -2543,8 +2572,9 @@ HTML_TEMPLATE = '''
         checkSheetConnection();
         loadAutoSendStatus();
         loadEmailQueueStatus();
-        // Check for responses after 3 seconds (let sheet connect first)
+        // Check for responses after 3 seconds, then every 5 minutes
         setTimeout(autoCheckInbox, 3000);
+        setInterval(autoCheckInbox, 5 * 60 * 1000);  // Check every 5 minutes
     </script>
 </body>
 </html>
