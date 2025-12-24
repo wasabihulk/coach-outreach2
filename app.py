@@ -14,7 +14,7 @@ Features:
 - Phone notifications via ntfy.sh
 - Gmail API for sending/reading emails (works on Railway)
 
-Version: 8.2.0 Enterprise (Railway/Render Ready)
+Version: 8.4.0 Enterprise (Railway/Render Ready)
 ============================================================================
 """
 
@@ -221,11 +221,14 @@ def add_log(msg: str, level: str = 'info'):
 def get_gmail_service():
     """Get authenticated Gmail API service."""
     if not has_gmail_api():
+        logger.error("Gmail API credentials not set")
         return None
     
     try:
         from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
+        
+        logger.info(f"Creating Gmail credentials with client_id: {ENV_GMAIL_CLIENT_ID[:20]}...")
         
         creds = Credentials(
             token=None,
@@ -236,10 +239,73 @@ def get_gmail_service():
         )
         
         service = build('gmail', 'v1', credentials=creds)
+        logger.info("Gmail service created successfully")
         return service
     except Exception as e:
         logger.error(f"Gmail API error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None
+
+
+@app.route('/api/debug/gmail-test')
+def api_debug_gmail_test():
+    """Test Gmail API connection with detailed error."""
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        from google.auth.transport.requests import Request
+        
+        creds = Credentials(
+            token=None,
+            refresh_token=ENV_GMAIL_REFRESH_TOKEN,
+            client_id=ENV_GMAIL_CLIENT_ID,
+            client_secret=ENV_GMAIL_CLIENT_SECRET,
+            token_uri="https://oauth2.googleapis.com/token"
+        )
+        
+        # Force refresh to test credentials
+        creds.refresh(Request())
+        
+        # Try to list labels
+        service = build('gmail', 'v1', credentials=creds)
+        results = service.users().labels().list(userId='me').execute()
+        labels = results.get('labels', [])
+        
+        return jsonify({
+            'success': True,
+            'message': 'Gmail API working!',
+            'labels_count': len(labels),
+            'token_valid': creds.valid
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'traceback': traceback.format_exc()
+        })
+
+
+@app.route('/api/debug/gmail-config')
+def api_debug_gmail_config():
+    """Debug endpoint to check Gmail configuration."""
+    client_id = ENV_GMAIL_CLIENT_ID
+    client_secret = ENV_GMAIL_CLIENT_SECRET
+    refresh_token = ENV_GMAIL_REFRESH_TOKEN
+    
+    return jsonify({
+        'has_gmail_api': has_gmail_api(),
+        'client_id_set': bool(client_id),
+        'client_id_preview': client_id[:20] + '...' if client_id and len(client_id) > 20 else client_id,
+        'client_id_length': len(client_id) if client_id else 0,
+        'client_secret_set': bool(client_secret),
+        'client_secret_length': len(client_secret) if client_secret else 0,
+        'refresh_token_set': bool(refresh_token),
+        'refresh_token_length': len(refresh_token) if refresh_token else 0,
+        'refresh_token_preview': refresh_token[:10] + '...' if refresh_token and len(refresh_token) > 10 else 'not set'
+    })
 
 
 def send_email_gmail_api(to_email: str, subject: str, body: str, from_email: str = None) -> bool:
@@ -3131,14 +3197,17 @@ def api_dm_queue():
         ol_col = find_col(['oline', 'ol coach', 'oc '])
         ol_twitter_col = find_col(['oc twitter', 'ol twitter'])
         ol_contacted_col = find_col(['ol contacted', 'oc contacted'])
+        ol_notes_col = find_col(['ol notes', 'oc notes'])
         rc_col = find_col(['recruiting', 'rc '])
         rc_twitter_col = find_col(['rc twitter'])
         rc_contacted_col = find_col(['rc contacted'])
+        rc_notes_col = find_col(['rc notes'])
         
         queue = []
         sent = 0
         no_handle = 0
         replied = 0
+        followed_only = 0
         
         for row in rows:
             def get_val(col_idx):
@@ -3153,44 +3222,68 @@ def api_dm_queue():
             # Check OL coach
             ol_twitter = clean_twitter_handle(get_val(ol_twitter_col))
             ol_contacted = get_val(ol_contacted_col).lower()
+            ol_notes = get_val(ol_notes_col).lower()
             ol_name = get_val(ol_col)
             
-            # Skip if coach has REPLIED - don't contact them again
-            if 'replied' in ol_contacted:
+            # Skip conditions - check both contacted AND notes
+            ol_skip = False
+            if 'replied' in ol_contacted or 'replied' in ol_notes or 'responded' in ol_notes:
                 replied += 1
-            elif ol_twitter and 'dm' not in ol_contacted:
+                ol_skip = True
+            elif 'messaged' in ol_contacted or 'messaged' in ol_notes or 'dm sent' in ol_notes or 'dm\'d' in ol_notes:
+                sent += 1
+                ol_skip = True
+            elif 'followed' in ol_contacted or 'followed only' in ol_notes:
+                followed_only += 1
+                ol_skip = True
+            elif 'no dm' in ol_notes or 'skip' in ol_notes:
+                ol_skip = True
+            elif 'wrong twitter' in ol_notes:
+                ol_skip = True
+            
+            if not ol_skip and ol_twitter:
                 queue.append({
                     'school': school,
                     'coach_name': ol_name or 'OL Coach',
                     'twitter': ol_twitter,
                     'type': 'OL'
                 })
-            elif ol_twitter and 'dm' in ol_contacted:
-                sent += 1
             elif not ol_twitter and ol_name:
                 no_handle += 1
             
             # Check RC
             rc_twitter = clean_twitter_handle(get_val(rc_twitter_col))
             rc_contacted = get_val(rc_contacted_col).lower()
+            rc_notes = get_val(rc_notes_col).lower()
             rc_name = get_val(rc_col)
             
-            # Skip if coach has REPLIED
-            if 'replied' in rc_contacted:
+            # Skip conditions - check both contacted AND notes
+            rc_skip = False
+            if 'replied' in rc_contacted or 'replied' in rc_notes or 'responded' in rc_notes:
                 replied += 1
-            elif rc_twitter and 'dm' not in rc_contacted:
+                rc_skip = True
+            elif 'messaged' in rc_contacted or 'messaged' in rc_notes or 'dm sent' in rc_notes or 'dm\'d' in rc_notes:
+                sent += 1
+                rc_skip = True
+            elif 'followed' in rc_contacted or 'followed only' in rc_notes:
+                followed_only += 1
+                rc_skip = True
+            elif 'no dm' in rc_notes or 'skip' in rc_notes:
+                rc_skip = True
+            elif 'wrong twitter' in rc_notes:
+                rc_skip = True
+            
+            if not rc_skip and rc_twitter:
                 queue.append({
                     'school': school,
                     'coach_name': rc_name or 'Recruiting Coordinator',
                     'twitter': rc_twitter,
                     'type': 'RC'
                 })
-            elif rc_twitter and 'dm' in rc_contacted:
-                sent += 1
             elif not rc_twitter and rc_name:
                 no_handle += 1
         
-        return jsonify({'queue': queue, 'sent': sent, 'no_handle': no_handle, 'replied': replied})
+        return jsonify({'queue': queue, 'sent': sent, 'no_handle': no_handle, 'replied': replied, 'followed_only': followed_only})
     except Exception as e:
         logger.error(f"DM queue error: {e}")
         return jsonify({'queue': [], 'error': str(e)})
@@ -3252,13 +3345,24 @@ def api_debug_twitter():
         return jsonify({'error': str(e)})
 
 
+def clean_school_name(school):
+    """Remove state suffix from school name for display to coaches.
+    e.g., 'Lincoln University (MO)' -> 'Lincoln University'
+    """
+    if not school:
+        return school
+    # Remove (STATE) or (State Name) suffix
+    import re
+    return re.sub(r'\s*\([^)]+\)\s*$', '', school).strip()
+
+
 @app.route('/api/dm/message', methods=['POST'])
 def api_dm_message():
     """Generate DM message for a coach."""
     global settings
     data = request.get_json() or {}
     coach_name = data.get('coach_name', 'Coach')
-    school = data.get('school', '')
+    school = clean_school_name(data.get('school', ''))
     
     # Get coach's last name
     coach_last = coach_name.split()[-1] if coach_name else 'Coach'
@@ -3284,7 +3388,7 @@ def api_dm_mark():
     data = request.get_json() or {}
     coach_name = data.get('coach_name', '')
     school = data.get('school', '')
-    twitter = data.get('twitter', '')
+    twitter = data.get('twitter', '').lower().strip().lstrip('@')
     status = data.get('status', 'messaged')  # 'messaged', 'followed', 'skipped'
     
     sheet = get_sheet()
@@ -3306,52 +3410,102 @@ def api_dm_mark():
                         return i
             return -1
         
+        def clean_handle(handle):
+            """Extract clean Twitter handle from URL or @handle."""
+            if not handle:
+                return ''
+            handle = handle.strip().lower()
+            if 'twitter.com/' in handle or 'x.com/' in handle:
+                match = re.search(r'(?:twitter\.com|x\.com)/(@?[A-Za-z0-9_]+)', handle, re.IGNORECASE)
+                if match:
+                    return match.group(1).lstrip('@').lower()
+            return handle.lstrip('@')
+        
         school_col = find_col(['school'])
         ol_twitter_col = find_col(['oc twitter', 'ol twitter'])
         ol_contacted_col = find_col(['ol contacted', 'oc contacted'])
+        ol_notes_col = find_col(['ol notes', 'oc notes'])
         rc_twitter_col = find_col(['rc twitter'])
         rc_contacted_col = find_col(['rc contacted'])
+        rc_notes_col = find_col(['rc notes'])
+        
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%m/%d')
         
         # Find the row
         for row_idx, row in enumerate(all_data[1:], start=2):
-            if row_idx - 1 >= len(all_data) - 1:
-                break
-            
-            row_school = row[school_col].strip() if school_col < len(row) else ''
+            row_school = row[school_col].strip() if school_col >= 0 and school_col < len(row) else ''
             if row_school.lower() != school.lower():
                 continue
             
             # Check which column matches the twitter handle
-            ol_twitter = row[ol_twitter_col].replace('@', '').strip() if ol_twitter_col < len(row) else ''
-            rc_twitter = row[rc_twitter_col].replace('@', '').strip() if rc_twitter_col < len(row) else ''
+            ol_twitter_raw = row[ol_twitter_col] if ol_twitter_col >= 0 and ol_twitter_col < len(row) else ''
+            ol_twitter_clean = clean_handle(ol_twitter_raw)
+            rc_twitter_raw = row[rc_twitter_col] if rc_twitter_col >= 0 and rc_twitter_col < len(row) else ''
+            rc_twitter_clean = clean_handle(rc_twitter_raw)
             
-            if ol_twitter.lower() == twitter.lower() and ol_contacted_col >= 0:
+            if ol_twitter_clean == twitter:
                 # Update OL contacted column
-                current = row[ol_contacted_col] if ol_contacted_col < len(row) else ''
-                if status == 'messaged':
-                    new_val = 'DM sent' if not current else current + ', DM sent'
-                elif status == 'followed':
-                    new_val = 'Followed' if not current else current + ', Followed'
-                else:
-                    new_val = current  # Skip doesn't change anything
+                if ol_contacted_col >= 0:
+                    current = row[ol_contacted_col] if ol_contacted_col < len(row) else ''
+                    if status == 'messaged':
+                        new_val = 'Messaged' if not current or current.lower() in ['', 'yes'] else f"{current}, Messaged"
+                    elif status == 'followed':
+                        new_val = 'Followed' if not current or current.lower() in ['', 'yes'] else f"{current}, Followed"
+                    else:
+                        new_val = current  # Skip doesn't change contacted
+                    sheet.update_cell(row_idx, ol_contacted_col + 1, new_val)
                 
-                sheet.update_cell(row_idx, ol_contacted_col + 1, new_val)
-                return jsonify({'success': True, 'updated': 'OL'})
+                # Also update notes column
+                if ol_notes_col >= 0:
+                    current_notes = row[ol_notes_col] if ol_notes_col < len(row) else ''
+                    if status == 'messaged':
+                        note = f"DM sent {timestamp}"
+                    elif status == 'followed':
+                        note = f"Followed only {timestamp}"
+                    else:
+                        note = f"Skipped {timestamp}"
+                    
+                    # Don't add duplicate
+                    if note.split()[0].lower() not in current_notes.lower():
+                        new_notes = f"{note}; {current_notes}" if current_notes else note
+                        sheet.update_cell(row_idx, ol_notes_col + 1, new_notes)
+                
+                logger.info(f"Marked OL coach at {school} as {status}")
+                return jsonify({'success': True, 'updated': 'OL', 'school': school})
             
-            elif rc_twitter.lower() == twitter.lower() and rc_contacted_col >= 0:
+            elif rc_twitter_clean == twitter:
                 # Update RC contacted column
-                current = row[rc_contacted_col] if rc_contacted_col < len(row) else ''
-                if status == 'messaged':
-                    new_val = 'DM sent' if not current else current + ', DM sent'
-                elif status == 'followed':
-                    new_val = 'Followed' if not current else current + ', Followed'
-                else:
-                    new_val = current
+                if rc_contacted_col >= 0:
+                    current = row[rc_contacted_col] if rc_contacted_col < len(row) else ''
+                    if status == 'messaged':
+                        new_val = 'Messaged' if not current or current.lower() in ['', 'yes'] else f"{current}, Messaged"
+                    elif status == 'followed':
+                        new_val = 'Followed' if not current or current.lower() in ['', 'yes'] else f"{current}, Followed"
+                    else:
+                        new_val = current
+                    sheet.update_cell(row_idx, rc_contacted_col + 1, new_val)
                 
-                sheet.update_cell(row_idx, rc_contacted_col + 1, new_val)
-                return jsonify({'success': True, 'updated': 'RC'})
+                # Also update notes column
+                if rc_notes_col >= 0:
+                    current_notes = row[rc_notes_col] if rc_notes_col < len(row) else ''
+                    if status == 'messaged':
+                        note = f"DM sent {timestamp}"
+                    elif status == 'followed':
+                        note = f"Followed only {timestamp}"
+                    else:
+                        note = f"Skipped {timestamp}"
+                    
+                    # Don't add duplicate
+                    if note.split()[0].lower() not in current_notes.lower():
+                        new_notes = f"{note}; {current_notes}" if current_notes else note
+                        sheet.update_cell(row_idx, rc_notes_col + 1, new_notes)
+                
+                logger.info(f"Marked RC at {school} as {status}")
+                return jsonify({'success': True, 'updated': 'RC', 'school': school})
         
-        return jsonify({'success': False, 'error': 'Coach not found in sheet'})
+        logger.warning(f"Coach not found: {school} / @{twitter}")
+        return jsonify({'success': False, 'error': f'Coach not found in sheet: {school}'})
     except Exception as e:
         logger.error(f"DM mark error: {e}")
         return jsonify({'success': False, 'error': str(e)})
@@ -4220,7 +4374,7 @@ def api_scan_past_responses():
     """Scan Gmail for past responses and mark them in the sheet."""
     try:
         if not has_gmail_api():
-            return jsonify({'success': False, 'error': 'Gmail API not configured'})
+            return jsonify({'success': False, 'error': 'Gmail API not configured. Add GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN to Railway.'})
         
         sheet = get_sheet()
         if not sheet:
@@ -4245,54 +4399,66 @@ def api_scan_past_responses():
         rc_notes_col = find_col(['rc notes'])
         ol_notes_col = find_col(['ol notes'])
         
-        # Collect all coach emails
+        # Collect all coach emails that we've contacted
         coach_emails = []
         for row_idx, row in enumerate(rows):
             school = row[0] if len(row) > 0 else ''
             
             if rc_email_col >= 0 and rc_email_col < len(row):
-                email = row[rc_email_col].strip()
+                email = row[rc_email_col].strip().lower()
                 notes = row[rc_notes_col].strip() if rc_notes_col >= 0 and rc_notes_col < len(row) else ''
                 if email and '@' in email and 'responded' not in notes.lower():
-                    coach_emails.append({'email': email, 'school': school, 'type': 'rc', 'row': row_idx + 2, 'notes_col': rc_notes_col + 1})
+                    coach_emails.append({'email': email, 'school': school, 'type': 'RC', 'row': row_idx + 2, 'notes_col': rc_notes_col + 1})
             
             if ol_email_col >= 0 and ol_email_col < len(row):
-                email = row[ol_email_col].strip()
+                email = row[ol_email_col].strip().lower()
                 notes = row[ol_notes_col].strip() if ol_notes_col >= 0 and ol_notes_col < len(row) else ''
                 if email and '@' in email and 'responded' not in notes.lower():
-                    coach_emails.append({'email': email, 'school': school, 'type': 'ol', 'row': row_idx + 2, 'notes_col': ol_notes_col + 1})
+                    coach_emails.append({'email': email, 'school': school, 'type': 'OL', 'row': row_idx + 2, 'notes_col': ol_notes_col + 1})
+        
+        logger.info(f"Scanning responses for {len(coach_emails)} coach emails")
         
         service = get_gmail_service()
         if not service:
-            return jsonify({'success': False, 'error': 'Could not connect to Gmail'})
+            return jsonify({'success': False, 'error': 'Could not connect to Gmail API'})
         
         responses_found = []
         marked_count = 0
+        checked_count = 0
         
         for coach in coach_emails:
             try:
-                # Search for emails from this coach in the past 2 weeks
-                query = f"from:{coach['email']} newer_than:14d"
-                results = service.users().messages().list(userId='me', q=query, maxResults=3).execute()
+                checked_count += 1
+                # Search for emails FROM this coach (they replied to us) - search past 30 days
+                query = f"from:{coach['email']} newer_than:30d"
+                results = service.users().messages().list(userId='me', q=query, maxResults=5).execute()
                 messages = results.get('messages', [])
                 
                 if messages:
+                    # Get message details
+                    msg = service.users().messages().get(userId='me', id=messages[0]['id'], format='metadata', metadataHeaders=['Subject', 'Date']).execute()
+                    headers_dict = {h['name']: h['value'] for h in msg.get('payload', {}).get('headers', [])}
+                    
                     responses_found.append({
                         'school': coach['school'],
                         'email': coach['email'],
-                        'type': coach['type']
+                        'type': coach['type'],
+                        'subject': headers_dict.get('Subject', ''),
+                        'date': headers_dict.get('Date', '')
                     })
                     
                     # Mark in sheet
                     try:
                         current_notes = sheet.cell(coach['row'], coach['notes_col']).value or ''
                         if 'RESPONDED' not in current_notes.upper():
-                            new_notes = f"RESPONDED; {current_notes}" if current_notes else "RESPONDED"
+                            from datetime import datetime
+                            timestamp = datetime.now().strftime('%m/%d')
+                            new_notes = f"RESPONDED {timestamp}; {current_notes}" if current_notes else f"RESPONDED {timestamp}"
                             sheet.update_cell(coach['row'], coach['notes_col'], new_notes)
                             marked_count += 1
-                            logger.info(f"Marked response from {coach['school']}")
+                            logger.info(f"✓ Marked response from {coach['school']} ({coach['type']})")
                     except Exception as e:
-                        logger.warning(f"Could not update sheet: {e}")
+                        logger.warning(f"Could not update sheet for {coach['school']}: {e}")
                         
             except Exception as e:
                 logger.warning(f"Error checking {coach['email']}: {e}")
@@ -4300,13 +4466,21 @@ def api_scan_past_responses():
         global cached_responses
         cached_responses = responses_found
         
+        logger.info(f"Scan complete: checked {checked_count}, found {len(responses_found)} responses, marked {marked_count}")
+        
         return jsonify({
             'success': True,
+            'checked': checked_count,
             'responses_found': len(responses_found),
             'marked_in_sheet': marked_count,
             'responses': responses_found,
-            'message': f"Found {len(responses_found)} responses, marked {marked_count} in sheet"
+            'message': f"Checked {checked_count} coaches. Found {len(responses_found)} responses, marked {marked_count} new in sheet."
         })
+    except Exception as e:
+        logger.error(f"Scan past responses error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)})
     except Exception as e:
         logger.error(f"Scan past responses error: {e}")
         return jsonify({'success': False, 'error': str(e)})
@@ -4695,7 +4869,7 @@ def api_email_send():
         for coach in coaches[:limit]:
             try:
                 variables['coach_name'] = coach['name'].split()[-1] if coach['name'] else 'Coach'
-                variables['school'] = coach['school']
+                variables['school'] = clean_school_name(coach['school'])
                 
                 # Get appropriate template based on email type
                 email_type = coach.get('email_type', 'intro')
@@ -5719,7 +5893,7 @@ def main():
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║           Coach Outreach Pro - Enterprise Edition            ║
-║                        Version 8.2.0                         ║
+║                        Version 8.4.0                         ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Open in browser: http://localhost:{args.port}                    ║
 ║  Auto-send scheduler: ACTIVE                                 ║
