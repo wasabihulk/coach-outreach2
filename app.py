@@ -1593,13 +1593,13 @@ HTML_TEMPLATE = '''
         // DMs
         async function loadDMQueue() {
             try {
-                const res = await fetch('/api/twitter/coaches');
+                const res = await fetch('/api/dm/queue');
                 const data = await res.json();
-                dmQueue = (data.coaches || []).filter(c => c.twitter && !c.dm_sent);
-                
+                dmQueue = data.queue || [];
+
                 document.getElementById('dm-queue').textContent = dmQueue.length;
-                document.getElementById('dm-sent').textContent = (data.coaches || []).filter(c => c.dm_sent).length;
-                document.getElementById('dm-need-handle').textContent = (data.coaches || []).filter(c => !c.twitter).length;
+                document.getElementById('dm-sent').textContent = data.sent || 0;
+                document.getElementById('dm-need-handle').textContent = data.no_handle || 0;
                 
                 const container = document.getElementById('dm-queue-list');
                 if (dmQueue.length) {
@@ -1608,7 +1608,7 @@ HTML_TEMPLATE = '''
                             <div class="dm-header">
                                 <div>
                                     <div class="dm-school">${c.school}</div>
-                                    <div class="dm-coach">${c.name} • @${c.twitter}</div>
+                                    <div class="dm-coach">${c.coach_name} • @${c.twitter}</div>
                                 </div>
                             </div>
                             <textarea class="dm-textarea" id="dm-text-${i}" oninput="updateCharCount(${i})">${getDMText(c)}</textarea>
