@@ -832,7 +832,21 @@ HTML_TEMPLATE = '''
                     </div>
                     
                     <div class="card">
-                        <div class="card-header">Auto-Send Settings</div>
+                        <div class="card-header">Tomorrow's Auto-Send</div>
+                        <div style="background:var(--bg3);padding:16px;border-radius:8px;margin-bottom:16px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                                <div>
+                                    <div style="font-size:28px;font-weight:bold;color:var(--accent);" id="tomorrow-count">--</div>
+                                    <div class="text-sm text-muted">coaches to email</div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-size:18px;font-weight:600;" id="optimal-time">--:--</div>
+                                    <div class="text-sm text-muted">optimal send time</div>
+                                </div>
+                            </div>
+                            <div class="text-sm" id="tomorrow-breakdown" style="color:var(--muted);">Loading...</div>
+                        </div>
+
                         <div class="form-group" style="margin-bottom:12px;">
                             <label style="display:flex;align-items:center;gap:12px;cursor:pointer;">
                                 <input type="checkbox" id="auto-send-toggle" onchange="toggleAutoSend(this.checked)" style="width:18px;height:18px;">
@@ -843,29 +857,29 @@ HTML_TEMPLATE = '''
                             <label>Emails per day</label>
                             <input type="number" id="auto-send-count" value="100" min="5" max="100" style="width:80px">
                         </div>
-                        <p class="text-sm text-muted" style="margin-bottom:12px;">Intro → Follow-up 1 (3 days) → Follow-up 2 (3 days) → Restart (3 days)</p>
-                        <p class="text-sm text-muted" style="margin-bottom:12px;">Prioritizes coaches who haven't been emailed longest.</p>
+                        <p class="text-sm text-muted" style="margin-bottom:8px;">Intro → Follow-up 1 (3d) → Follow-up 2 (3d) → Restart</p>
                         <div class="flex gap-2">
                             <button class="btn btn-sm btn-primary" onclick="runAutoSendNow()">Run Now</button>
                         </div>
                         <div id="auto-send-status" class="text-sm text-muted mt-2"></div>
-                        
+
                         <hr style="margin:16px 0;border-color:#333;">
-                        <div class="card-header" style="padding:0;margin-bottom:12px;">Phone Notifications</div>
-                        <div class="form-group" style="margin-bottom:12px;">
-                            <label style="display:flex;align-items:center;gap:12px;cursor:pointer;">
-                                <input type="checkbox" id="notify-toggle" onchange="toggleNotifications(this.checked)" style="width:18px;height:18px;">
-                                <span>Send daily reminder to my phone</span>
-                            </label>
+                        <div class="card-header" style="padding:0;margin-bottom:8px;">Email Performance</div>
+                        <div style="display:flex;gap:16px;margin-bottom:12px;">
+                            <div style="flex:1;text-align:center;padding:12px;background:var(--bg3);border-radius:6px;">
+                                <div style="font-size:20px;font-weight:bold;" id="perf-sent">0</div>
+                                <div class="text-sm text-muted">Sent</div>
+                            </div>
+                            <div style="flex:1;text-align:center;padding:12px;background:var(--bg3);border-radius:6px;">
+                                <div style="font-size:20px;font-weight:bold;color:var(--accent);" id="perf-opened">0</div>
+                                <div class="text-sm text-muted">Opened</div>
+                            </div>
+                            <div style="flex:1;text-align:center;padding:12px;background:var(--bg3);border-radius:6px;">
+                                <div style="font-size:20px;font-weight:bold;color:var(--success);" id="perf-replied">0</div>
+                                <div class="text-sm text-muted">Replied</div>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>Notification Channel (for ntfy.sh app)</label>
-                            <input type="text" id="notify-channel" placeholder="keelan-coach-outreach" style="width:200px;" onchange="saveNotifyChannel(this.value)">
-                        </div>
-                        <p class="text-sm text-muted">1. Install <a href="https://ntfy.sh" target="_blank" style="color:#6C5CE7;">ntfy.sh</a> app on your phone</p>
-                        <p class="text-sm text-muted">2. Subscribe to your channel name above</p>
-                        <p class="text-sm text-muted">3. You'll get a notification when it's time to send emails</p>
-                        <button class="btn btn-sm btn-outline mt-2" onclick="testNotification()">Test Notification</button>
+                        <div class="text-sm text-muted" id="perf-best-time">Best time to send: analyzing...</div>
                     </div>
                 </div>
                 
@@ -1304,6 +1318,8 @@ HTML_TEMPLATE = '''
                 loadHotLeads();
                 loadDivisionStats();
                 loadTrackingStats();
+                loadTomorrowPreview();
+                loadRepliedCount();
             } catch(e) { console.error(e); }
         }
 
@@ -1314,6 +1330,10 @@ HTML_TEMPLATE = '''
 
                 // Update open rate stat
                 document.getElementById('stat-opens').textContent = (data.open_rate || 0) + '%';
+
+                // Update email performance stats
+                document.getElementById('perf-sent').textContent = data.total_sent || 0;
+                document.getElementById('perf-opened').textContent = data.total_opened || 0;
 
                 // Update recent opens
                 const el = document.getElementById('recent-opens');
@@ -1327,6 +1347,54 @@ HTML_TEMPLATE = '''
                 } else {
                     el.innerHTML = '<p class="text-muted text-sm">No opens tracked yet</p>';
                 }
+
+                // Get smart times for best time display
+                const timesRes = await fetch('/api/tracking/smart-times');
+                const timesData = await timesRes.json();
+                if (timesData.best_hours && timesData.best_hours.length) {
+                    document.getElementById('perf-best-time').textContent =
+                        'Best times: ' + timesData.best_hours.slice(0, 2).map(h => h.hour + ':00').join(', ');
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadTomorrowPreview() {
+            try {
+                const res = await fetch('/api/auto-send/tomorrow-preview');
+                const data = await res.json();
+
+                if (data.success) {
+                    document.getElementById('tomorrow-count').textContent = data.total || 0;
+                    document.getElementById('optimal-time').textContent = data.optimal_time || '9:00 AM';
+
+                    // Build breakdown text
+                    const parts = [];
+                    if (data.intro > 0) parts.push(data.intro + ' intro');
+                    if (data.followup1 > 0) parts.push(data.followup1 + ' follow-up 1');
+                    if (data.followup2 > 0) parts.push(data.followup2 + ' follow-up 2');
+                    if (data.restart > 0) parts.push(data.restart + ' restart');
+
+                    document.getElementById('tomorrow-breakdown').textContent =
+                        parts.length ? parts.join(' • ') : 'No emails scheduled';
+
+                    // Show total available if capped
+                    if (data.total_available > data.total) {
+                        document.getElementById('tomorrow-breakdown').textContent +=
+                            ` (${data.total_available} available, capped at ${data.total})`;
+                    }
+                }
+            } catch(e) {
+                console.error(e);
+                document.getElementById('tomorrow-breakdown').textContent = 'Error loading preview';
+            }
+        }
+
+        async function loadRepliedCount() {
+            try {
+                const res = await fetch('/api/responses/recent');
+                const data = await res.json();
+                document.getElementById('perf-replied').textContent =
+                    (data.responses && data.responses.length) || 0;
             } catch(e) { console.error(e); }
         }
         
@@ -1746,30 +1814,102 @@ HTML_TEMPLATE = '''
                 document.getElementById('dm-queue').textContent = dmQueue.length;
                 document.getElementById('dm-sent').textContent = data.sent || 0;
                 document.getElementById('dm-need-handle').textContent = data.no_handle || 0;
-                
+
                 const container = document.getElementById('dm-queue-list');
+                const isMobile = window.innerWidth <= 768;
+
                 if (dmQueue.length) {
-                    container.innerHTML = dmQueue.slice(0, 5).map((c, i) => `
-                        <div class="dm-card" data-index="${i}">
-                            <div class="dm-header">
-                                <div>
-                                    <div class="dm-school">${c.school}</div>
-                                    <div class="dm-coach">${c.coach_name} • @${c.twitter}</div>
+                    if (isMobile) {
+                        // Mobile: show one coach at a time with bigger buttons
+                        const c = dmQueue[0];
+                        container.innerHTML = `
+                            <div class="dm-card-mobile" data-index="0">
+                                <div class="dm-school" style="font-size:18px;font-weight:bold;">${c.school}</div>
+                                <div class="dm-coach" style="font-size:14px;color:var(--muted);margin-bottom:8px;">
+                                    ${c.coach_name} • <a href="https://x.com/${c.twitter}" target="_blank" style="color:var(--accent);">@${c.twitter}</a>
+                                </div>
+                                <textarea class="dm-textarea" id="dm-text-0" oninput="updateCharCount(0)" style="min-height:100px;font-size:14px;">${getDMText(c)}</textarea>
+                                <div class="char-count" id="char-count-0">0/500</div>
+                                <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
+                                    <button class="btn btn-primary" onclick="quickDM(0)" style="padding:16px;font-size:16px;font-weight:bold;">
+                                        📋 Copy + Open Twitter
+                                    </button>
+                                    <div style="display:flex;gap:10px;">
+                                        <button class="btn btn-success" onclick="markDMSentMobile(0)" style="flex:1;padding:14px;">
+                                            ✓ Sent
+                                        </button>
+                                        <button class="btn btn-outline" onclick="skipDM()" style="flex:1;padding:14px;">
+                                            Skip →
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="text-sm text-muted mt-2" style="text-align:center;">
+                                    ${dmQueue.length - 1} more coaches in queue
                                 </div>
                             </div>
-                            <textarea class="dm-textarea" id="dm-text-${i}" oninput="updateCharCount(${i})">${getDMText(c)}</textarea>
-                            <div class="char-count" id="char-count-${i}">0/500</div>
-                            <div class="dm-actions">
-                                <button class="btn btn-sm" onclick="copyAndOpen(${i})">📋 Copy & Open Twitter</button>
-                                <button class="btn btn-sm btn-success" onclick="markDMSent(${i})">✓ Mark Sent</button>
+                        `;
+                    } else {
+                        // Desktop: show list of 5
+                        container.innerHTML = dmQueue.slice(0, 5).map((c, i) => `
+                            <div class="dm-card" data-index="${i}">
+                                <div class="dm-header">
+                                    <div>
+                                        <div class="dm-school">${c.school}</div>
+                                        <div class="dm-coach">${c.coach_name} • @${c.twitter}</div>
+                                    </div>
+                                </div>
+                                <textarea class="dm-textarea" id="dm-text-${i}" oninput="updateCharCount(${i})">${getDMText(c)}</textarea>
+                                <div class="char-count" id="char-count-${i}">0/500</div>
+                                <div class="dm-actions">
+                                    <button class="btn btn-sm" onclick="copyAndOpen(${i})">📋 Copy & Open Twitter</button>
+                                    <button class="btn btn-sm btn-success" onclick="markDMSent(${i})">✓ Mark Sent</button>
+                                </div>
                             </div>
-                        </div>
-                    `).join('');
-                    dmQueue.slice(0, 5).forEach((_, i) => updateCharCount(i));
+                        `).join('');
+                    }
+                    const count = isMobile ? 1 : Math.min(5, dmQueue.length);
+                    for (let i = 0; i < count; i++) updateCharCount(i);
                 } else {
                     container.innerHTML = '<p class="text-muted text-sm">No coaches in DM queue</p>';
                 }
             } catch(e) { console.error(e); }
+        }
+
+        function quickDM(i) {
+            // Mobile: copy text and open Twitter in one tap
+            const text = document.getElementById('dm-text-' + i).value;
+            if (text.length > 500) {
+                showToast('DM too long! Max 500 chars', 'error');
+                return;
+            }
+            navigator.clipboard.writeText(text);
+            const coach = dmQueue[i];
+            window.open('https://x.com/' + coach.twitter, '_blank');
+            showToast('Message copied! Paste in Twitter DM', 'success');
+        }
+
+        async function markDMSentMobile(i) {
+            const coach = dmQueue[i];
+            try {
+                await fetch('/api/twitter/mark-dm-sent', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ email: coach.email, school: coach.school })
+                });
+                showToast('Marked ✓ Loading next...', 'success');
+                // Auto-advance to next coach
+                loadDMQueue();
+            } catch(e) { showToast('Error', 'error'); }
+        }
+
+        function skipDM() {
+            // Move first coach to end of queue and refresh display
+            if (dmQueue.length > 1) {
+                const skipped = dmQueue.shift();
+                dmQueue.push(skipped);
+                loadDMQueue();
+                showToast('Skipped to next coach', 'info');
+            }
         }
         
         function getDMText(coach) {
@@ -6135,6 +6275,146 @@ def api_auto_send_status():
         'enabled': current_settings.get('email', {}).get('auto_send_enabled', False),
         'emails_per_day': current_settings.get('email', {}).get('auto_send_count', 100)
     })
+
+
+@app.route('/api/auto-send/tomorrow-preview')
+def api_tomorrow_preview():
+    """Preview what emails will be sent tomorrow."""
+    try:
+        sheet = get_sheet()
+        if not sheet:
+            return jsonify({'success': False, 'error': 'Sheet not connected'})
+
+        current_settings = load_settings()
+        limit = current_settings.get('email', {}).get('auto_send_count', 100)
+        days_between = current_settings.get('email', {}).get('days_between_emails', 3)
+
+        data = sheet.get_all_values()
+        if len(data) < 2:
+            return jsonify({'success': True, 'total': 0, 'intro': 0, 'followup1': 0, 'followup2': 0, 'restart': 0})
+
+        headers = [h.lower() for h in data[0]]
+        rows = data[1:]
+
+        def find_col(keywords):
+            for i, h in enumerate(headers):
+                for kw in keywords:
+                    if kw in h:
+                        return i
+            return -1
+
+        school_col = find_col(['school'])
+        rc_email_col = find_col(['rc email'])
+        rc_contacted_col = find_col(['rc contacted'])
+        rc_notes_col = find_col(['rc notes'])
+        ol_email_col = find_col(['oc email'])
+        ol_contacted_col = find_col(['ol contacted'])
+        ol_notes_col = find_col(['ol notes'])
+
+        from datetime import date
+        today = date.today()
+
+        def parse_date(date_str):
+            if not date_str:
+                return None
+            try:
+                return datetime.strptime(date_str.split(',')[0].strip(), '%m/%d/%Y').date()
+            except:
+                try:
+                    return datetime.strptime(date_str.strip()[:10], '%Y-%m-%d').date()
+                except:
+                    return None
+
+        def get_email_stage(contacted_str, notes_str):
+            contacted = contacted_str.lower() if contacted_str else ''
+            notes = notes_str.lower() if notes_str else ''
+            if 'replied' in contacted or 'replied' in notes or 'responded' in notes:
+                return 'replied'
+            if 'followup 2' in notes or 'follow-up 2' in notes or 'f2' in notes:
+                return 'followup2_sent'
+            if 'followup 1' in notes or 'follow-up 1' in notes or 'f1' in notes:
+                return 'followup1_sent'
+            if contacted and parse_date(contacted):
+                return 'intro_sent'
+            return 'new'
+
+        def days_since_contact(contacted_str):
+            last_date = parse_date(contacted_str)
+            if not last_date:
+                return 999
+            return (today - last_date).days
+
+        counts = {'intro': 0, 'followup1': 0, 'followup2': 0, 'restart': 0}
+        schools_preview = []
+
+        for row in rows:
+            school = row[school_col] if school_col < len(row) else ''
+            if not school:
+                continue
+
+            for email_col, contacted_col, notes_col, coach_type in [
+                (rc_email_col, rc_contacted_col, rc_notes_col, 'RC'),
+                (ol_email_col, ol_contacted_col, ol_notes_col, 'OL')
+            ]:
+                if email_col >= 0 and email_col < len(row):
+                    email = row[email_col].strip() if email_col < len(row) else ''
+                    contacted = row[contacted_col].strip() if contacted_col >= 0 and contacted_col < len(row) else ''
+                    notes = row[notes_col].strip() if notes_col >= 0 and notes_col < len(row) else ''
+
+                    if email and '@' in email:
+                        stage = get_email_stage(contacted, notes)
+                        days = days_since_contact(contacted)
+
+                        email_type = None
+                        if stage == 'new':
+                            email_type = 'intro'
+                        elif stage == 'intro_sent' and days >= days_between:
+                            email_type = 'followup1'
+                        elif stage == 'followup1_sent' and days >= days_between:
+                            email_type = 'followup2'
+                        elif stage == 'followup2_sent' and days >= days_between:
+                            email_type = 'restart'
+
+                        if email_type:
+                            counts[email_type] += 1
+                            if len(schools_preview) < 5:
+                                schools_preview.append({'school': school, 'type': coach_type, 'email_type': email_type})
+
+        total = sum(counts.values())
+        total_capped = min(total, limit)
+
+        # Get optimal time from smart-times
+        optimal_time = "9:00 AM"  # Default
+        try:
+            from collections import defaultdict
+            hour_counts = defaultdict(int)
+            for tid, opens in email_tracking.get('opens', {}).items():
+                for o in opens:
+                    try:
+                        opened_at = datetime.fromisoformat(o['opened_at'].replace('Z', '+00:00'))
+                        hour_counts[opened_at.hour] += 1
+                    except:
+                        pass
+            if hour_counts:
+                best_hour = max(hour_counts.items(), key=lambda x: x[1])[0]
+                optimal_time = f"{best_hour}:00"
+        except:
+            pass
+
+        return jsonify({
+            'success': True,
+            'total': total_capped,
+            'total_available': total,
+            'intro': counts['intro'],
+            'followup1': counts['followup1'],
+            'followup2': counts['followup2'],
+            'restart': counts['restart'],
+            'optimal_time': optimal_time,
+            'preview': schools_preview
+        })
+    except Exception as e:
+        logger.error(f"Tomorrow preview error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 
 @app.route('/api/auto-send/toggle', methods=['POST'])
