@@ -730,6 +730,44 @@ HTML_TEMPLATE = '''
         .text-muted { color: var(--muted); }
         .text-sm { font-size: 13px; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            header { padding: 10px 16px; }
+            header h1 { font-size: 14px; }
+            nav { padding: 0 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            nav::-webkit-scrollbar { display: none; }
+            .tab { padding: 12px 14px; font-size: 13px; white-space: nowrap; }
+            main { padding: 12px; }
+            .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+            .stat { padding: 12px 8px; }
+            .stat-value { font-size: 24px; }
+            .stat-label { font-size: 10px; }
+            .grid-2 { grid-template-columns: 1fr; }
+            .card { padding: 14px; margin-bottom: 12px; }
+            .card-header { font-size: 12px; margin-bottom: 8px; }
+            .btn { padding: 12px 16px; font-size: 14px; width: 100%; margin-bottom: 8px; }
+            .btn-sm { padding: 10px 14px; width: auto; }
+            .form-group input, .form-group select, .form-group textarea { font-size: 16px; padding: 12px; }
+            table { font-size: 12px; }
+            table th, table td { padding: 8px 6px; }
+            .modal-content { width: 95%; max-width: none; margin: 10px; padding: 16px; max-height: 90vh; }
+            .flex.gap-2 { flex-wrap: wrap; }
+            .dm-card { padding: 12px; }
+            .dm-textarea { font-size: 14px; min-height: 100px; }
+            #keyboard-shortcuts { font-size: 11px; padding: 8px; }
+            #keyboard-shortcuts kbd { padding: 2px 4px; font-size: 10px; }
+            .response-item, .lead-item { padding: 10px 0; }
+            .pipeline-card { padding: 10px; }
+            .hide-mobile { display: none !important; }
+        }
+
+        @media (max-width: 480px) {
+            .stats { grid-template-columns: repeat(2, 1fr); }
+            .stat-value { font-size: 20px; }
+            header h1 { font-size: 13px; }
+            .tab { padding: 10px 12px; font-size: 12px; }
+        }
     </style>
 </head>
 <body>
