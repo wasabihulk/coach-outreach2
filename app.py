@@ -583,6 +583,13 @@ HTML_TEMPLATE = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coach Outreach Pro</title>
+    <!-- PWA Support -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Coach Outreach">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -2673,6 +2680,13 @@ HTML_TEMPLATE = '''
         // Check for responses after 3 seconds, then every 5 minutes
         setTimeout(autoCheckInbox, 3000);
         setInterval(autoCheckInbox, 5 * 60 * 1000);  // Check every 5 minutes
+
+        // Register service worker for PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').then(reg => {
+                console.log('Service worker registered');
+            }).catch(err => console.log('SW registration failed'));
+        }
     </script>
 </body>
 </html>
@@ -2686,6 +2700,72 @@ HTML_TEMPLATE = '''
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
+
+
+# ============================================================================
+# PWA SUPPORT
+# ============================================================================
+
+@app.route('/manifest.json')
+def manifest():
+    """PWA manifest for installable app."""
+    return jsonify({
+        "name": "Coach Outreach Pro",
+        "short_name": "Coach Outreach",
+        "description": "College football recruiting outreach tool",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0f0f14",
+        "theme_color": "#6366f1",
+        "orientation": "portrait-primary",
+        "icons": [
+            {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}
+        ]
+    })
+
+@app.route('/icon-192.png')
+def icon_192():
+    """Generate a simple icon for the PWA."""
+    # Simple SVG icon encoded as PNG placeholder
+    svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+        <rect width="192" height="192" rx="32" fill="#6366f1"/>
+        <text x="96" y="120" font-size="80" text-anchor="middle" fill="white" font-family="Arial" font-weight="bold">CO</text>
+    </svg>'''
+    import io
+    return Response(svg, mimetype='image/svg+xml')
+
+@app.route('/icon-512.png')
+def icon_512():
+    """Generate a simple icon for the PWA."""
+    svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="64" fill="#6366f1"/>
+        <text x="256" y="320" font-size="200" text-anchor="middle" fill="white" font-family="Arial" font-weight="bold">CO</text>
+    </svg>'''
+    return Response(svg, mimetype='image/svg+xml')
+
+@app.route('/sw.js')
+def service_worker():
+    """Service worker for offline support."""
+    sw_code = '''
+const CACHE_NAME = 'coach-outreach-v1';
+const urlsToCache = ['/'];
+
+self.addEventListener('install', event => {
+    event.waitUntil(
+        caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+    );
+});
+
+self.addEventListener('fetch', event => {
+    event.respondWith(
+        caches.match(event.request).then(response => {
+            return response || fetch(event.request);
+        })
+    );
+});
+'''
+    return Response(sw_code, mimetype='application/javascript')
 
 
 # ============================================================================
@@ -2757,6 +2837,56 @@ def tracking_stats():
         'open_rate': round(total_opened / total_sent * 100, 1) if total_sent > 0 else 0,
         'by_school': opens_by_school,
         'recent_opens': recent_opens[:20]
+    })
+
+
+@app.route('/api/tracking/smart-times')
+def smart_send_times():
+    """Analyze email opens to suggest optimal send times."""
+    from collections import defaultdict
+
+    # Count opens by hour and day of week
+    hour_counts = defaultdict(int)
+    day_counts = defaultdict(int)
+    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+    for tid, opens in email_tracking['opens'].items():
+        for o in opens:
+            try:
+                opened_at = datetime.fromisoformat(o['opened_at'].replace('Z', '+00:00'))
+                hour_counts[opened_at.hour] += 1
+                day_counts[opened_at.weekday()] += 1
+            except:
+                pass
+
+    # Find best hours (top 3)
+    best_hours = sorted(hour_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+    best_days = sorted(day_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+
+    # Format for display
+    best_hours_formatted = [
+        {'hour': h, 'display': f"{h}:00 - {h+1}:00", 'opens': c}
+        for h, c in best_hours
+    ]
+    best_days_formatted = [
+        {'day': d, 'display': day_names[d], 'opens': c}
+        for d, c in best_days
+    ]
+
+    # Generate recommendation
+    if best_hours and best_days:
+        top_day = day_names[best_days[0][0]]
+        top_hour = best_hours[0][0]
+        recommendation = f"Best time: {top_day}s around {top_hour}:00"
+    else:
+        recommendation = "Send more emails to gather data on optimal times"
+
+    return jsonify({
+        'success': True,
+        'best_hours': best_hours_formatted,
+        'best_days': best_days_formatted,
+        'recommendation': recommendation,
+        'total_opens_analyzed': sum(hour_counts.values())
     })
 
 
@@ -4960,8 +5090,8 @@ def api_email_send():
                     elif stage == 'followup1_sent' and days >= days_between:
                         should_send = True
                         email_type = 'followup_2'
-                    elif stage == 'followup2_sent' and days >= days_between * 3:
-                        # Restart cycle after longer wait
+                    elif stage == 'followup2_sent' and days >= days_between:
+                        # Restart cycle after same delay as other stages
                         should_send = True
                         email_type = 'intro'
                     
@@ -5000,7 +5130,7 @@ def api_email_send():
                     elif stage == 'followup1_sent' and days >= days_between:
                         should_send = True
                         email_type = 'followup_2'
-                    elif stage == 'followup2_sent' and days >= days_between * 3:
+                    elif stage == 'followup2_sent' and days >= days_between:
                         should_send = True
                         email_type = 'intro'
                     
