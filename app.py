@@ -208,6 +208,38 @@ task_thread = None
 stop_requested = False
 cached_responses = []  # Store found responses for display
 
+# Email tracking data
+email_tracking = {
+    'sent': {},      # tracking_id -> {to, school, coach, sent_at, subject}
+    'opens': {},     # tracking_id -> [{opened_at, ip, user_agent}]
+    'clicks': {}     # tracking_id -> [{clicked_at, url, ip}]
+}
+TRACKING_FILE = CONFIG_DIR / 'email_tracking.json'
+
+def load_tracking():
+    global email_tracking
+    if TRACKING_FILE.exists():
+        try:
+            with open(TRACKING_FILE) as f:
+                email_tracking = json.load(f)
+        except:
+            pass
+
+def save_tracking():
+    try:
+        with open(TRACKING_FILE, 'w') as f:
+            json.dump(email_tracking, f, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Error saving tracking: {e}")
+
+def generate_tracking_id(to_email: str, school: str) -> str:
+    """Generate unique tracking ID for an email."""
+    import hashlib
+    data = f"{to_email}{school}{datetime.now().isoformat()}{random.random()}"
+    return hashlib.sha256(data.encode()).hexdigest()[:16]
+
+load_tracking()  # Load on startup
+
 def add_log(msg: str, level: str = 'info'):
     entry = {'time': datetime.now().strftime('%H:%M:%S'), 'msg': msg, 'level': level}
     event_queue.put({'type': 'log', 'data': entry})
@@ -308,35 +340,68 @@ def api_debug_gmail_config():
     })
 
 
-def send_email_gmail_api(to_email: str, subject: str, body: str, from_email: str = None) -> bool:
-    """Send email using Gmail API (works on Railway)."""
+def send_email_gmail_api(to_email: str, subject: str, body: str, from_email: str = None, school: str = '', coach_name: str = '') -> bool:
+    """Send email using Gmail API with open tracking (works on Railway)."""
     service = get_gmail_service()
     if not service:
         logger.error("Gmail API not configured")
         return False
-    
+
     try:
         from_email = from_email or ENV_EMAIL_ADDRESS
-        
-        # Create message
-        message = MIMEMultipart()
+
+        # Generate tracking ID
+        tracking_id = generate_tracking_id(to_email, school)
+
+        # Get the app URL for tracking pixel
+        app_url = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
+        if app_url and not app_url.startswith('http'):
+            app_url = f"https://{app_url}"
+        if not app_url:
+            app_url = "https://coach-outreach.up.railway.app"
+
+        # Create HTML version with tracking pixel
+        html_body = f"""
+        <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">
+            {body.replace(chr(10), '<br>')}
+        </div>
+        <img src="{app_url}/api/track/open/{tracking_id}" width="1" height="1" style="display:none;" alt="">
+        """
+
+        # Create message with both plain and HTML
+        message = MIMEMultipart('alternative')
         message['to'] = to_email
         message['from'] = from_email
         message['subject'] = subject
+
+        # Attach plain text first, then HTML (email clients prefer the last one)
         message.attach(MIMEText(body, 'plain'))
-        
+        message.attach(MIMEText(html_body, 'html'))
+
         # Encode in base64
         raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        
+
         # Send via Gmail API
         result = service.users().messages().send(
             userId='me',
             body={'raw': raw}
         ).execute()
-        
-        logger.info(f"Email sent via Gmail API to {to_email}, ID: {result.get('id')}")
+
+        # Store tracking info
+        email_tracking['sent'][tracking_id] = {
+            'to': to_email,
+            'school': school,
+            'coach': coach_name,
+            'subject': subject,
+            'sent_at': datetime.now().isoformat(),
+            'message_id': result.get('id')
+        }
+        email_tracking['opens'][tracking_id] = []
+        save_tracking()
+
+        logger.info(f"Email sent via Gmail API to {to_email}, ID: {result.get('id')}, tracking: {tracking_id}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Gmail API send error: {e}")
         import traceback
@@ -695,6 +760,10 @@ HTML_TEMPLATE = '''
                         <div class="stat-label">Response Rate</div>
                     </div>
                     <div class="stat">
+                        <div class="stat-value" id="stat-opens">0%</div>
+                        <div class="stat-label">Open Rate</div>
+                    </div>
+                    <div class="stat">
                         <div class="stat-value" id="stat-followups">0</div>
                         <div class="stat-label">Follow-ups Due</div>
                     </div>
@@ -709,6 +778,11 @@ HTML_TEMPLATE = '''
                         <div class="flex gap-2 mt-4">
                             <button class="btn btn-outline btn-sm" onclick="checkInbox()">Check Inbox</button>
                             <button class="btn btn-outline btn-sm" onclick="testResponseTracking()">Test Tracking</button>
+                        </div>
+                        <hr style="margin:16px 0;border-color:#333;">
+                        <div class="card-header" style="padding:0;margin-bottom:8px;">Recent Opens</div>
+                        <div id="recent-opens" style="max-height:150px;overflow-y:auto;">
+                            <p class="text-muted text-sm">No opens tracked yet</p>
                         </div>
                     </div>
                     
@@ -1179,11 +1253,35 @@ HTML_TEMPLATE = '''
                 document.getElementById('stat-responses').textContent = data.responses || 0;
                 document.getElementById('stat-rate').textContent = (data.response_rate || 0) + '%';
                 document.getElementById('stat-followups').textContent = data.followups_due || 0;
-                
+
                 // Load responses
                 loadRecentResponses();
                 loadHotLeads();
                 loadDivisionStats();
+                loadTrackingStats();
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadTrackingStats() {
+            try {
+                const res = await fetch('/api/tracking/stats');
+                const data = await res.json();
+
+                // Update open rate stat
+                document.getElementById('stat-opens').textContent = (data.open_rate || 0) + '%';
+
+                // Update recent opens
+                const el = document.getElementById('recent-opens');
+                if (data.recent_opens && data.recent_opens.length) {
+                    el.innerHTML = data.recent_opens.slice(0, 8).map(o => `
+                        <div style="padding:4px 0;border-bottom:1px solid #333;font-size:12px;">
+                            <strong>${o.school || 'Unknown'}</strong> - ${o.coach || ''}
+                            <span class="text-muted" style="float:right;">${new Date(o.opened_at).toLocaleString()}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    el.innerHTML = '<p class="text-muted text-sm">No opens tracked yet</p>';
+                }
             } catch(e) { console.error(e); }
         }
         
@@ -2588,6 +2686,78 @@ HTML_TEMPLATE = '''
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
+
+
+# ============================================================================
+# EMAIL TRACKING ENDPOINTS
+# ============================================================================
+
+# 1x1 transparent PNG pixel
+TRACKING_PIXEL = base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+)
+
+@app.route('/api/track/open/<tracking_id>')
+def track_open(tracking_id):
+    """Track email opens via invisible pixel."""
+    if tracking_id in email_tracking['sent']:
+        open_event = {
+            'opened_at': datetime.now().isoformat(),
+            'ip': request.remote_addr,
+            'user_agent': request.headers.get('User-Agent', '')[:200]
+        }
+        if tracking_id not in email_tracking['opens']:
+            email_tracking['opens'][tracking_id] = []
+        email_tracking['opens'][tracking_id].append(open_event)
+        save_tracking()
+
+        info = email_tracking['sent'][tracking_id]
+        logger.info(f"📬 Email OPENED: {info.get('school')} - {info.get('coach')}")
+
+    return Response(TRACKING_PIXEL, mimetype='image/png', headers={
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache'
+    })
+
+
+@app.route('/api/tracking/stats')
+def tracking_stats():
+    """Get email tracking statistics."""
+    total_sent = len(email_tracking['sent'])
+    total_opened = sum(1 for tid in email_tracking['opens'] if email_tracking['opens'][tid])
+
+    # Get opens by school
+    opens_by_school = {}
+    for tid, info in email_tracking['sent'].items():
+        school = info.get('school', 'Unknown')
+        if school not in opens_by_school:
+            opens_by_school[school] = {'sent': 0, 'opened': 0}
+        opens_by_school[school]['sent'] += 1
+        if email_tracking['opens'].get(tid):
+            opens_by_school[school]['opened'] += 1
+
+    # Recent opens (last 20)
+    recent_opens = []
+    for tid, opens in email_tracking['opens'].items():
+        if opens:
+            info = email_tracking['sent'].get(tid, {})
+            for o in opens[-3:]:  # Last 3 opens per email
+                recent_opens.append({
+                    'school': info.get('school'),
+                    'coach': info.get('coach'),
+                    'opened_at': o.get('opened_at'),
+                    'sent_at': info.get('sent_at')
+                })
+    recent_opens.sort(key=lambda x: x.get('opened_at', ''), reverse=True)
+
+    return jsonify({
+        'success': True,
+        'total_sent': total_sent,
+        'total_opened': total_opened,
+        'open_rate': round(total_opened / total_sent * 100, 1) if total_sent > 0 else 0,
+        'by_school': opens_by_school,
+        'recent_opens': recent_opens[:20]
+    })
 
 
 @app.route('/api/deployment-info')
@@ -4919,7 +5089,7 @@ def api_email_send():
                 
                 # Send email
                 if use_gmail_api:
-                    success = send_email_gmail_api(coach_email, subject, body, email_addr)
+                    success = send_email_gmail_api(coach_email, subject, body, email_addr, school=coach['school'], coach_name=coach['name'])
                 else:
                     msg = MIMEMultipart()
                     msg['From'] = email_addr
