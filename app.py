@@ -216,21 +216,99 @@ email_tracking = {
 }
 TRACKING_FILE = CONFIG_DIR / 'email_tracking.json'
 
+def get_tracking_sheet():
+    """Get or create the Email_Tracking worksheet."""
+    try:
+        client = get_gspread_client()
+        if not client:
+            return None
+        spreadsheet = client.open('bardeen')
+        try:
+            return spreadsheet.worksheet('Email_Tracking')
+        except:
+            # Create the worksheet if it doesn't exist
+            sheet = spreadsheet.add_worksheet(title='Email_Tracking', rows=1000, cols=10)
+            sheet.update('A1:H1', [['tracking_id', 'to', 'school', 'coach', 'subject', 'sent_at', 'opened_at', 'open_count']])
+            return sheet
+    except Exception as e:
+        logger.error(f"Error getting tracking sheet: {e}")
+        return None
+
 def load_tracking():
+    """Load tracking data from Google Sheets (persists across deploys)."""
     global email_tracking
+    # First try local file (for speed)
     if TRACKING_FILE.exists():
         try:
             with open(TRACKING_FILE) as f:
                 email_tracking = json.load(f)
+                return
         except:
             pass
+    # Then try loading from Google Sheets
+    try:
+        sheet = get_tracking_sheet()
+        if sheet:
+            data = sheet.get_all_records()
+            for row in data:
+                tid = row.get('tracking_id')
+                if tid:
+                    email_tracking['sent'][tid] = {
+                        'to': row.get('to', ''),
+                        'school': row.get('school', ''),
+                        'coach': row.get('coach', ''),
+                        'subject': row.get('subject', ''),
+                        'sent_at': row.get('sent_at', '')
+                    }
+                    email_tracking['opens'][tid] = []
+                    if row.get('opened_at'):
+                        email_tracking['opens'][tid].append({'opened_at': row.get('opened_at')})
+            logger.info(f"Loaded {len(email_tracking['sent'])} tracked emails from sheet")
+    except Exception as e:
+        logger.error(f"Error loading tracking from sheet: {e}")
 
 def save_tracking():
+    """Save tracking data to local file and sync to Google Sheets."""
     try:
         with open(TRACKING_FILE, 'w') as f:
             json.dump(email_tracking, f, indent=2, default=str)
     except Exception as e:
-        logger.error(f"Error saving tracking: {e}")
+        logger.error(f"Error saving tracking locally: {e}")
+
+def save_tracking_to_sheet(tracking_id: str, is_open: bool = False):
+    """Save a single tracking record to Google Sheets."""
+    try:
+        sheet = get_tracking_sheet()
+        if not sheet:
+            return
+
+        info = email_tracking['sent'].get(tracking_id, {})
+        opens = email_tracking['opens'].get(tracking_id, [])
+
+        if is_open:
+            # Find and update existing row
+            try:
+                cell = sheet.find(tracking_id)
+                if cell:
+                    # Update opened_at and open_count
+                    opened_at = opens[-1].get('opened_at', '') if opens else ''
+                    sheet.update(f'G{cell.row}:H{cell.row}', [[opened_at, len(opens)]])
+            except:
+                pass
+        else:
+            # Append new row
+            sheet.append_row([
+                tracking_id,
+                info.get('to', ''),
+                info.get('school', ''),
+                info.get('coach', ''),
+                info.get('subject', '')[:50],  # Truncate subject
+                info.get('sent_at', ''),
+                '',  # opened_at
+                0    # open_count
+            ])
+    except Exception as e:
+        logger.error(f"Error saving tracking to sheet: {e}")
 
 def generate_tracking_id(to_email: str, school: str) -> str:
     """Generate unique tracking ID for an email."""
@@ -398,6 +476,8 @@ def send_email_gmail_api(to_email: str, subject: str, body: str, from_email: str
         }
         email_tracking['opens'][tracking_id] = []
         save_tracking()
+        # Also save to Google Sheets for persistence across deploys
+        save_tracking_to_sheet(tracking_id, is_open=False)
 
         logger.info(f"Email sent via Gmail API to {to_email}, ID: {result.get('id')}, tracking: {tracking_id}")
         return True
@@ -3032,6 +3112,8 @@ def track_open(tracking_id):
             email_tracking['opens'][tracking_id] = []
         email_tracking['opens'][tracking_id].append(open_event)
         save_tracking()
+        # Also update Google Sheets for persistence
+        save_tracking_to_sheet(tracking_id, is_open=True)
 
         info = email_tracking['sent'][tracking_id]
         logger.info(f"📬 Email OPENED: {info.get('school')} - {info.get('coach')}")
