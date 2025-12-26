@@ -662,6 +662,20 @@ HTML_TEMPLATE = '''
         .toast.success { border-color: var(--success); }
         .toast.error { border-color: var(--err); }
         @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } }
+
+        /* Loading Spinner */
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        .spinner-lg { width: 32px; height: 32px; border-width: 3px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; color: var(--muted); gap: 12px; }
+        .loading-state .spinner { margin-bottom: 8px; }
+
+        /* Empty States */
+        .empty-state { text-align: center; padding: 32px 16px; color: var(--muted); }
+        .empty-state-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+        .empty-state-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+        .empty-state-text { font-size: 14px; line-height: 1.5; max-width: 280px; margin: 0 auto; }
+        .empty-state .btn { margin-top: 16px; }
         
         /* Template toggle */
         .template-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; }
@@ -814,84 +828,93 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
                 
-                <div class="grid-2">
-                    <div class="card">
-                        <div class="card-header">Recent Responses</div>
-                        <div id="recent-responses">
-                            <p class="text-muted text-sm">No responses yet</p>
-                        </div>
-                        <div class="flex gap-2 mt-4">
-                            <button class="btn btn-outline btn-sm" onclick="checkInbox()">Check Inbox</button>
-                            <button class="btn btn-outline btn-sm" onclick="testResponseTracking()">Test Tracking</button>
-                        </div>
-                        <hr style="margin:16px 0;border-color:#333;">
-                        <div class="card-header" style="padding:0;margin-bottom:8px;">Recent Opens</div>
-                        <div id="recent-opens" style="max-height:150px;overflow-y:auto;">
-                            <p class="text-muted text-sm">No opens tracked yet</p>
-                        </div>
-                    </div>
-                    
-                    <div class="card">
-                        <div class="card-header">Tomorrow's Auto-Send</div>
-                        <div style="background:var(--bg3);padding:16px;border-radius:8px;margin-bottom:16px;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                                <div>
-                                    <div style="font-size:28px;font-weight:bold;color:var(--accent);" id="tomorrow-count">--</div>
-                                    <div class="text-sm text-muted">coaches to email</div>
-                                </div>
-                                <div style="text-align:right;">
-                                    <div style="font-size:18px;font-weight:600;" id="optimal-time">--:--</div>
-                                    <div class="text-sm text-muted">optimal send time</div>
-                                </div>
+                <!-- Quick Actions Row -->
+                <div class="card" style="background: linear-gradient(135deg, var(--bg2) 0%, var(--bg3) 100%);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
+                        <div>
+                            <div style="font-size:14px;color:var(--muted);margin-bottom:4px;">Next Auto-Send</div>
+                            <div style="display:flex;align-items:baseline;gap:12px;">
+                                <span style="font-size:32px;font-weight:bold;color:var(--accent);" id="tomorrow-count"><span class="spinner"></span></span>
+                                <span class="text-muted">coaches</span>
+                                <span style="color:var(--muted);">at</span>
+                                <span style="font-size:18px;font-weight:600;" id="optimal-time">--:--</span>
                             </div>
-                            <div class="text-sm" id="tomorrow-breakdown" style="color:var(--muted);">Loading...</div>
+                            <div class="text-sm text-muted" id="tomorrow-breakdown" style="margin-top:4px;"></div>
                         </div>
-
-                        <div class="form-group" style="margin-bottom:12px;">
-                            <label style="display:flex;align-items:center;gap:12px;cursor:pointer;">
+                        <div style="display:flex;gap:12px;align-items:center;">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
                                 <input type="checkbox" id="auto-send-toggle" onchange="toggleAutoSend(this.checked)" style="width:18px;height:18px;">
-                                <span>Send emails automatically daily</span>
+                                Auto-send daily
                             </label>
+                            <button class="btn btn-sm" onclick="runAutoSendNow()">Run Now</button>
                         </div>
-                        <div class="form-group">
-                            <label>Emails per day</label>
-                            <input type="number" id="auto-send-count" value="100" min="5" max="100" style="width:80px">
-                        </div>
-                        <p class="text-sm text-muted" style="margin-bottom:8px;">Intro → Follow-up 1 (3d) → Follow-up 2 (3d) → Restart</p>
-                        <div class="flex gap-2">
-                            <button class="btn btn-sm btn-primary" onclick="runAutoSendNow()">Run Now</button>
-                        </div>
-                        <div id="auto-send-status" class="text-sm text-muted mt-2"></div>
-
-                        <hr style="margin:16px 0;border-color:#333;">
-                        <div class="card-header" style="padding:0;margin-bottom:8px;">Email Performance</div>
-                        <div style="display:flex;gap:16px;margin-bottom:12px;">
-                            <div style="flex:1;text-align:center;padding:12px;background:var(--bg3);border-radius:6px;">
-                                <div style="font-size:20px;font-weight:bold;" id="perf-sent">0</div>
-                                <div class="text-sm text-muted">Sent</div>
-                            </div>
-                            <div style="flex:1;text-align:center;padding:12px;background:var(--bg3);border-radius:6px;">
-                                <div style="font-size:20px;font-weight:bold;color:var(--accent);" id="perf-opened">0</div>
-                                <div class="text-sm text-muted">Opened</div>
-                            </div>
-                            <div style="flex:1;text-align:center;padding:12px;background:var(--bg3);border-radius:6px;">
-                                <div style="font-size:20px;font-weight:bold;color:var(--success);" id="perf-replied">0</div>
-                                <div class="text-sm text-muted">Replied</div>
-                            </div>
-                        </div>
-                        <div class="text-sm text-muted" id="perf-best-time">Best time to send: analyzing...</div>
                     </div>
+                    <div id="auto-send-status" class="text-sm text-muted mt-2"></div>
                 </div>
-                
-                <div class="card">
-                    <div class="card-header">Response Rate by Division</div>
-                    <div class="div-stats" id="division-stats">
-                        <div class="div-stat"><div class="div-name">FBS</div><div class="div-rate">-</div></div>
-                        <div class="div-stat"><div class="div-name">FCS</div><div class="div-rate">-</div></div>
-                        <div class="div-stat"><div class="div-name">D2</div><div class="div-rate">-</div></div>
-                        <div class="div-stat"><div class="div-name">D3</div><div class="div-rate">-</div></div>
-                        <div class="div-stat"><div class="div-name">NAIA</div><div class="div-rate">-</div></div>
-                        <div class="div-stat"><div class="div-name">JUCO</div><div class="div-rate">-</div></div>
+
+                <!-- Main Dashboard Grid -->
+                <div class="grid-2">
+                    <!-- Left Column: Responses & Activity -->
+                    <div>
+                        <div class="card">
+                            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                                Coach Responses
+                                <button class="btn btn-outline btn-sm" onclick="checkInbox()">Check Inbox</button>
+                            </div>
+                            <div id="recent-responses">
+                                <div class="loading-state">
+                                    <div class="spinner"></div>
+                                    <span>Checking for responses...</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">Email Opens</div>
+                            <div id="recent-opens" style="max-height:200px;overflow-y:auto;">
+                                <div class="loading-state">
+                                    <div class="spinner"></div>
+                                    <span>Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Performance -->
+                    <div>
+                        <div class="card">
+                            <div class="card-header">Email Performance</div>
+                            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+                                <div style="text-align:center;padding:16px;background:var(--bg3);border-radius:8px;">
+                                    <div style="font-size:28px;font-weight:bold;" id="perf-sent">-</div>
+                                    <div class="text-sm text-muted">Tracked</div>
+                                </div>
+                                <div style="text-align:center;padding:16px;background:var(--bg3);border-radius:8px;">
+                                    <div style="font-size:28px;font-weight:bold;color:var(--accent);" id="perf-opened">-</div>
+                                    <div class="text-sm text-muted">Opened</div>
+                                </div>
+                                <div style="text-align:center;padding:16px;background:var(--bg3);border-radius:8px;">
+                                    <div style="font-size:28px;font-weight:bold;color:var(--success);" id="perf-replied">-</div>
+                                    <div class="text-sm text-muted">Replied</div>
+                                </div>
+                            </div>
+                            <div class="text-sm" id="perf-best-time" style="color:var(--muted);text-align:center;padding:8px;background:var(--bg3);border-radius:6px;">
+                                <span class="spinner" style="width:14px;height:14px;border-width:2px;vertical-align:middle;margin-right:8px;"></span>
+                                Analyzing best send times...
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">Response Rate by Division</div>
+                            <div class="div-stats" id="division-stats">
+                                <div class="div-stat"><div class="div-name">FBS</div><div class="div-rate">-</div></div>
+                                <div class="div-stat"><div class="div-name">FCS</div><div class="div-rate">-</div></div>
+                                <div class="div-stat"><div class="div-name">D2</div><div class="div-rate">-</div></div>
+                                <div class="div-stat"><div class="div-name">D3</div><div class="div-rate">-</div></div>
+                                <div class="div-stat"><div class="div-name">NAIA</div><div class="div-rate">-</div></div>
+                                <div class="div-stat"><div class="div-name">JUCO</div><div class="div-rate">-</div></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -995,7 +1018,7 @@ HTML_TEMPLATE = '''
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                         <div>
                             <strong>Email Queue Summary</strong>
-                            <div class="text-sm text-muted" id="email-queue-summary">Loading...</div>
+                            <div class="text-sm text-muted" id="email-queue-summary"><span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading queue...</div>
                         </div>
                         <div class="flex gap-2">
                             <button class="btn btn-sm btn-outline" onclick="scanPastResponses()">🔍 Scan Past Responses</button>
@@ -1109,7 +1132,10 @@ HTML_TEMPLATE = '''
                             <button class="btn btn-sm btn-outline" onclick="refreshDMQueue()">↻ Refresh</button>
                         </div>
                         <div id="dm-queue-list" style="max-height:300px;overflow-y:auto;">
-                            <p class="text-muted text-sm">Loading...</p>
+                            <div class="loading-state">
+                                <div class="spinner"></div>
+                                <span>Loading coaches...</span>
+                            </div>
                         </div>
                     </div>
                     
@@ -1339,21 +1365,40 @@ HTML_TEMPLATE = '''
                 const el = document.getElementById('recent-opens');
                 if (data.recent_opens && data.recent_opens.length) {
                     el.innerHTML = data.recent_opens.slice(0, 8).map(o => `
-                        <div style="padding:4px 0;border-bottom:1px solid #333;font-size:12px;">
-                            <strong>${o.school || 'Unknown'}</strong> - ${o.coach || ''}
-                            <span class="text-muted" style="float:right;">${new Date(o.opened_at).toLocaleString()}</span>
+                        <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div>
+                                    <strong style="color:var(--text);">${o.school || 'Unknown'}</strong>
+                                    <span class="text-muted"> - ${o.coach || ''}</span>
+                                </div>
+                                <span class="text-muted text-sm">${new Date(o.opened_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            </div>
                         </div>
                     `).join('');
                 } else {
-                    el.innerHTML = '<p class="text-muted text-sm">No opens tracked yet</p>';
+                    el.innerHTML = `
+                        <div class="empty-state" style="padding:24px;">
+                            <div class="empty-state-icon">👁️</div>
+                            <div class="empty-state-title">No opens yet</div>
+                            <div class="empty-state-text">When coaches open your emails, you'll see it here in real-time.</div>
+                        </div>
+                    `;
                 }
 
                 // Get smart times for best time display
                 const timesRes = await fetch('/api/tracking/smart-times');
                 const timesData = await timesRes.json();
+                const bestTimeEl = document.getElementById('perf-best-time');
                 if (timesData.best_hours && timesData.best_hours.length) {
-                    document.getElementById('perf-best-time').textContent =
-                        'Best times: ' + timesData.best_hours.slice(0, 2).map(h => h.hour + ':00').join(', ');
+                    const times = timesData.best_hours.slice(0, 2).map(h => {
+                        const hour = h.hour;
+                        const ampm = hour >= 12 ? 'PM' : 'AM';
+                        const displayHour = hour % 12 || 12;
+                        return displayHour + ' ' + ampm;
+                    }).join(' & ');
+                    bestTimeEl.innerHTML = `<span style="color:var(--success);">✓</span> Best send times: <strong>${times}</strong>`;
+                } else {
+                    bestTimeEl.innerHTML = 'Send more emails to discover best times';
                 }
             } catch(e) { console.error(e); }
         }
@@ -1414,7 +1459,13 @@ HTML_TEMPLATE = '''
                         </div>
                     `).join('');
                 } else {
-                    el.innerHTML = '<p class="text-muted text-sm">No responses yet</p>';
+                    el.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📬</div>
+                            <div class="empty-state-title">No responses yet</div>
+                            <div class="empty-state-text">When coaches reply to your emails, they'll show up here. Keep sending!</div>
+                        </div>
+                    `;
                 }
             } catch(e) { console.error(e); }
         }
@@ -1668,11 +1719,17 @@ HTML_TEMPLATE = '''
                         </tr>
                     `).join('');
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No schools found</td></tr>';
+                    tbody.innerHTML = `<tr><td colspan="5">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🔍</div>
+                            <div class="empty-state-title">No schools found</div>
+                            <div class="empty-state-text">Try a different search term or adjust your filters.</div>
+                        </div>
+                    </td></tr>`;
                 }
             } catch(e) { console.error(e); }
         }
-        
+
         async function addToSheet(schoolName) {
             try {
                 await fetch('/api/schools/add-to-sheet', {
@@ -1870,7 +1927,14 @@ HTML_TEMPLATE = '''
                     const count = isMobile ? 1 : Math.min(5, dmQueue.length);
                     for (let i = 0; i < count; i++) updateCharCount(i);
                 } else {
-                    container.innerHTML = '<p class="text-muted text-sm">No coaches in DM queue</p>';
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">✉️</div>
+                            <div class="empty-state-title">All caught up!</div>
+                            <div class="empty-state-text">No coaches waiting for DMs. Find more coaches with Twitter handles to add to your queue.</div>
+                            <button class="btn btn-sm" onclick="showPage('find')">Find Coaches</button>
+                        </div>
+                    `;
                 }
             } catch(e) { console.error(e); }
         }
