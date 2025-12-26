@@ -6210,37 +6210,45 @@ def start_auto_send_scheduler():
         last_send_date = None
         last_reminder_date = None
         last_response_check = None
-        
-        # Random hour between 8am and 6pm for sending
-        send_hour = random.randint(8, 18)
+
+        # Get timezone offset from environment (default to Eastern Time: UTC-5 or UTC-4)
+        # Railway runs on UTC, so we need to offset for user's timezone
+        tz_offset = int(get_env('TZ_OFFSET', '-5'))  # -5 for EST, -4 for EDT
+
+        # Random hour between 8am and 6pm LOCAL time
+        # Convert to UTC by subtracting the offset (e.g., 8 AM EST = 8 - (-5) = 13 UTC)
+        local_send_hour = random.randint(8, 18)
+        send_hour_utc = (local_send_hour - tz_offset) % 24
         send_minute = random.randint(0, 59)
-        logger.info(f"Today's auto-send scheduled for {send_hour}:{send_minute:02d}")
+        logger.info(f"Today's auto-send scheduled for {local_send_hour}:{send_minute:02d} local (UTC hour: {send_hour_utc})")
         
         while True:
             try:
                 current_settings = load_settings()
                 today = datetime.now().date()
-                current_hour = datetime.now().hour
+                current_hour = datetime.now().hour  # This is UTC on Railway
                 current_minute = datetime.now().minute
                 now = datetime.now()
-                
-                # Pick new random time each day
+
+                # Pick new random time each day (in user's local timezone, converted to UTC)
                 if last_send_date != today:
-                    send_hour = random.randint(8, 18)
+                    local_send_hour = random.randint(8, 18)  # 8 AM - 6 PM local
+                    send_hour_utc = (local_send_hour - tz_offset) % 24
                     send_minute = random.randint(0, 59)
-                    logger.info(f"New day - auto-send scheduled for {send_hour}:{send_minute:02d}")
-                
-                # Auto-send at the random time if enabled
+                    logger.info(f"New day - auto-send scheduled for {local_send_hour}:{send_minute:02d} local (UTC: {send_hour_utc}:{send_minute:02d})")
+
+                # Auto-send at the random time if enabled (compare against UTC)
                 if current_settings.get('email', {}).get('auto_send_enabled', False):
                     if last_send_date != today:
-                        if current_hour > send_hour or (current_hour == send_hour and current_minute >= send_minute):
-                            logger.info(f"Auto-send triggered at {current_hour}:{current_minute:02d}")
+                        if current_hour > send_hour_utc or (current_hour == send_hour_utc and current_minute >= send_minute):
+                            local_hour = (current_hour + tz_offset) % 24
+                            logger.info(f"Auto-send triggered at {local_hour}:{current_minute:02d} local (UTC: {current_hour}:{current_minute:02d})")
                             auto_send_emails()
                             last_send_date = today
-                
-                # Send daily reminder at random morning time (8-10am) if auto-send is OFF
-                reminder_hour = 9  # Could also randomize this
-                if current_hour >= reminder_hour and last_reminder_date != today:
+
+                # Send daily reminder at 9am LOCAL time if auto-send is OFF
+                reminder_hour_utc = (9 - tz_offset) % 24  # 9 AM local -> UTC
+                if current_hour >= reminder_hour_utc and last_reminder_date != today:
                     if not current_settings.get('email', {}).get('auto_send_enabled', False):
                         send_daily_reminder()
                     last_reminder_date = today
