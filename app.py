@@ -6397,45 +6397,70 @@ def check_responses_background():
                     if ol_email and '@' in ol_email and ol_contacted:
                         coach_emails.append({'email': ol_email, 'school': school})
             
+            # Auto-reply patterns to filter out
+            auto_reply_patterns = [
+                'out of office', 'out-of-office', 'automatic reply', 'auto-reply', 'autoreply',
+                'delivery status', 'delivery failed', 'undeliverable', 'returned mail',
+                'mail delivery', 'failure notice', 'delayed:', 'could not be delivered',
+                'away from', 'on vacation', 'currently out', 'be back', 'return on',
+                'no longer at', 'no longer with', 'mailer-daemon', 'postmaster'
+            ]
+
+            def is_auto_reply(subject, snippet=''):
+                text = (subject + ' ' + snippet).lower()
+                return any(pattern in text for pattern in auto_reply_patterns)
+
             # Check Gmail for responses
             responses = []
             service = get_gmail_service()
             if service:
                 for coach in coach_emails:
                     try:
-                        query = f"from:{coach['email']}"
+                        query = f"from:{coach['email']} newer_than:30d"
                         results = service.users().messages().list(userId='me', q=query, maxResults=1).execute()
                         messages = results.get('messages', [])
-                        
+
                         if messages:
                             msg = service.users().messages().get(userId='me', id=messages[0]['id'], format='metadata', metadataHeaders=['Subject', 'Date']).execute()
                             headers_dict = {h['name']: h['value'] for h in msg.get('payload', {}).get('headers', [])}
-                            
+                            subject = headers_dict.get('Subject', '')
+                            snippet = msg.get('snippet', '')[:150]
+
+                            # Skip auto-replies
+                            if is_auto_reply(subject, snippet):
+                                continue
+
                             responses.append({
                                 'email': coach['email'],
                                 'school': coach['school'],
-                                'subject': headers_dict.get('Subject', 'No subject'),
+                                'subject': subject or 'No subject',
                                 'date': headers_dict.get('Date', ''),
-                                'snippet': msg.get('snippet', '')[:100]
+                                'snippet': snippet
                             })
                     except:
                         pass
-            
-            # Cache and notify
-            old_count = len(cached_responses)
+
+            # Track which schools we already knew about
+            old_schools = {r.get('school', '').lower() for r in cached_responses}
+            new_responses = [r for r in responses if r.get('school', '').lower() not in old_schools]
+
+            # Cache results
             cached_responses = responses
-            new_count = len(responses)
-            
-            if new_count > old_count:
-                # New responses found!
+
+            # Notify only for genuinely NEW responses
+            if new_responses:
                 current_settings = load_settings()
                 if current_settings.get('notifications', {}).get('enabled'):
+                    schools = ', '.join([r['school'] for r in new_responses[:3]])
+                    if len(new_responses) > 3:
+                        schools += f" +{len(new_responses) - 3} more"
                     send_phone_notification(
-                        title="New Coach Response!",
-                        message=f"You have {new_count} responses from coaches. Check the app!"
+                        title="🏈 New Coach Response!",
+                        message=f"{schools} replied to your email!"
                     )
-            
-            logger.info(f"Response check complete: {new_count} responses found")
+                logger.info(f"NEW responses from: {[r['school'] for r in new_responses]}")
+
+            logger.info(f"Response check complete: {len(responses)} total, {len(new_responses)} new")
             
     except Exception as e:
         logger.error(f"Background response check error: {e}")
