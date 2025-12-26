@@ -906,6 +906,10 @@ HTML_TEMPLATE = '''
                         <div class="stat-value" id="stat-followups">0</div>
                         <div class="stat-label">Follow-ups Due</div>
                     </div>
+                    <div class="stat" style="cursor:pointer;" onclick="window.open(hudlUrl, '_blank')" title="Click to view on Hudl">
+                        <div class="stat-value" id="stat-hudl-views"><span class="spinner" style="width:20px;height:20px;"></span></div>
+                        <div class="stat-label">🎬 Film Views</div>
+                    </div>
                 </div>
                 
                 <!-- Quick Actions Row -->
@@ -1388,6 +1392,7 @@ HTML_TEMPLATE = '''
         let settings = {};
         let templates = [];
         let dmQueue = [];
+        let hudlUrl = '';
         
         // Tab switching
         document.querySelectorAll('.tab').forEach(tab => {
@@ -1423,6 +1428,7 @@ HTML_TEMPLATE = '''
                 loadRecentResponses();
                 loadHotLeads();
                 loadDivisionStats();
+                loadHudlViews();
                 loadTrackingStats();
                 loadTomorrowPreview();
                 loadRepliedCount();
@@ -1522,7 +1528,24 @@ HTML_TEMPLATE = '''
                     (data.responses && data.responses.length) || 0;
             } catch(e) { console.error(e); }
         }
-        
+
+        async function loadHudlViews() {
+            try {
+                const res = await fetch('/api/hudl/views');
+                const data = await res.json();
+                const el = document.getElementById('stat-hudl-views');
+                if (data.success) {
+                    el.textContent = data.views;
+                    hudlUrl = data.url;
+                } else {
+                    el.textContent = '-';
+                    el.title = data.error || 'No Hudl link';
+                }
+            } catch(e) {
+                document.getElementById('stat-hudl-views').textContent = '-';
+            }
+        }
+
         async function loadRecentResponses() {
             try {
                 const res = await fetch('/api/responses/recent');
@@ -3250,6 +3273,36 @@ def api_settings():
         safe_settings['email']['app_password'] = '********'
     
     return jsonify(safe_settings)
+
+
+@app.route('/api/hudl/views')
+def api_hudl_views():
+    """Get view count from Hudl highlight video."""
+    try:
+        import urllib.request
+        import re
+
+        hudl_url = settings.get('athlete', {}).get('highlight_url', '')
+        if not hudl_url or 'hudl.com' not in hudl_url:
+            return jsonify({'success': False, 'error': 'No Hudl link configured', 'views': 0})
+
+        # Fetch the Hudl page
+        req = urllib.request.Request(hudl_url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode('utf-8')
+
+        # Look for view count patterns like "24 views" or "1,234 views"
+        view_match = re.search(r'([\d,]+)\s*views?', html, re.IGNORECASE)
+        if view_match:
+            views = int(view_match.group(1).replace(',', ''))
+            return jsonify({'success': True, 'views': views, 'url': hudl_url})
+
+        return jsonify({'success': False, 'error': 'Could not find view count', 'views': 0})
+    except Exception as e:
+        logger.error(f"Hudl views error: {e}")
+        return jsonify({'success': False, 'error': str(e), 'views': 0})
 
 
 @app.route('/api/stats')
