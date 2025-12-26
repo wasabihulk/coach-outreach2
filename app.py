@@ -1552,21 +1552,37 @@ HTML_TEMPLATE = '''
                 const data = await res.json();
                 const el = document.getElementById('recent-responses');
                 if (data.responses && data.responses.length) {
-                    el.innerHTML = data.responses.slice(0, 5).map(r => `
-                        <div class="response-item">
-                            <div class="response-avatar">${(r.school || '?')[0]}</div>
-                            <div class="response-content">
-                                <div class="response-school">${r.school || r.coach_email}</div>
-                                <div class="response-snippet">${r.snippet || ''}</div>
+                    el.innerHTML = data.responses.slice(0, 5).map(r => {
+                        // Parse date to show relative time
+                        let timeAgo = '';
+                        if (r.date) {
+                            const d = new Date(r.date);
+                            const now = new Date();
+                            const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+                            if (diffDays === 0) timeAgo = 'Today';
+                            else if (diffDays === 1) timeAgo = 'Yesterday';
+                            else if (diffDays < 7) timeAgo = diffDays + ' days ago';
+                            else timeAgo = d.toLocaleDateString();
+                        }
+                        return `
+                            <div class="response-item">
+                                <div class="response-avatar" style="background:var(--success);">${(r.school || '?')[0]}</div>
+                                <div class="response-content">
+                                    <div style="display:flex;justify-content:space-between;">
+                                        <div class="response-school">${r.school || r.email}</div>
+                                        <span class="text-sm text-muted">${timeAgo}</span>
+                                    </div>
+                                    <div class="response-snippet" style="margin-top:4px;">${r.snippet || r.subject || ''}</div>
+                                </div>
                             </div>
-                        </div>
-                    `).join('');
+                        `;
+                    }).join('');
                 } else {
                     el.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">📬</div>
                             <div class="empty-state-title">No responses yet</div>
-                            <div class="empty-state-text">When coaches reply to your emails, they'll show up here. Keep sending!</div>
+                            <div class="empty-state-text">Click "Check Inbox" to scan for coach replies.</div>
                         </div>
                     `;
                 }
@@ -5132,7 +5148,21 @@ def api_scan_past_responses():
         responses_found = []
         marked_count = 0
         checked_count = 0
-        
+
+        # Auto-reply patterns to filter out
+        auto_reply_patterns = [
+            'out of office', 'out-of-office', 'automatic reply', 'auto-reply', 'autoreply',
+            'delivery status', 'delivery failed', 'undeliverable', 'returned mail',
+            'mail delivery', 'failure notice', 'delayed:', 'could not be delivered',
+            'away from', 'on vacation', 'currently out', 'be back', 'return on',
+            'no longer at', 'no longer with', 'mailer-daemon', 'postmaster'
+        ]
+
+        def is_auto_reply(subject, snippet=''):
+            """Check if email is an auto-reply or bounce."""
+            text = (subject + ' ' + snippet).lower()
+            return any(pattern in text for pattern in auto_reply_patterns)
+
         for coach in coach_emails:
             try:
                 checked_count += 1
@@ -5140,17 +5170,25 @@ def api_scan_past_responses():
                 query = f"from:{coach['email']} newer_than:30d"
                 results = service.users().messages().list(userId='me', q=query, maxResults=5).execute()
                 messages = results.get('messages', [])
-                
+
                 if messages:
-                    # Get message details
+                    # Get message details with snippet
                     msg = service.users().messages().get(userId='me', id=messages[0]['id'], format='metadata', metadataHeaders=['Subject', 'Date']).execute()
                     headers_dict = {h['name']: h['value'] for h in msg.get('payload', {}).get('headers', [])}
-                    
+                    snippet = msg.get('snippet', '')[:200]
+                    subject = headers_dict.get('Subject', '')
+
+                    # Skip auto-replies and bounces
+                    if is_auto_reply(subject, snippet):
+                        logger.info(f"Skipping auto-reply from {coach['school']}: {subject[:50]}")
+                        continue
+
                     responses_found.append({
                         'school': coach['school'],
                         'email': coach['email'],
                         'type': coach['type'],
-                        'subject': headers_dict.get('Subject', ''),
+                        'subject': subject,
+                        'snippet': snippet,
                         'date': headers_dict.get('Date', '')
                     })
                     
