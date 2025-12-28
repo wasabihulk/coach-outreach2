@@ -1156,6 +1156,33 @@ HTML_TEMPLATE = '''
             
             <!-- EMAIL PAGE -->
             <div id="page-email" class="page">
+                <!-- EMAIL CONTROLS BANNER - TOP OF PAGE -->
+                <div id="email-controls-banner" style="background:linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 4px 15px rgba(231,76,60,0.3);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
+                        <div style="color:white;">
+                            <div style="font-size:18px;font-weight:bold;">⚙️ EMAIL CONTROLS</div>
+                            <div id="email-mode-status" style="font-size:14px;margin-top:4px;opacity:0.9;">Loading status...</div>
+                        </div>
+                        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+                            <!-- Holiday Mode -->
+                            <div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.15);padding:10px 16px;border-radius:8px;">
+                                <span style="font-size:15px;color:white;">🎄 Holiday Mode</span>
+                                <label class="toggle">
+                                    <input type="checkbox" id="holiday-mode-toggle" onchange="toggleHolidayMode(this.checked)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <!-- Pause Until -->
+                            <div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.15);padding:10px 16px;border-radius:8px;">
+                                <span style="font-size:15px;color:white;">⏸️ Pause Until</span>
+                                <input type="date" id="pause-until-date" style="padding:8px 12px;border-radius:6px;border:none;background:white;color:#333;font-size:14px;">
+                                <button class="btn btn-sm" style="background:white;color:#c0392b;font-weight:bold;" onclick="setPauseDate()">Set</button>
+                                <button class="btn btn-sm" id="resume-btn" onclick="resumeEmails()" style="display:none;background:#27ae60;color:white;font-weight:bold;">Resume Now</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="stats">
                     <div class="stat">
                         <div class="stat-value" id="email-ready">0</div>
@@ -1174,7 +1201,7 @@ HTML_TEMPLATE = '''
                         <div class="stat-label">Responded ✓</div>
                     </div>
                 </div>
-                
+
                 <div class="card mb-4" style="background:var(--bg3);">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                         <div>
@@ -1195,30 +1222,6 @@ HTML_TEMPLATE = '''
                         <div id="auto-send-info" class="mb-4 p-2" style="background:var(--bg3);border-radius:6px;font-size:13px;">
                             <div>Last auto-send: <span id="last-auto-send">Never</span></div>
                             <div>Next scheduled: <span id="next-auto-send">Not scheduled</span></div>
-                        </div>
-
-                        <!-- Pause & Holiday Mode Controls -->
-                        <div id="email-mode-controls" class="mb-4 p-3" style="background:linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);border-radius:8px;border:2px solid var(--accent);">
-                            <div style="font-weight:bold;margin-bottom:10px;color:var(--accent);">⚙️ EMAIL CONTROLS</div>
-                            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
-                                <!-- Holiday Mode -->
-                                <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);padding:8px 12px;border-radius:6px;">
-                                    <span style="font-size:14px;">🎄 Holiday Mode</span>
-                                    <label class="toggle">
-                                        <input type="checkbox" id="holiday-mode-toggle" onchange="toggleHolidayMode(this.checked)">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-
-                                <!-- Pause Until -->
-                                <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);padding:8px 12px;border-radius:6px;">
-                                    <span style="font-size:14px;">⏸️ Pause Until</span>
-                                    <input type="date" id="pause-until-date" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;">
-                                    <button class="btn btn-sm" style="background:var(--accent);" onclick="setPauseDate()">Set</button>
-                                    <button class="btn btn-sm" id="resume-btn" onclick="resumeEmails()" style="display:none;background:var(--success);">Resume</button>
-                                </div>
-                            </div>
-                            <div id="email-mode-status" class="mt-3" style="padding:8px;background:var(--bg);border-radius:4px;display:none;font-size:14px;"></div>
                         </div>
 
                         <div class="form-group">
@@ -2021,17 +2024,19 @@ HTML_TEMPLATE = '''
 
                 const statusEl = document.getElementById('email-mode-status');
                 const resumeBtn = document.getElementById('resume-btn');
+                const banner = document.getElementById('email-controls-banner');
 
                 if (pauseData.is_paused) {
-                    statusEl.style.display = 'block';
-                    statusEl.innerHTML = `<span style="color:var(--warn);">⏸️ Emails paused until ${pauseData.paused_until} (${pauseData.days_left} days left)</span>`;
+                    banner.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
+                    statusEl.innerHTML = `⏸️ PAUSED until ${pauseData.paused_until} (${pauseData.days_left} days left)`;
                     resumeBtn.style.display = '';
                 } else if (holidayData.holiday_mode) {
-                    statusEl.style.display = 'block';
-                    statusEl.innerHTML = '<span style="color:var(--success);">🎄 Holiday Mode: No follow-ups, max 5 intros/day</span>';
+                    banner.style.background = 'linear-gradient(135deg, #27ae60 0%, #1e8449 100%)';
+                    statusEl.innerHTML = '🎄 Holiday Mode: No follow-ups, max 5 intros/day';
                     resumeBtn.style.display = 'none';
                 } else {
-                    statusEl.style.display = 'none';
+                    banner.style.background = 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)';
+                    statusEl.innerHTML = '✅ Normal - Emails are active';
                     resumeBtn.style.display = 'none';
                 }
             } catch(e) { console.error(e); }
