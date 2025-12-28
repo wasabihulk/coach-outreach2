@@ -963,14 +963,14 @@ HTML_TEMPLATE = '''
             <!-- HOME PAGE -->
             <div id="page-home" class="page active">
                 <!-- EMAIL STATUS BANNER - VISIBLE ON HOME -->
-                <div id="home-email-status" style="background:linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);border-radius:12px;padding:16px 20px;margin-bottom:20px;box-shadow:0 4px 15px rgba(231,76,60,0.3);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+                <div id="home-email-status" style="background:linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);border-radius:12px;padding:16px 20px;margin-bottom:20px;box-shadow:0 4px 15px rgba(0,0,0,0.4);border:4px solid #fff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
                     <div style="color:white;">
-                        <div style="font-size:16px;font-weight:bold;">📧 EMAIL STATUS</div>
-                        <div id="home-email-status-text" style="font-size:14px;opacity:0.9;">Loading...</div>
+                        <div style="font-size:18px;font-weight:bold;text-shadow:1px 1px 2px rgba(0,0,0,0.3);">📧 EMAIL STATUS</div>
+                        <div id="home-email-status-text" style="font-size:15px;font-weight:500;">Loading...</div>
                     </div>
                     <div style="display:flex;gap:10px;">
-                        <button class="btn btn-sm" style="background:white;color:#c0392b;font-weight:bold;" onclick="document.querySelector('[data-page=email]').click()">Go to Email Settings</button>
-                        <button class="btn btn-sm" id="home-resume-btn" onclick="resumeEmails()" style="display:none;background:#27ae60;color:white;font-weight:bold;">Resume Now</button>
+                        <button class="btn" style="background:white;color:#333;font-weight:bold;padding:10px 20px;font-size:14px;" onclick="document.querySelector('[data-page=email]').click()">⚙️ Email Settings</button>
+                        <button class="btn" id="home-resume-btn" onclick="resumeEmails()" style="display:none;background:#27ae60;color:white;font-weight:bold;padding:10px 20px;font-size:14px;">▶️ Resume Now</button>
                     </div>
                 </div>
                 <div class="stats">
