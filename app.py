@@ -962,6 +962,17 @@ HTML_TEMPLATE = '''
         <main>
             <!-- HOME PAGE -->
             <div id="page-home" class="page active">
+                <!-- EMAIL STATUS BANNER - VISIBLE ON HOME -->
+                <div id="home-email-status" style="background:linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);border-radius:12px;padding:16px 20px;margin-bottom:20px;box-shadow:0 4px 15px rgba(231,76,60,0.3);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+                    <div style="color:white;">
+                        <div style="font-size:16px;font-weight:bold;">📧 EMAIL STATUS</div>
+                        <div id="home-email-status-text" style="font-size:14px;opacity:0.9;">Loading...</div>
+                    </div>
+                    <div style="display:flex;gap:10px;">
+                        <button class="btn btn-sm" style="background:white;color:#c0392b;font-weight:bold;" onclick="document.querySelector('[data-page=email]').click()">Go to Email Settings</button>
+                        <button class="btn btn-sm" id="home-resume-btn" onclick="resumeEmails()" style="display:none;background:#27ae60;color:white;font-weight:bold;">Resume Now</button>
+                    </div>
+                </div>
                 <div class="stats">
                     <div class="stat">
                         <div class="stat-value" id="stat-sent">0</div>
@@ -1546,6 +1557,7 @@ HTML_TEMPLATE = '''
                 loadTrackingStats();
                 loadTomorrowPreview();
                 loadRepliedCount();
+                loadEmailModeStatus();  // Load email pause/holiday status for home banner
             } catch(e) { console.error(e); }
         }
 
@@ -2016,7 +2028,8 @@ HTML_TEMPLATE = '''
                 // Load holiday mode
                 const holidayRes = await fetch('/api/email/holiday-mode');
                 const holidayData = await holidayRes.json();
-                document.getElementById('holiday-mode-toggle').checked = holidayData.holiday_mode || false;
+                const toggle = document.getElementById('holiday-mode-toggle');
+                if (toggle) toggle.checked = holidayData.holiday_mode || false;
 
                 // Load pause status
                 const pauseRes = await fetch('/api/email/pause');
@@ -2026,18 +2039,35 @@ HTML_TEMPLATE = '''
                 const resumeBtn = document.getElementById('resume-btn');
                 const banner = document.getElementById('email-controls-banner');
 
+                // Also update home page banner
+                const homeStatus = document.getElementById('home-email-status');
+                const homeStatusText = document.getElementById('home-email-status-text');
+                const homeResumeBtn = document.getElementById('home-resume-btn');
+
                 if (pauseData.is_paused) {
-                    banner.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
-                    statusEl.innerHTML = `⏸️ PAUSED until ${pauseData.paused_until} (${pauseData.days_left} days left)`;
-                    resumeBtn.style.display = '';
+                    if (banner) banner.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
+                    if (statusEl) statusEl.innerHTML = `⏸️ PAUSED until ${pauseData.paused_until} (${pauseData.days_left} days left)`;
+                    if (resumeBtn) resumeBtn.style.display = '';
+                    // Home page
+                    if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
+                    if (homeStatusText) homeStatusText.innerHTML = `⏸️ PAUSED until ${pauseData.paused_until} (${pauseData.days_left} days left)`;
+                    if (homeResumeBtn) homeResumeBtn.style.display = '';
                 } else if (holidayData.holiday_mode) {
-                    banner.style.background = 'linear-gradient(135deg, #27ae60 0%, #1e8449 100%)';
-                    statusEl.innerHTML = '🎄 Holiday Mode: No follow-ups, max 5 intros/day';
-                    resumeBtn.style.display = 'none';
+                    if (banner) banner.style.background = 'linear-gradient(135deg, #27ae60 0%, #1e8449 100%)';
+                    if (statusEl) statusEl.innerHTML = '🎄 Holiday Mode: No follow-ups, max 5 intros/day';
+                    if (resumeBtn) resumeBtn.style.display = 'none';
+                    // Home page
+                    if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #27ae60 0%, #1e8449 100%)';
+                    if (homeStatusText) homeStatusText.innerHTML = '🎄 Holiday Mode: No follow-ups, max 5 intros/day';
+                    if (homeResumeBtn) homeResumeBtn.style.display = 'none';
                 } else {
-                    banner.style.background = 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)';
-                    statusEl.innerHTML = '✅ Normal - Emails are active';
-                    resumeBtn.style.display = 'none';
+                    if (banner) banner.style.background = 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)';
+                    if (statusEl) statusEl.innerHTML = '✅ Normal - Emails are active';
+                    if (resumeBtn) resumeBtn.style.display = 'none';
+                    // Home page
+                    if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)';
+                    if (homeStatusText) homeStatusText.innerHTML = '✅ Emails are active';
+                    if (homeResumeBtn) homeResumeBtn.style.display = 'none';
                 }
             } catch(e) { console.error(e); }
         }
