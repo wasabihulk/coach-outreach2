@@ -47,7 +47,7 @@ try:
 except ImportError:
     pass  # dotenv not installed, will use environment variables directly
 
-from flask import Flask, render_template_string, jsonify, request, Response, stream_with_context
+from flask import Flask, render_template_string, jsonify, request, Response, stream_with_context, make_response
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -3355,7 +3355,11 @@ HTML_TEMPLATE = '''
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    response = make_response(render_template_string(HTML_TEMPLATE))
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 # ============================================================================
