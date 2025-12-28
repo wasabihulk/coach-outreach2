@@ -3634,7 +3634,13 @@ def api_hudl_views():
         with urllib.request.urlopen(req, timeout=10) as response:
             html = response.read().decode('utf-8')
 
-        # Look for view count patterns like "24 views" or "1,234 views"
+        # Look for Hudl's metadata-views class: <div class="metadata-views">28 <span>views</span></div>
+        view_match = re.search(r'metadata-views[^>]*>(\d[\d,]*)', html)
+        if view_match:
+            views = int(view_match.group(1).replace(',', ''))
+            return jsonify({'success': True, 'views': views, 'url': hudl_url})
+
+        # Fallback: look for "X views" pattern
         view_match = re.search(r'([\d,]+)\s*views?', html, re.IGNORECASE)
         if view_match:
             views = int(view_match.group(1).replace(',', ''))
