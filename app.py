@@ -3337,11 +3337,11 @@ HTML_TEMPLATE = '''
         setTimeout(autoCheckInbox, 3000);
         setInterval(autoCheckInbox, 5 * 60 * 1000);  // Check every 5 minutes
 
-        // Register service worker for PWA
+        // Unregister service workers to fix caching issues
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js').then(reg => {
-                console.log('Service worker registered');
-            }).catch(err => console.log('SW registration failed'));
+            navigator.serviceWorker.getRegistrations().then(regs => {
+                regs.forEach(r => r.unregister());
+            });
         }
     </script>
 </body>
