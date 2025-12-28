@@ -3327,12 +3327,26 @@ HTML_TEMPLATE = '''
             } catch(e) { /* silent fail */ }
         }
         
-        // Init
-        loadSettings();
-        loadDashboard();
-        checkSheetConnection();
-        loadAutoSendStatus();
-        loadEmailQueueStatus();
+        // Init with error handling
+        console.log('Starting initialization...');
+
+        // Test if fetch works
+        fetch('/api/stats').then(r => r.json()).then(data => {
+            console.log('API test succeeded:', data);
+            document.getElementById('stat-sent').textContent = data.emails_sent || 0;
+            document.getElementById('stat-responses').textContent = data.responses || 0;
+            document.getElementById('stat-rate').textContent = (data.response_rate || 0) + '%';
+            document.getElementById('connection-status').innerHTML = '<span style="color:var(--success)">✓ Connected</span>';
+        }).catch(e => {
+            console.error('API test failed:', e);
+            document.getElementById('connection-status').innerHTML = '<span style="color:var(--err)">API Error: ' + e.message + '</span>';
+        });
+
+        loadSettings().catch(e => console.error('loadSettings failed:', e));
+        loadDashboard().catch(e => console.error('loadDashboard failed:', e));
+        checkSheetConnection().catch(e => console.error('checkSheetConnection failed:', e));
+        loadAutoSendStatus().catch(e => console.error('loadAutoSendStatus failed:', e));
+        loadEmailQueueStatus().catch(e => console.error('loadEmailQueueStatus failed:', e));
         // Check for responses after 3 seconds, then every 5 minutes
         setTimeout(autoCheckInbox, 3000);
         setInterval(autoCheckInbox, 5 * 60 * 1000);  // Check every 5 minutes
