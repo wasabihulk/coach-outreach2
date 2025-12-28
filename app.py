@@ -3402,22 +3402,31 @@ def icon_512():
 
 @app.route('/sw.js')
 def service_worker():
-    """Service worker for offline support."""
+    """Service worker - network first, no caching of HTML."""
     sw_code = '''
-const CACHE_NAME = 'coach-outreach-v1';
-const urlsToCache = ['/'];
+const CACHE_NAME = 'coach-outreach-v3';
 
 self.addEventListener('install', event => {
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+        caches.keys().then(keys => Promise.all(
+            keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+        )).then(() => self.clients.claim())
     );
 });
 
 self.addEventListener('fetch', event => {
+    // Always fetch from network for HTML
+    if (event.request.mode === 'navigate' || event.request.url.endsWith('/')) {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+    // For other requests, try network first
     event.respondWith(
-        caches.match(event.request).then(response => {
-            return response || fetch(event.request);
-        })
+        fetch(event.request).catch(() => caches.match(event.request))
     );
 });
 '''
