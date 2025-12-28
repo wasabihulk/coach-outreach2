@@ -1660,6 +1660,7 @@ HTML_TEMPLATE = '''
                 const res = await fetch('/api/hudl/views');
                 const data = await res.json();
                 const el = document.getElementById('stat-hudl-views');
+                if (!el) return;
                 if (data.success) {
                     el.textContent = data.views;
                     hudlUrl = data.url;
@@ -1668,7 +1669,8 @@ HTML_TEMPLATE = '''
                     el.title = data.error || 'No Hudl link';
                 }
             } catch(e) {
-                document.getElementById('stat-hudl-views').textContent = '-';
+                const el = document.getElementById('stat-hudl-views');
+                if (el) el.textContent = '-';
             }
         }
 
@@ -1740,6 +1742,7 @@ HTML_TEMPLATE = '''
                 const res = await fetch('/api/responses/hot-leads');
                 const data = await res.json();
                 const el = document.getElementById('hot-leads');
+                if (!el) return;  // Element doesn't exist
                 if (data.leads && data.leads.length) {
                     el.innerHTML = data.leads.slice(0, 5).map(l => `
                         <div class="lead-item">
@@ -1760,13 +1763,9 @@ HTML_TEMPLATE = '''
             try {
                 const res = await fetch('/api/responses/by-division');
                 const data = await res.json();
+                const container = document.getElementById('division-stats');
+                if (!container) return;  // Element doesn't exist
                 if (data.divisions) {
-                    ['FBS','FCS','D2','D3','NAIA','JUCO'].forEach(div => {
-                        const stat = data.divisions[div];
-                        const el = document.querySelector(`.div-stat:has(.div-name:contains('${div}')) .div-rate`);
-                        // Simple approach - update all
-                    });
-                    const container = document.getElementById('division-stats');
                     container.innerHTML = ['FBS','FCS','D2','D3','NAIA','JUCO'].map(div => {
                         const stat = data.divisions[div] || {rate: 0};
                         return `<div class="div-stat"><div class="div-name">${div}</div><div class="div-rate">${stat.rate || 0}%</div></div>`;
@@ -2282,11 +2281,15 @@ HTML_TEMPLATE = '''
                 const data = await res.json();
                 dmQueue = data.queue || [];
 
-                document.getElementById('dm-queue').textContent = dmQueue.length;
-                document.getElementById('dm-sent').textContent = data.sent || 0;
-                document.getElementById('dm-need-handle').textContent = data.no_handle || 0;
+                const queueEl = document.getElementById('dm-queue');
+                const sentEl = document.getElementById('dm-sent');
+                const needHandleEl = document.getElementById('dm-need-handle');
+                if (queueEl) queueEl.textContent = dmQueue.length;
+                if (sentEl) sentEl.textContent = data.sent || 0;
+                if (needHandleEl) needHandleEl.textContent = data.no_handle || 0;
 
                 const container = document.getElementById('dm-queue-list');
+                if (!container) return;  // Element doesn't exist
                 const isMobile = window.innerWidth <= 768;
 
                 if (dmQueue.length) {
