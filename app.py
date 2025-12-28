@@ -126,6 +126,9 @@ DEFAULT_SETTINGS = {
         'followup_sequence': ['intro', 'followup_1', 'followup_2'],  # Email sequence
         'auto_send_enabled': ENV_AUTO_SEND,
         'auto_send_count': 100,
+        # Holiday/Pause modes
+        'holiday_mode': False,       # No follow-ups, max 5 intros/day
+        'paused_until': None,        # ISO date string when pause ends (e.g., '2025-01-04')
     },
     'sheets': {'spreadsheet_name': 'bardeen', 'credentials_configured': False},
     'scraper': {'start_from_bottom': False, 'batch_size': 10, 'min_delay': 2.0, 'max_delay': 5.0},
@@ -210,11 +213,84 @@ cached_responses = []  # Store found responses for display
 
 # Email tracking data
 email_tracking = {
-    'sent': {},      # tracking_id -> {to, school, coach, sent_at, subject}
+    'sent': {},      # tracking_id -> {to, school, coach, sent_at, subject, template_id}
     'opens': {},     # tracking_id -> [{opened_at, ip, user_agent}]
-    'clicks': {}     # tracking_id -> [{clicked_at, url, ip}]
+    'clicks': {},    # tracking_id -> [{clicked_at, url, ip}]
+    'responses': {}  # tracking_id -> {responded_at, sentiment, snippet}
 }
 TRACKING_FILE = CONFIG_DIR / 'email_tracking.json'
+
+# ============================================================================
+# RESPONSE SENTIMENT ANALYZER
+# ============================================================================
+
+SENTIMENT_KEYWORDS = {
+    'interested': {
+        'positive': ['interested', 'love to', 'would like to', 'excited', 'let\'s talk', 'schedule a call',
+                     'come visit', 'visit campus', 'looking forward', 'send me', 'great film', 'impressed',
+                     'offer', 'scholarship', 'want to meet', 'call me', 'phone call', 'zoom', 'official visit'],
+        'weight': 3
+    },
+    'needs_info': {
+        'positive': ['send your', 'need more', 'transcript', 'test scores', 'gpa', 'grades',
+                     'updated film', 'more film', 'junior film', 'senior film', 'schedule',
+                     'what position', 'measurables', 'combine', 'camp'],
+        'weight': 2
+    },
+    'follow_up_later': {
+        'positive': ['check back', 'reach out', 'touch base', 'next year', 'in the spring',
+                     'after the season', 'few months', 'later', 'down the road', 'keep in touch',
+                     'stay in contact', 'recruiting class', 'next cycle'],
+        'weight': 1
+    },
+    'soft_no': {
+        'positive': ['full', 'roster is', 'no spots', 'committed', 'class is full', 'not recruiting',
+                     'different direction', 'unfortunately', 'at this time', 'good luck',
+                     'best of luck', 'wish you well', 'not a fit', 'position filled'],
+        'weight': 0
+    }
+}
+
+def analyze_response_sentiment(text: str) -> dict:
+    """Analyze response text to determine coach's interest level and sentiment."""
+    if not text:
+        return {'sentiment': 'unknown', 'confidence': 0, 'label': 'Unknown'}
+
+    text_lower = text.lower()
+    scores = {}
+
+    for sentiment, data in SENTIMENT_KEYWORDS.items():
+        score = 0
+        matched_keywords = []
+        for keyword in data['positive']:
+            if keyword in text_lower:
+                score += 1
+                matched_keywords.append(keyword)
+        scores[sentiment] = {'score': score, 'keywords': matched_keywords}
+
+    # Find highest scoring sentiment
+    best_sentiment = 'unknown'
+    best_score = 0
+    for sentiment, data in scores.items():
+        if data['score'] > best_score:
+            best_score = data['score']
+            best_sentiment = sentiment
+
+    # Map to display labels and colors
+    labels = {
+        'interested': {'label': '🔥 Interested', 'color': '#22c55e', 'priority': 1},
+        'needs_info': {'label': '📋 Needs Info', 'color': '#f59e0b', 'priority': 2},
+        'follow_up_later': {'label': '📅 Follow Up', 'color': '#6366f1', 'priority': 3},
+        'soft_no': {'label': '❌ Not Now', 'color': '#ef4444', 'priority': 4},
+        'unknown': {'label': '❓ Review', 'color': '#888', 'priority': 5}
+    }
+
+    result = labels.get(best_sentiment, labels['unknown'])
+    result['sentiment'] = best_sentiment
+    result['confidence'] = min(best_score * 33, 100)  # Rough confidence
+    result['matched'] = scores.get(best_sentiment, {}).get('keywords', [])
+
+    return result
 
 def get_tracking_sheet():
     """Get or create the Email_Tracking worksheet."""
@@ -418,7 +494,7 @@ def api_debug_gmail_config():
     })
 
 
-def send_email_gmail_api(to_email: str, subject: str, body: str, from_email: str = None, school: str = '', coach_name: str = '') -> bool:
+def send_email_gmail_api(to_email: str, subject: str, body: str, from_email: str = None, school: str = '', coach_name: str = '', template_id: str = 'default') -> bool:
     """Send email using Gmail API with open tracking (works on Railway)."""
     service = get_gmail_service()
     if not service:
@@ -465,21 +541,22 @@ def send_email_gmail_api(to_email: str, subject: str, body: str, from_email: str
             body={'raw': raw}
         ).execute()
 
-        # Store tracking info
+        # Store tracking info with template_id for A/B testing
         email_tracking['sent'][tracking_id] = {
             'to': to_email,
             'school': school,
             'coach': coach_name,
             'subject': subject,
             'sent_at': datetime.now().isoformat(),
-            'message_id': result.get('id')
+            'message_id': result.get('id'),
+            'template_id': template_id  # For A/B testing
         }
         email_tracking['opens'][tracking_id] = []
         save_tracking()
         # Also save to Google Sheets for persistence across deploys
         save_tracking_to_sheet(tracking_id, is_open=False)
 
-        logger.info(f"Email sent via Gmail API to {to_email}, ID: {result.get('id')}, tracking: {tracking_id}")
+        logger.info(f"Email sent via Gmail API to {to_email}, ID: {result.get('id')}, tracking: {tracking_id}, template: {template_id}")
         return True
 
     except Exception as e:
@@ -1119,6 +1196,30 @@ HTML_TEMPLATE = '''
                             <div>Last auto-send: <span id="last-auto-send">Never</span></div>
                             <div>Next scheduled: <span id="next-auto-send">Not scheduled</span></div>
                         </div>
+
+                        <!-- Pause & Holiday Mode Controls -->
+                        <div id="email-mode-controls" class="mb-4 p-3" style="background:var(--bg2);border-radius:8px;border:1px solid var(--border);">
+                            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                                <!-- Holiday Mode -->
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <span style="font-size:13px;">🎄 Holiday Mode</span>
+                                    <label class="toggle">
+                                        <input type="checkbox" id="holiday-mode-toggle" onchange="toggleHolidayMode(this.checked)">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+
+                                <!-- Pause Until -->
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <span style="font-size:13px;">⏸️ Pause Until</span>
+                                    <input type="date" id="pause-until-date" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px;">
+                                    <button class="btn btn-sm btn-outline" onclick="setPauseDate()">Set</button>
+                                    <button class="btn btn-sm btn-outline" id="resume-btn" onclick="resumeEmails()" style="display:none;">Resume</button>
+                                </div>
+                            </div>
+                            <div id="email-mode-status" class="text-sm mt-2" style="display:none;"></div>
+                        </div>
+
                         <div class="form-group">
                             <label>Max emails to send</label>
                             <input type="number" id="email-limit" value="100" min="1" max="100">
@@ -1147,9 +1248,18 @@ HTML_TEMPLATE = '''
                         <div class="card-header">Templates</div>
                         <div id="email-templates"></div>
                         <button class="btn btn-outline btn-sm mt-4" onclick="openCreateTemplate('email')">+ Create Template</button>
+
+                        <!-- Template A/B Performance -->
+                        <div class="card-header mt-4" style="display:flex;justify-content:space-between;align-items:center;">
+                            📊 Template Performance (A/B)
+                            <button class="btn btn-sm btn-outline" onclick="loadTemplatePerformance()">↻</button>
+                        </div>
+                        <div id="template-performance" style="font-size:13px;">
+                            <p class="text-muted text-sm">Loading performance data...</p>
+                        </div>
                     </div>
                 </div>
-                
+
                 <div class="card">
                     <div class="card-header">Follow-up Queue</div>
                     <div id="followup-queue">
@@ -1409,7 +1519,7 @@ HTML_TEMPLATE = '''
         function loadPageData(page) {
             if (page === 'home') loadDashboard();
             if (page === 'find') initSchoolSearch();
-            if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); }
+            if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); }
             if (page === 'dms') { loadDMQueue(); loadTemplates('dm'); }
             if (page === 'track') loadPipeline();
         }
@@ -1552,7 +1662,22 @@ HTML_TEMPLATE = '''
                 const data = await res.json();
                 const el = document.getElementById('recent-responses');
                 if (data.responses && data.responses.length) {
-                    el.innerHTML = data.responses.slice(0, 5).map(r => {
+                    // Analyze sentiment for each response
+                    const responsesWithSentiment = await Promise.all(data.responses.slice(0, 5).map(async r => {
+                        try {
+                            const sentimentRes = await fetch('/api/responses/analyze-sentiment', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({text: r.snippet || r.subject || ''})
+                            });
+                            const sentiment = await sentimentRes.json();
+                            return {...r, sentiment};
+                        } catch {
+                            return {...r, sentiment: {label: '❓ Review', color: '#888'}};
+                        }
+                    }));
+
+                    el.innerHTML = responsesWithSentiment.map(r => {
                         // Parse date to show relative time
                         let timeAgo = '';
                         if (r.date) {
@@ -1564,13 +1689,18 @@ HTML_TEMPLATE = '''
                             else if (diffDays < 7) timeAgo = diffDays + ' days ago';
                             else timeAgo = d.toLocaleDateString();
                         }
+                        const sentimentBadge = r.sentiment ?
+                            `<span class="sentiment-badge" style="background:${r.sentiment.color};color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">${r.sentiment.label}</span>` : '';
                         return `
                             <div class="response-item">
-                                <div class="response-avatar" style="background:var(--success);">${(r.school || '?')[0]}</div>
+                                <div class="response-avatar" style="background:${r.sentiment?.color || 'var(--success)'};">${(r.school || '?')[0]}</div>
                                 <div class="response-content">
-                                    <div style="display:flex;justify-content:space-between;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;">
                                         <div class="response-school">${r.school || r.email}</div>
-                                        <span class="text-sm text-muted">${timeAgo}</span>
+                                        <div style="display:flex;gap:8px;align-items:center;">
+                                            ${sentimentBadge}
+                                            <span class="text-sm text-muted">${timeAgo}</span>
+                                        </div>
                                     </div>
                                     <div class="response-snippet" style="margin-top:4px;">${r.snippet || r.subject || ''}</div>
                                 </div>
@@ -1871,8 +2001,137 @@ HTML_TEMPLATE = '''
             } catch(e) {}
             // Also load followup queue
             loadFollowupQueue();
+            // Load email mode status
+            loadEmailModeStatus();
         }
-        
+
+        // ========== HOLIDAY MODE & PAUSE CONTROLS ==========
+
+        async function loadEmailModeStatus() {
+            try {
+                // Load holiday mode
+                const holidayRes = await fetch('/api/email/holiday-mode');
+                const holidayData = await holidayRes.json();
+                document.getElementById('holiday-mode-toggle').checked = holidayData.holiday_mode || false;
+
+                // Load pause status
+                const pauseRes = await fetch('/api/email/pause');
+                const pauseData = await pauseRes.json();
+
+                const statusEl = document.getElementById('email-mode-status');
+                const resumeBtn = document.getElementById('resume-btn');
+
+                if (pauseData.is_paused) {
+                    statusEl.style.display = 'block';
+                    statusEl.innerHTML = `<span style="color:var(--warn);">⏸️ Emails paused until ${pauseData.paused_until} (${pauseData.days_left} days left)</span>`;
+                    resumeBtn.style.display = '';
+                } else if (holidayData.holiday_mode) {
+                    statusEl.style.display = 'block';
+                    statusEl.innerHTML = '<span style="color:var(--success);">🎄 Holiday Mode: No follow-ups, max 5 intros/day</span>';
+                    resumeBtn.style.display = 'none';
+                } else {
+                    statusEl.style.display = 'none';
+                    resumeBtn.style.display = 'none';
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        async function toggleHolidayMode(enabled) {
+            try {
+                const res = await fetch('/api/email/holiday-mode', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ enabled })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(enabled ? '🎄 Holiday mode ON - no follow-ups' : 'Holiday mode OFF', 'success');
+                    loadEmailModeStatus();
+                }
+            } catch(e) { showToast('Error', 'error'); }
+        }
+
+        async function setPauseDate() {
+            const dateInput = document.getElementById('pause-until-date');
+            const date = dateInput.value;
+            if (!date) {
+                showToast('Select a date first', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/email/pause', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ until: date })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`⏸️ Emails paused until ${date}`, 'success');
+                    loadEmailModeStatus();
+                } else {
+                    showToast(data.error || 'Error setting pause', 'error');
+                }
+            } catch(e) { showToast('Error', 'error'); }
+        }
+
+        async function resumeEmails() {
+            try {
+                const res = await fetch('/api/email/pause', { method: 'DELETE' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('▶️ Emails resumed!', 'success');
+                    document.getElementById('pause-until-date').value = '';
+                    loadEmailModeStatus();
+                }
+            } catch(e) { showToast('Error', 'error'); }
+        }
+
+        async function loadTemplatePerformance() {
+            try {
+                const res = await fetch('/api/templates/performance');
+                const data = await res.json();
+                const el = document.getElementById('template-performance');
+
+                if (data.success && data.templates && data.templates.length > 0) {
+                    el.innerHTML = `
+                        <table style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left;">Template</th>
+                                    <th>Sent</th>
+                                    <th>Opens</th>
+                                    <th>Responses</th>
+                                    <th>Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.templates.map((t, i) => `
+                                    <tr style="${i === 0 ? 'background:rgba(34,197,94,0.1);' : ''}">
+                                        <td style="text-align:left;">
+                                            ${i === 0 ? '🏆 ' : ''}${t.template_name || t.template_id}
+                                        </td>
+                                        <td style="text-align:center;">${t.sent}</td>
+                                        <td style="text-align:center;">${t.opened} <span class="text-muted">(${t.open_rate}%)</span></td>
+                                        <td style="text-align:center;">${t.responded}</td>
+                                        <td style="text-align:center;font-weight:bold;color:${t.response_rate >= 10 ? 'var(--success)' : t.response_rate >= 5 ? 'var(--warn)' : 'var(--muted)'};">
+                                            ${t.response_rate}%
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        <p class="text-muted text-sm mt-2">Top template is highlighted. Use high-performing templates more often!</p>
+                    `;
+                } else {
+                    el.innerHTML = '<p class="text-muted text-sm">Send more emails to see performance data. Each template\'s response rate will be tracked.</p>';
+                }
+            } catch(e) {
+                console.error(e);
+                document.getElementById('template-performance').innerHTML = '<p class="text-muted text-sm">Error loading performance data</p>';
+            }
+        }
+
         async function loadTemplates(type) {
             try {
                 const res = await fetch('/api/templates');
@@ -5312,6 +5571,71 @@ def api_responses_by_division():
         return jsonify({'success': False, 'error': str(e), 'divisions': {}})
 
 
+@app.route('/api/responses/analyze-sentiment', methods=['POST'])
+def api_analyze_sentiment():
+    """Analyze sentiment of a response text."""
+    data = request.get_json() or {}
+    text = data.get('text', '')
+    result = analyze_response_sentiment(text)
+    return jsonify({'success': True, **result})
+
+
+@app.route('/api/templates/performance')
+def api_templates_performance():
+    """Get A/B testing performance stats for templates."""
+    try:
+        global email_tracking
+
+        # Count emails sent per template and responses received
+        template_stats = {}
+
+        for tracking_id, sent_data in email_tracking.get('sent', {}).items():
+            template_id = sent_data.get('template_id', 'default')
+            if template_id not in template_stats:
+                template_stats[template_id] = {
+                    'sent': 0,
+                    'opened': 0,
+                    'responded': 0,
+                    'template_name': template_id
+                }
+            template_stats[template_id]['sent'] += 1
+
+            # Check if opened
+            if tracking_id in email_tracking.get('opens', {}) and email_tracking['opens'][tracking_id]:
+                template_stats[template_id]['opened'] += 1
+
+            # Check if responded
+            if tracking_id in email_tracking.get('responses', {}):
+                template_stats[template_id]['responded'] += 1
+
+        # Calculate rates and format for display
+        results = []
+        for template_id, stats in template_stats.items():
+            open_rate = round((stats['opened'] / stats['sent'] * 100) if stats['sent'] > 0 else 0, 1)
+            response_rate = round((stats['responded'] / stats['sent'] * 100) if stats['sent'] > 0 else 0, 1)
+            results.append({
+                'template_id': template_id,
+                'template_name': stats['template_name'],
+                'sent': stats['sent'],
+                'opened': stats['opened'],
+                'responded': stats['responded'],
+                'open_rate': open_rate,
+                'response_rate': response_rate
+            })
+
+        # Sort by response rate (best performing first)
+        results.sort(key=lambda x: x['response_rate'], reverse=True)
+
+        return jsonify({
+            'success': True,
+            'templates': results,
+            'best_template': results[0]['template_id'] if results else None
+        })
+    except Exception as e:
+        logger.error(f"Template performance error: {e}")
+        return jsonify({'success': False, 'error': str(e), 'templates': []})
+
+
 @app.route('/api/templates/toggle', methods=['POST'])
 def api_templates_toggle():
     """Toggle template enabled/disabled."""
@@ -5368,12 +5692,54 @@ def api_email_send():
     """Send emails to coaches from sheet - handles intro and follow-up campaigns."""
     # Reload settings fresh to avoid stale/corrupted data
     current_settings = load_settings()
-    
+
     data = request.get_json() or {}
     limit = data.get('limit', 10)
     template_id = data.get('template_id')
     campaign_type = data.get('campaign_type', 'intro')  # 'intro', 'followup_1', 'followup_2', 'smart'
-    
+
+    # =========================================================================
+    # PAUSE & HOLIDAY MODE CHECKS
+    # =========================================================================
+    from datetime import date, datetime
+    today = date.today()
+    email_settings = current_settings.get('email', {})
+
+    # Check if emails are completely paused
+    paused_until = email_settings.get('paused_until')
+    if paused_until:
+        try:
+            pause_date = datetime.strptime(paused_until, '%Y-%m-%d').date()
+            if today < pause_date:
+                days_left = (pause_date - today).days
+                return jsonify({
+                    'success': False,
+                    'error': f'⏸️ Emails paused until {pause_date.strftime("%b %d")} ({days_left} days left)',
+                    'sent': 0,
+                    'errors': 0,
+                    'paused': True
+                })
+        except:
+            pass  # Invalid date format, ignore
+
+    # Check if holiday mode is enabled
+    holiday_mode = email_settings.get('holiday_mode', False)
+    if holiday_mode:
+        # Block ALL follow-ups in holiday mode
+        if campaign_type in ['followup_1', 'followup_2', 'smart']:
+            return jsonify({
+                'success': False,
+                'error': '🎄 Holiday Mode: Follow-ups paused. Only intro emails are being sent.',
+                'sent': 0,
+                'errors': 0,
+                'holiday_mode': True
+            })
+
+        # Reduce intro emails to max 5/day in holiday mode
+        if limit > 5:
+            limit = 5
+            logger.info("Holiday Mode: Limiting intros to 5/day")
+
     try:
         sheet = get_sheet()
         if not sheet:
@@ -5632,9 +5998,9 @@ def api_email_send():
                 subject, body = template.render(variables)
                 coach_email = coach['email'].strip()
                 
-                # Send email
+                # Send email with template_id for A/B testing
                 if use_gmail_api:
-                    success = send_email_gmail_api(coach_email, subject, body, email_addr, school=coach['school'], coach_name=coach['name'])
+                    success = send_email_gmail_api(coach_email, subject, body, email_addr, school=coach['school'], coach_name=coach['name'], template_id=template.id)
                 else:
                     msg = MIMEMultipart()
                     msg['From'] = email_addr
@@ -6503,6 +6869,24 @@ def start_auto_send_scheduler():
                 if current_settings.get('email', {}).get('auto_send_enabled', False):
                     if last_send_date != today:
                         if current_hour > send_hour_utc or (current_hour == send_hour_utc and current_minute >= send_minute):
+                            email_cfg = current_settings.get('email', {})
+
+                            # Check if emails are paused
+                            paused_until = email_cfg.get('paused_until')
+                            if paused_until:
+                                try:
+                                    pause_date = datetime.strptime(paused_until, '%Y-%m-%d').date()
+                                    if today < pause_date:
+                                        logger.info(f"⏸️ Auto-send skipped: Emails paused until {paused_until}")
+                                        last_send_date = today
+                                        continue
+                                except Exception as e:
+                                    logger.debug(f"Pause date parse error: {e}")
+
+                            # Check holiday mode - still sends but with reduced volume
+                            if email_cfg.get('holiday_mode', False):
+                                logger.info("🎄 Holiday mode: Auto-send will only send intros (max 5)")
+
                             local_hour = (current_hour + tz_offset) % 24
                             logger.info(f"Auto-send triggered at {local_hour}:{current_minute:02d} local (UTC: {current_hour}:{current_minute:02d})")
                             auto_send_emails()
@@ -6705,6 +7089,82 @@ def api_auto_send_toggle():
         logger.info("Auto-send disabled")
     
     return jsonify({'success': True, 'enabled': enabled})
+
+
+@app.route('/api/email/holiday-mode', methods=['GET', 'POST'])
+def api_holiday_mode():
+    """Toggle holiday mode - no follow-ups, reduced intros."""
+    global settings
+    settings = load_settings()
+
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        enabled = data.get('enabled', False)
+        settings['email']['holiday_mode'] = enabled
+        save_settings(settings)
+        logger.info(f"🎄 Holiday mode {'enabled' if enabled else 'disabled'}")
+        return jsonify({'success': True, 'holiday_mode': enabled})
+
+    # GET - return current status
+    return jsonify({
+        'success': True,
+        'holiday_mode': settings.get('email', {}).get('holiday_mode', False)
+    })
+
+
+@app.route('/api/email/pause', methods=['GET', 'POST', 'DELETE'])
+def api_email_pause():
+    """Pause all emails until a specific date."""
+    global settings
+    settings = load_settings()
+
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        pause_until = data.get('until')  # Expected format: 'YYYY-MM-DD'
+
+        if pause_until:
+            # Validate date format
+            try:
+                from datetime import datetime
+                datetime.strptime(pause_until, '%Y-%m-%d')
+                settings['email']['paused_until'] = pause_until
+                save_settings(settings)
+                logger.info(f"⏸️ Emails paused until {pause_until}")
+                return jsonify({'success': True, 'paused_until': pause_until})
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD'})
+        else:
+            return jsonify({'success': False, 'error': 'No date provided'})
+
+    if request.method == 'DELETE':
+        # Resume emails immediately
+        settings['email']['paused_until'] = None
+        save_settings(settings)
+        logger.info("▶️ Emails resumed")
+        return jsonify({'success': True, 'paused_until': None})
+
+    # GET - return current pause status
+    paused_until = settings.get('email', {}).get('paused_until')
+    is_paused = False
+    days_left = 0
+
+    if paused_until:
+        try:
+            from datetime import datetime, date
+            pause_date = datetime.strptime(paused_until, '%Y-%m-%d').date()
+            today = date.today()
+            if today < pause_date:
+                is_paused = True
+                days_left = (pause_date - today).days
+        except:
+            pass
+
+    return jsonify({
+        'success': True,
+        'paused_until': paused_until,
+        'is_paused': is_paused,
+        'days_left': days_left
+    })
 
 
 @app.route('/api/auto-send/run-now', methods=['POST'])
