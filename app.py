@@ -1198,11 +1198,12 @@ HTML_TEMPLATE = '''
                         </div>
 
                         <!-- Pause & Holiday Mode Controls -->
-                        <div id="email-mode-controls" class="mb-4 p-3" style="background:var(--bg2);border-radius:8px;border:1px solid var(--border);">
-                            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+                        <div id="email-mode-controls" class="mb-4 p-3" style="background:linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);border-radius:8px;border:2px solid var(--accent);">
+                            <div style="font-weight:bold;margin-bottom:10px;color:var(--accent);">⚙️ EMAIL CONTROLS</div>
+                            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
                                 <!-- Holiday Mode -->
-                                <div style="display:flex;align-items:center;gap:8px;">
-                                    <span style="font-size:13px;">🎄 Holiday Mode</span>
+                                <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);padding:8px 12px;border-radius:6px;">
+                                    <span style="font-size:14px;">🎄 Holiday Mode</span>
                                     <label class="toggle">
                                         <input type="checkbox" id="holiday-mode-toggle" onchange="toggleHolidayMode(this.checked)">
                                         <span class="toggle-slider"></span>
@@ -1210,14 +1211,14 @@ HTML_TEMPLATE = '''
                                 </div>
 
                                 <!-- Pause Until -->
-                                <div style="display:flex;align-items:center;gap:8px;">
-                                    <span style="font-size:13px;">⏸️ Pause Until</span>
-                                    <input type="date" id="pause-until-date" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px;">
-                                    <button class="btn btn-sm btn-outline" onclick="setPauseDate()">Set</button>
-                                    <button class="btn btn-sm btn-outline" id="resume-btn" onclick="resumeEmails()" style="display:none;">Resume</button>
+                                <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);padding:8px 12px;border-radius:6px;">
+                                    <span style="font-size:14px;">⏸️ Pause Until</span>
+                                    <input type="date" id="pause-until-date" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;">
+                                    <button class="btn btn-sm" style="background:var(--accent);" onclick="setPauseDate()">Set</button>
+                                    <button class="btn btn-sm" id="resume-btn" onclick="resumeEmails()" style="display:none;background:var(--success);">Resume</button>
                                 </div>
                             </div>
-                            <div id="email-mode-status" class="text-sm mt-2" style="display:none;"></div>
+                            <div id="email-mode-status" class="mt-3" style="padding:8px;background:var(--bg);border-radius:4px;display:none;font-size:14px;"></div>
                         </div>
 
                         <div class="form-group">
