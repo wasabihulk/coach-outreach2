@@ -2160,7 +2160,7 @@ HTML_TEMPLATE = '''
                         <p class="text-muted text-sm mt-2">Top template is highlighted. Use high-performing templates more often!</p>
                     `;
                 } else {
-                    el.innerHTML = '<p class="text-muted text-sm">Send more emails to see performance data. Each template\'s response rate will be tracked.</p>';
+                    el.innerHTML = '<p class="text-muted text-sm">Send more emails to see performance data. Template response rates will be tracked.</p>';
                 }
             } catch(e) {
                 console.error(e);
