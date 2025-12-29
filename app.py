@@ -61,6 +61,9 @@ CONFIG_FILE = CONFIG_DIR / 'settings.json'
 CREDENTIALS_FILE = CONFIG_DIR / 'google_credentials.json'
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
+# Cloud settings keys that persist in Google Sheets (survive Railway deploys)
+CLOUD_SETTINGS_KEYS = ['paused_until', 'holiday_mode', 'auto_send_enabled', 'auto_send_count', 'days_between_emails']
+
 # ============================================================================
 # ENVIRONMENT VARIABLES (for deployment - keeps secrets out of code)
 # ============================================================================
@@ -184,8 +187,154 @@ def load_settings() -> Dict:
 def save_settings(s: Dict):
     with open(CONFIG_FILE, 'w') as f:
         json.dump(s, f, indent=2)
+    # Also sync cloud settings to Google Sheets
+    try:
+        save_cloud_settings(s)
+    except Exception as e:
+        logger.warning(f"Could not sync settings to cloud: {e}")
+
+
+# ============================================================================
+# CLOUD SETTINGS (persists in Google Sheets - survives Railway deploys)
+# ============================================================================
+
+_settings_sheet_cache = None
+
+def get_settings_sheet():
+    """Get or create the Settings worksheet in Google Sheets."""
+    global _settings_sheet_cache
+    if _settings_sheet_cache:
+        return _settings_sheet_cache
+
+    try:
+        # Check if sheets module is available
+        try:
+            from sheets.manager import SheetsManager, SheetsConfig
+        except ImportError:
+            return None
+        import tempfile
+
+        spreadsheet_name = 'bardeen'
+        credentials_file = 'credentials.json'
+
+        if ENV_GOOGLE_CREDENTIALS:
+            creds_str = ENV_GOOGLE_CREDENTIALS.strip()
+            if creds_str.startswith('"') and creds_str.endswith('"'):
+                creds_str = creds_str[1:-1]
+            creds_str = creds_str.replace('\\\\n', '\\n')
+            temp_creds = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+            temp_creds.write(creds_str)
+            temp_creds.close()
+            credentials_file = temp_creds.name
+
+        config = SheetsConfig(spreadsheet_name=spreadsheet_name, credentials_file=credentials_file)
+        manager = SheetsManager(config=config)
+
+        if not manager.connect():
+            return None
+
+        spreadsheet = manager._client.open(spreadsheet_name)
+
+        # Try to get existing Settings sheet
+        try:
+            sheet = spreadsheet.worksheet('Settings')
+        except:
+            # Create it with headers
+            sheet = spreadsheet.add_worksheet(title='Settings', rows=20, cols=2)
+            sheet.update('A1:B1', [['Key', 'Value']])
+            sheet.format('A1:B1', {'textFormat': {'bold': True}})
+
+        _settings_sheet_cache = sheet
+        return sheet
+    except Exception as e:
+        # Don't log as error during startup - sheets might not be available
+        pass
+        return None
+
+
+def load_cloud_settings() -> Dict:
+    """Load critical settings from Google Sheets."""
+    try:
+        sheet = get_settings_sheet()
+        if not sheet:
+            return {}
+
+        data = sheet.get_all_values()
+        if len(data) < 2:
+            return {}
+
+        cloud_settings = {}
+        for row in data[1:]:  # Skip header
+            if len(row) >= 2 and row[0] and row[0] in CLOUD_SETTINGS_KEYS:
+                key = row[0]
+                value = row[1]
+                # Parse the value
+                if value == 'None' or value == '':
+                    cloud_settings[key] = None
+                elif value == 'True':
+                    cloud_settings[key] = True
+                elif value == 'False':
+                    cloud_settings[key] = False
+                elif value.isdigit():
+                    cloud_settings[key] = int(value)
+                else:
+                    cloud_settings[key] = value
+
+        return cloud_settings
+    except Exception as e:
+        logger.debug(f"Could not load cloud settings: {e}")
+        return {}
+
+
+def save_cloud_settings(s: Dict):
+    """Save critical settings to Google Sheets."""
+    try:
+        sheet = get_settings_sheet()
+        if not sheet:
+            return
+
+        email_settings = s.get('email', {})
+
+        # Build rows for settings
+        rows = [['Key', 'Value']]
+        for key in CLOUD_SETTINGS_KEYS:
+            value = email_settings.get(key)
+            # Convert to string representation
+            if value is None:
+                str_value = 'None'
+            elif isinstance(value, bool):
+                str_value = str(value)
+            else:
+                str_value = str(value)
+            rows.append([key, str_value])
+
+        # Update all at once
+        sheet.update(f'A1:B{len(rows)}', rows)
+        logger.info(f"☁️ Settings synced to Google Sheets")
+    except Exception as e:
+        logger.warning(f"Could not save cloud settings: {e}")
+
 
 settings = load_settings()
+
+# Cloud settings are loaded lazily on first use (after HAS_SHEETS is defined)
+_cloud_settings_loaded = False
+
+def ensure_cloud_settings():
+    """Load cloud settings if not already loaded."""
+    global settings, _cloud_settings_loaded
+    if _cloud_settings_loaded:
+        return
+    _cloud_settings_loaded = True
+    try:
+        cloud = load_cloud_settings()
+        if cloud:
+            for key in CLOUD_SETTINGS_KEYS:
+                if key in cloud:
+                    settings['email'][key] = cloud[key]
+            logger.info(f"☁️ Loaded cloud settings: {cloud}")
+    except Exception as e:
+        logger.debug(f"Cloud settings load skipped: {e}")
 
 # ============================================================================
 # LOGGING & STATE
@@ -6838,12 +6987,28 @@ def auto_send_emails():
     auto_send_state['last_run'] = datetime.now().isoformat()
 
     try:
+        # CRITICAL: Load cloud settings first (survives Railway deploys)
+        ensure_cloud_settings()
         current_settings = load_settings()
 
         # Check if auto-send is enabled
         if not current_settings.get('email', {}).get('auto_send_enabled', False):
             auto_send_state['running'] = False
             return
+
+        # CRITICAL: Also check cloud settings directly for pause (freshest data)
+        try:
+            cloud = load_cloud_settings()
+            if cloud.get('paused_until'):
+                from datetime import date
+                pause_date = datetime.strptime(cloud['paused_until'], '%Y-%m-%d').date()
+                if date.today() < pause_date:
+                    logger.warning(f"⏸️ AUTO-SEND BLOCKED (cloud): Emails paused until {cloud['paused_until']}")
+                    auto_send_state['running'] = False
+                    auto_send_state['last_result'] = {'blocked': True, 'reason': f'Paused until {cloud["paused_until"]}'}
+                    return
+        except Exception as e:
+            logger.debug(f"Cloud pause check: {e}")
 
         # CRITICAL REDUNDANT CHECK: Verify not paused (defense in depth)
         email_cfg = current_settings.get('email', {})
@@ -7070,6 +7235,8 @@ def start_auto_send_scheduler():
         
         while True:
             try:
+                # Load cloud settings on each loop iteration (fresh from Google Sheets)
+                ensure_cloud_settings()
                 current_settings = load_settings()
                 today = datetime.now().date()
                 current_hour = datetime.now().hour  # This is UTC on Railway
@@ -7089,7 +7256,20 @@ def start_auto_send_scheduler():
                         if current_hour > send_hour_utc or (current_hour == send_hour_utc and current_minute >= send_minute):
                             email_cfg = current_settings.get('email', {})
 
-                            # Check if emails are paused
+                            # CRITICAL: Check cloud settings for pause FIRST (freshest data)
+                            try:
+                                cloud = load_cloud_settings()
+                                cloud_paused = cloud.get('paused_until')
+                                if cloud_paused:
+                                    pause_date = datetime.strptime(cloud_paused, '%Y-%m-%d').date()
+                                    if today < pause_date:
+                                        logger.info(f"⏸️ Auto-send skipped (cloud): Emails paused until {cloud_paused}")
+                                        last_send_date = today
+                                        continue
+                            except Exception as e:
+                                logger.debug(f"Cloud pause check: {e}")
+
+                            # Check if emails are paused (local settings fallback)
                             paused_until = email_cfg.get('paused_until')
                             if paused_until:
                                 try:
