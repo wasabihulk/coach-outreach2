@@ -118,11 +118,11 @@ DEFAULT_SETTINGS = {
     },
     'email': {
         'smtp_server': 'smtp.gmail.com', 'smtp_port': 587,
-        'email_address': ENV_EMAIL_ADDRESS, 
+        'email_address': ENV_EMAIL_ADDRESS,
         'app_password': ENV_APP_PASSWORD,
         'max_per_day': 100,  # Gmail limit
         'delay_seconds': 3,
-        'days_between_emails': 3,  # Wait 3 days before next email to same coach
+        'days_between_emails': 4,  # Wait 4 days before next email (~2 emails per week max)
         'followup_sequence': ['intro', 'followup_1', 'followup_2'],  # Email sequence
         'auto_send_enabled': ENV_AUTO_SEND,
         'auto_send_count': 100,
@@ -6009,17 +6009,26 @@ def api_email_send():
         
         from enterprise.templates import get_template_manager
         from enterprise.responses import get_response_tracker
-        
+
+        # Import AI hooks for personalized emails
+        try:
+            from enterprise.ai_hooks import generate_personalized_hook
+            ai_hooks_available = True
+        except ImportError:
+            ai_hooks_available = False
+            logger.warning("AI hooks not available - using generic templates")
+
         sent = 0
         errors = 0
         intro_count = 0
         followup1_count = 0
         followup2_count = 0
-        
+
         template_mgr = get_template_manager()
         response_tracker = get_response_tracker()
-        
-        variables = {
+
+        # Base variables (coach-specific ones added in loop)
+        base_variables = {
             'athlete_name': athlete.get('name', ''),
             'position': athlete.get('positions', 'OL'),
             'grad_year': athlete.get('graduation_year', '2026'),
@@ -6051,9 +6060,11 @@ def api_email_send():
         
         for coach in coaches[:limit]:
             try:
+                # Create coach-specific variables
+                variables = base_variables.copy()
                 variables['coach_name'] = coach['name'].split()[-1] if coach['name'] else 'Coach'
                 variables['school'] = clean_school_name(coach['school'])
-                
+
                 # Get appropriate template based on email type
                 email_type = coach.get('email_type', 'intro')
                 if email_type == 'followup_1':
@@ -6062,11 +6073,30 @@ def api_email_send():
                     template = template_mgr.get_followup_template(2)
                 else:
                     template = template_mgr.get_next_template(coach['type'], coach['school'])
-                
+
                 if not template:
                     errors += 1
                     continue
-                
+
+                # Generate personalized hook for intro emails
+                if ai_hooks_available and email_type == 'intro':
+                    try:
+                        hook = generate_personalized_hook(
+                            school=variables['school'],
+                            division=coach.get('division', ''),
+                            conference=coach.get('conference', ''),
+                            email_type=email_type,
+                            use_ai=True
+                        )
+                        variables['personalized_hook'] = hook
+                        logger.debug(f"Generated hook for {variables['school']}: {hook[:50]}...")
+                    except Exception as e:
+                        logger.warning(f"Hook generation failed for {variables['school']}: {e}")
+                        variables['personalized_hook'] = f"I am very interested in {variables['school']}'s program."
+                else:
+                    # Default hook for follow-ups or when AI unavailable
+                    variables['personalized_hook'] = f"I remain very interested in {variables['school']}'s program."
+
                 subject, body = template.render(variables)
                 coach_email = coach['email'].strip()
                 
@@ -6238,6 +6268,17 @@ def api_email_preview():
             return jsonify({'success': False, 'error': 'No template found'})
         
         athlete = settings.get('athlete', {})
+        school_name = data.get('school', '[School Name]')
+
+        # Generate a sample personalized hook for preview
+        sample_hook = "[AI-generated personalized reason for interest in this school]"
+        if school_name != '[School Name]':
+            try:
+                from enterprise.ai_hooks import generate_personalized_hook
+                sample_hook = generate_personalized_hook(school_name, email_type='intro', use_ai=True)
+            except:
+                sample_hook = f"I am very interested in {school_name}'s program and what you are building there."
+
         variables = {
             'athlete_name': athlete.get('name', '[Your Name]'),
             'position': athlete.get('positions', '[Position]'),
@@ -6249,12 +6290,85 @@ def api_email_preview():
             'high_school': athlete.get('high_school', '[High School]'),
             'phone': athlete.get('phone', '[Phone]'),
             'email': athlete.get('email', '[Email]'),
-            'coach_name': '[Coach Name]',
-            'school': '[School Name]',
+            'coach_name': data.get('coach_name', '[Coach Name]'),
+            'school': school_name,
+            'personalized_hook': sample_hook,
         }
-        
+
         subject, body = template.render(variables)
-        return jsonify({'success': True, 'subject': subject, 'body': body, 'template_name': template.name})
+        return jsonify({'success': True, 'subject': subject, 'body': body, 'template_name': template.name, 'hook': sample_hook})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/hooks/stats')
+def api_hooks_stats():
+    """Get AI hooks statistics."""
+    try:
+        from enterprise.ai_hooks import get_hook_database
+        db = get_hook_database()
+        stats = db.get_stats()
+        return jsonify({'success': True, 'stats': stats})
+    except ImportError:
+        return jsonify({'success': True, 'stats': {'total_hooks_generated': 0, 'schools_with_hooks': 0, 'avg_hooks_per_school': 0}, 'note': 'AI hooks module not available'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/hooks/generate', methods=['POST'])
+def api_generate_hook():
+    """Generate a test personalized hook for a school."""
+    data = request.get_json() or {}
+    school = data.get('school', '')
+
+    if not school:
+        return jsonify({'success': False, 'error': 'School name required'})
+
+    try:
+        from enterprise.ai_hooks import generate_personalized_hook, get_hook_database
+
+        hook = generate_personalized_hook(
+            school=school,
+            division=data.get('division', ''),
+            conference=data.get('conference', ''),
+            email_type=data.get('email_type', 'intro'),
+            use_ai=data.get('use_ai', True)
+        )
+
+        db = get_hook_database()
+        used_hooks = db.get_used_hooks(school)
+
+        return jsonify({
+            'success': True,
+            'hook': hook,
+            'school': school,
+            'total_hooks_for_school': len(used_hooks)
+        })
+    except ImportError:
+        # Fallback when AI hooks not available
+        hook = f"I am very interested in {school}'s football program and what you are building there."
+        return jsonify({'success': True, 'hook': hook, 'school': school, 'note': 'AI hooks not available, using fallback'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/hooks/school/<school>')
+def api_hooks_for_school(school):
+    """Get all hooks used for a specific school."""
+    try:
+        from enterprise.ai_hooks import get_hook_database
+        db = get_hook_database()
+        used_hooks = db.get_used_hooks(school)
+        used_categories = db.get_used_categories(school)
+        return jsonify({
+            'success': True,
+            'school': school,
+            'hooks': used_hooks,
+            'categories': used_categories,
+            'count': len(used_hooks)
+        })
+    except ImportError:
+        return jsonify({'success': True, 'school': school, 'hooks': [], 'categories': [], 'count': 0, 'note': 'AI hooks module not available'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -6716,23 +6830,55 @@ auto_send_state = {
 def auto_send_emails():
     """Background task to auto-send emails."""
     global auto_send_state
-    
+
     if auto_send_state['running']:
         return  # Already running
-    
+
     auto_send_state['running'] = True
     auto_send_state['last_run'] = datetime.now().isoformat()
-    
+
     try:
         current_settings = load_settings()
-        
+
         # Check if auto-send is enabled
         if not current_settings.get('email', {}).get('auto_send_enabled', False):
             auto_send_state['running'] = False
             return
-        
+
+        # CRITICAL REDUNDANT CHECK: Verify not paused (defense in depth)
+        email_cfg = current_settings.get('email', {})
+        paused_until = email_cfg.get('paused_until')
+        if paused_until:
+            try:
+                from datetime import date
+                pause_date = datetime.strptime(paused_until, '%Y-%m-%d').date()
+                if date.today() < pause_date:
+                    logger.warning(f"⏸️ AUTO-SEND BLOCKED: Emails paused until {paused_until}")
+                    auto_send_state['running'] = False
+                    auto_send_state['last_result'] = {'blocked': True, 'reason': f'Paused until {paused_until}'}
+                    return
+            except Exception as e:
+                logger.error(f"Pause check error: {e}")
+
         limit = current_settings.get('email', {}).get('auto_send_count', 100)
-        
+
+        # SAFETY CAP: Never send more than 25 emails in one auto-send run
+        # This prevents runaway sends even if settings get corrupted
+        MAX_SAFE_SEND = 25
+        if limit > MAX_SAFE_SEND:
+            logger.warning(f"⚠️ Auto-send limit {limit} exceeds safety cap, reducing to {MAX_SAFE_SEND}")
+            limit = MAX_SAFE_SEND
+
+        # CRITICAL: Check for responses FIRST before sending
+        # This ensures we don't email coaches who just replied
+        if has_gmail_api():
+            logger.info("Checking for responses before auto-send...")
+            try:
+                check_responses_background()
+                time.sleep(2)  # Give it a moment to update the sheet
+            except Exception as e:
+                logger.warning(f"Pre-send response check failed: {e}")
+
         # Use the same logic as manual send
         with app.test_request_context():
             sheet = get_sheet()
@@ -6740,10 +6886,10 @@ def auto_send_emails():
                 auto_send_state['last_result'] = {'error': 'Sheet not connected'}
                 auto_send_state['running'] = False
                 return
-            
+
             # Make a fake request to the send endpoint
             with app.test_client() as client:
-                response = client.post('/api/email/send', 
+                response = client.post('/api/email/send',
                     json={'limit': limit},
                     content_type='application/json'
                 )
@@ -7244,11 +7390,27 @@ def api_auto_send_run_now():
     """Manually trigger auto-send."""
     if auto_send_state['running']:
         return jsonify({'success': False, 'error': 'Already running'})
-    
+
+    # Check if paused BEFORE starting
+    current_settings = load_settings()
+    paused_until = current_settings.get('email', {}).get('paused_until')
+    if paused_until:
+        try:
+            from datetime import date
+            pause_date = datetime.strptime(paused_until, '%Y-%m-%d').date()
+            if date.today() < pause_date:
+                days_left = (pause_date - date.today()).days
+                return jsonify({
+                    'success': False,
+                    'error': f'⏸️ Emails paused until {paused_until} ({days_left} days left)'
+                })
+        except:
+            pass
+
     # Run in background thread
     thread = threading.Thread(target=auto_send_emails)
     thread.start()
-    
+
     return jsonify({'success': True, 'message': 'Auto-send started'})
 
 
