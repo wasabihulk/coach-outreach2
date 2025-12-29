@@ -2172,16 +2172,19 @@ HTML_TEMPLATE = '''
         // ========== HOLIDAY MODE & PAUSE CONTROLS ==========
 
         async function loadEmailModeStatus() {
+            console.log('loadEmailModeStatus called');
             try {
                 // Load holiday mode
                 const holidayRes = await fetch('/api/email/holiday-mode');
                 const holidayData = await holidayRes.json();
+                console.log('Holiday data:', holidayData);
                 const toggle = document.getElementById('holiday-mode-toggle');
                 if (toggle) toggle.checked = holidayData.holiday_mode || false;
 
                 // Load pause status
                 const pauseRes = await fetch('/api/email/pause');
                 const pauseData = await pauseRes.json();
+                console.log('Pause data:', pauseData);
 
                 const statusEl = document.getElementById('email-mode-status');
                 const resumeBtn = document.getElementById('resume-btn');
@@ -2191,6 +2194,7 @@ HTML_TEMPLATE = '''
                 const homeStatus = document.getElementById('home-email-status');
                 const homeStatusText = document.getElementById('home-email-status-text');
                 const homeResumeBtn = document.getElementById('home-resume-btn');
+                console.log('Elements found:', {homeStatus: !!homeStatus, homeStatusText: !!homeStatusText});
 
                 if (pauseData.is_paused) {
                     if (banner) banner.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
@@ -3574,7 +3578,7 @@ def icon_512():
 def service_worker():
     """Service worker - network first, no caching of HTML."""
     sw_code = '''
-const CACHE_NAME = 'coach-outreach-v3';
+const CACHE_NAME = 'coach-outreach-v4';
 
 self.addEventListener('install', event => {
     self.skipWaiting();
