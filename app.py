@@ -6056,7 +6056,21 @@ def api_email_send():
             if not last_date:
                 return 999
             return (today - last_date).days
-        
+
+        def is_valid_coach_name(name):
+            """Check if coach name is valid (not empty, generic, or missing)"""
+            if not name or not isinstance(name, str):
+                return False
+            name_clean = name.strip().lower()
+            # Invalid names
+            invalid_names = ['coach', 'coach coach', '', 'n/a', 'na', 'tbd', 'unknown', '-', 'none']
+            if name_clean in invalid_names:
+                return False
+            # Must have at least 2 characters
+            if len(name_clean) < 2:
+                return False
+            return True
+
         coaches = []
         for row_idx, row in enumerate(rows):
             if len(coaches) >= limit * 2:
@@ -6073,14 +6087,14 @@ def api_email_send():
                 rc_notes = row[rc_notes_col].strip() if rc_notes_col >= 0 and rc_notes_col < len(row) else ''
                 rc_name = row[rc_name_col] if rc_name_col >= 0 and rc_name_col < len(row) else 'Coach'
                 
-                if rc_email and '@' in rc_email:
+                if rc_email and '@' in rc_email and is_valid_coach_name(rc_name):
                     stage = get_email_stage(rc_contacted, rc_notes)
                     days = days_since_contact(rc_contacted)
-                    
+
                     # Determine what email to send
                     should_send = False
                     email_type = None
-                    
+
                     if stage == 'replied':
                         pass  # Skip - they replied
                     elif stage == 'new':
@@ -6096,11 +6110,11 @@ def api_email_send():
                         # Restart cycle after same delay as other stages
                         should_send = True
                         email_type = 'intro'
-                    
+
                     if should_send:
                         coaches.append({
                             'email': rc_email, 'name': rc_name, 'school': school, 'type': 'rc',
-                            'row_idx': row_idx + 2, 
+                            'row_idx': row_idx + 2,
                             'contacted_col': rc_contacted_col + 1 if rc_contacted_col >= 0 else None,
                             'notes_col': rc_notes_col + 1 if rc_notes_col >= 0 else None,
                             'email_type': email_type, 'current_notes': rc_notes,
@@ -6114,13 +6128,13 @@ def api_email_send():
                 ol_notes = row[ol_notes_col].strip() if ol_notes_col >= 0 and ol_notes_col < len(row) else ''
                 ol_name = row[ol_name_col] if ol_name_col >= 0 and ol_name_col < len(row) else 'Coach'
                 
-                if ol_email and '@' in ol_email:
+                if ol_email and '@' in ol_email and is_valid_coach_name(ol_name):
                     stage = get_email_stage(ol_contacted, ol_notes)
                     days = days_since_contact(ol_contacted)
-                    
+
                     should_send = False
                     email_type = None
-                    
+
                     if stage == 'replied':
                         pass
                     elif stage == 'new':
@@ -6135,7 +6149,7 @@ def api_email_send():
                     elif stage == 'followup2_sent' and days >= days_between:
                         should_send = True
                         email_type = 'intro'
-                    
+
                     if should_send:
                         coaches.append({
                             'email': ol_email, 'name': ol_name, 'school': school, 'type': 'ol',
@@ -6305,9 +6319,39 @@ def api_email_send():
                 time.sleep(email_settings.get('delay_seconds', 3))
                 
             except Exception as e:
+                error_str = str(e).lower()
                 logger.error(f"Error sending to {coach['email']}: {e}")
                 errors += 1
-        
+
+                # Check if this is a bounce/invalid address error
+                bounce_indicators = [
+                    'address not found', 'no such user', 'user unknown', 'invalid recipient',
+                    'mailbox unavailable', 'mailbox not found', 'does not exist',
+                    'rejected', 'undeliverable', '550 ', '553 ', '554 '
+                ]
+                is_bounce = any(indicator in error_str for indicator in bounce_indicators)
+
+                if is_bounce:
+                    logger.warning(f"BOUNCE DETECTED for {coach['email']} - marking as invalid")
+                    # Find the email column and clear it
+                    try:
+                        if coach['type'] == 'rc':
+                            email_col = rc_email_col + 1 if rc_email_col >= 0 else None
+                        else:
+                            email_col = ol_email_col + 1 if ol_email_col >= 0 else None
+
+                        if email_col and coach.get('notes_col'):
+                            # Clear the email
+                            sheet.update_cell(coach['row_idx'], email_col, '')
+                            # Add note about bounce
+                            current_notes = coach.get('current_notes', '')
+                            bounce_note = f"BOUNCED {today.strftime('%m/%d')} - email removed"
+                            updated_notes = f"{bounce_note}; {current_notes}" if current_notes else bounce_note
+                            sheet.update_cell(coach['row_idx'], coach['notes_col'], updated_notes)
+                            logger.info(f"Cleared bounced email for {coach['school']} ({coach['email']})")
+                    except Exception as clear_err:
+                        logger.error(f"Could not clear bounced email: {clear_err}")
+
         if smtp:
             smtp.quit()
         
