@@ -7213,7 +7213,7 @@ def check_responses_background():
             if service:
                 for coach in coach_emails:
                     try:
-                        query = f"from:{coach['email']} newer_than:30d"
+                        query = f"from:{coach['email']} newer_than:90d"
                         results = service.users().messages().list(userId='me', q=query, maxResults=1).execute()
                         messages = results.get('messages', [])
 
@@ -7234,6 +7234,12 @@ def check_responses_background():
                                 'date': headers_dict.get('Date', ''),
                                 'snippet': snippet
                             })
+
+                            # CRITICAL: Mark coach as replied in sheet so they don't get more emails
+                            try:
+                                mark_coach_replied_in_sheet(sheet, coach['email'], coach['school'])
+                            except Exception as mark_err:
+                                logger.error(f"Failed to mark {coach['school']} as replied: {mark_err}")
                     except:
                         pass
 
