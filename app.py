@@ -5650,8 +5650,8 @@ def api_scan_past_responses():
         for coach in coach_emails:
             try:
                 checked_count += 1
-                # Search for emails FROM this coach (they replied to us) - search past 30 days
-                query = f"from:{coach['email']} newer_than:30d"
+                # Search for emails FROM this coach (they replied to us) - search past 90 days
+                query = f"from:{coach['email']} newer_than:90d"
                 results = service.users().messages().list(userId='me', q=query, maxResults=5).execute()
                 messages = results.get('messages', [])
 
