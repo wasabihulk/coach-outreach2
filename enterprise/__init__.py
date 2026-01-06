@@ -1,6 +1,6 @@
 """
 Coach Outreach Pro - Enterprise Features Module
-Includes: CRM, Reminders, Templates, Follow-ups, Twitter Scraper, Response Tracking
+Includes: CRM, Reminders, Templates, Follow-ups, Twitter Scraper, Response Tracking, AI Hooks
 """
 
 from .crm import CRMManager, Contact, Interaction, PipelineStage
@@ -24,6 +24,16 @@ from .responses import (
     get_response_tracker
 )
 
+# AI Hooks - optional, may fail if dependencies unavailable
+try:
+    from .ai_hooks import (
+        generate_personalized_hook, get_hook_database, research_school,
+        HookDatabase, SchoolResearch
+    )
+    AI_HOOKS_AVAILABLE = True
+except ImportError:
+    AI_HOOKS_AVAILABLE = False
+
 __all__ = [
     # CRM
     'CRMManager', 'Contact', 'Interaction', 'PipelineStage',
@@ -45,4 +55,7 @@ __all__ = [
     # Response Tracking
     'ResponseTracker', 'SentEmail', 'Response', 'GmailResponseChecker',
     'get_response_tracker',
+    # AI Hooks
+    'generate_personalized_hook', 'get_hook_database', 'research_school',
+    'HookDatabase', 'SchoolResearch', 'AI_HOOKS_AVAILABLE',
 ]

@@ -86,7 +86,7 @@ RC_TEMPLATES = [
 
 I hope this email finds you well. My name is {athlete_name}, a 2026 offensive lineman from {high_school} in Florida.
 
-I have been researching {school} and I am very interested in your program. I wanted to reach out and introduce myself.
+{personalized_hook}
 
 I am {height}, {weight} lbs with a {gpa} GPA. Here is my film: {hudl_link}
 
@@ -104,7 +104,9 @@ Thank you for your time,
         subject="2026 OL - {athlete_name} - Interested in {school}",
         body="""Coach {coach_name},
 
-My name is {athlete_name}, a 2026 offensive lineman from {high_school} in Florida. {school} is a program I have been following and I wanted to introduce myself.
+My name is {athlete_name}, a 2026 offensive lineman from {high_school} in Florida.
+
+{personalized_hook}
 
 I am {height}, {weight} lbs with a {gpa} GPA. I take pride in my technique and being coachable.
 
@@ -129,12 +131,14 @@ OC_TEMPLATES = [
 
 I hope you are doing well. My name is {athlete_name}, a 2026 offensive lineman from {high_school} in Florida.
 
+{personalized_hook}
+
 I wanted to reach out and make sure you had my film. I know offensive line coaches watch a lot of tape, and I would be grateful for any feedback you might have.
 
 Film: {hudl_link}
 Size: {height}, {weight} lbs
 
-I finish every block and I am always looking to improve my technique. {school} is a program I am very interested in and I would appreciate the opportunity to learn more.
+I finish every block and I am always looking to improve my technique. I would appreciate the opportunity to learn more about {school}.
 
 Thank you for your time,
 {athlete_name}
@@ -148,11 +152,15 @@ Thank you for your time,
         subject="2026 OL Prospect - {athlete_name}",
         body="""Coach {coach_name},
 
-My name is {athlete_name}, a 2026 offensive lineman from {high_school} in Florida. I wanted to get my film in front of you: {hudl_link}
+My name is {athlete_name}, a 2026 offensive lineman from {high_school} in Florida.
+
+{personalized_hook}
+
+I wanted to get my film in front of you: {hudl_link}
 
 I am {height}, {weight} lbs. I take pride in my physicality and technique, and I am committed to improving every day.
 
-{school} is a program that stands out to me and I would appreciate any feedback on my film or information about your program.
+I would appreciate any feedback on my film or information about your program.
 
 Thank you for your consideration,
 {athlete_name}

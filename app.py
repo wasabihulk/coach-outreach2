@@ -1111,16 +1111,13 @@ HTML_TEMPLATE = '''
         <main>
             <!-- HOME PAGE -->
             <div id="page-home" class="page active">
-                <!-- EMAIL STATUS BANNER -->
-                <div id="home-email-status" style="background:#e74c3c !important;border-radius:12px !important;padding:20px !important;margin-bottom:20px !important;border:5px solid yellow !important;display:flex !important;visibility:visible !important;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-                    <div style="color:white !important;">
-                        <div style="font-size:20px !important;font-weight:bold !important;">⚠️ EMAIL STATUS</div>
-                        <div id="home-email-status-text" style="font-size:16px !important;font-weight:600 !important;color:white !important;">Loading...</div>
+                <!-- EMAIL STATUS INDICATOR (small bar) -->
+                <div id="home-email-status" style="background:linear-gradient(135deg,#3498db,#2980b9);border-radius:8px;padding:10px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;align-items:center;gap:10px;color:white;">
+                        <span id="home-email-status-icon">✅</span>
+                        <span id="home-email-status-text" style="font-size:14px;font-weight:500;">Loading...</span>
                     </div>
-                    <div style="display:flex !important;gap:10px;">
-                        <button class="btn" style="background:yellow !important;color:black !important;font-weight:bold !important;padding:12px 24px !important;font-size:15px !important;border:none !important;" onclick="document.querySelector('[data-page=email]').click()">⚙️ Settings</button>
-                        <button class="btn" id="home-resume-btn" onclick="resumeEmails()" style="display:none;background:#27ae60 !important;color:white !important;font-weight:bold !important;padding:12px 24px !important;font-size:15px !important;">▶️ Resume</button>
-                    </div>
+                    <button class="btn btn-sm" id="home-resume-btn" onclick="resumeEmails()" style="display:none;background:white;color:#27ae60;font-weight:600;padding:6px 12px;font-size:13px;">▶️ Resume</button>
                 </div>
                 <div class="stats">
                     <div class="stat">
@@ -1514,15 +1511,93 @@ HTML_TEMPLATE = '''
             
             <!-- TRACK PAGE -->
             <div id="page-track" class="page">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <div class="card-header" style="margin:0;">Pipeline</div>
-                    <button class="btn btn-sm" onclick="addToPipeline()">+ Add Coach</button>
+                <div class="card-header" style="margin-bottom:16px;">📊 Stats Dashboard</div>
+
+                <!-- Key Metrics Row -->
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+                    <div class="card" style="text-align:center;padding:20px;">
+                        <div style="font-size:36px;font-weight:bold;color:var(--accent);" id="track-total-sent">-</div>
+                        <div class="text-sm text-muted">Total Sent</div>
+                    </div>
+                    <div class="card" style="text-align:center;padding:20px;">
+                        <div style="font-size:36px;font-weight:bold;color:#27ae60;" id="track-open-rate">-</div>
+                        <div class="text-sm text-muted">Open Rate</div>
+                    </div>
+                    <div class="card" style="text-align:center;padding:20px;">
+                        <div style="font-size:36px;font-weight:bold;color:#9b59b6;" id="track-response-rate">-</div>
+                        <div class="text-sm text-muted">Response Rate</div>
+                    </div>
+                    <div class="card" style="text-align:center;padding:20px;">
+                        <div style="font-size:36px;font-weight:bold;color:#e67e22;" id="track-interested">-</div>
+                        <div class="text-sm text-muted">Interested</div>
+                    </div>
                 </div>
-                
-                <!-- Quick Response Tracker -->
+
+                <!-- Outreach Funnel -->
                 <div class="card mb-4">
+                    <div class="card-header">Outreach Funnel</div>
+                    <div id="track-funnel" style="padding:10px 0;">
+                        <div style="margin-bottom:12px;">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                                <span>Emails Sent</span>
+                                <span id="funnel-sent">-</span>
+                            </div>
+                            <div style="background:var(--bg3);border-radius:4px;height:24px;overflow:hidden;">
+                                <div id="funnel-sent-bar" style="background:var(--accent);height:100%;width:100%;transition:width 0.3s;"></div>
+                            </div>
+                        </div>
+                        <div style="margin-bottom:12px;">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                                <span>Opened</span>
+                                <span id="funnel-opened">-</span>
+                            </div>
+                            <div style="background:var(--bg3);border-radius:4px;height:24px;overflow:hidden;">
+                                <div id="funnel-opened-bar" style="background:#27ae60;height:100%;width:0%;transition:width 0.3s;"></div>
+                            </div>
+                        </div>
+                        <div style="margin-bottom:12px;">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                                <span>Replied</span>
+                                <span id="funnel-replied">-</span>
+                            </div>
+                            <div style="background:var(--bg3);border-radius:4px;height:24px;overflow:hidden;">
+                                <div id="funnel-replied-bar" style="background:#9b59b6;height:100%;width:0%;transition:width 0.3s;"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                                <span>Interested</span>
+                                <span id="funnel-interested">-</span>
+                            </div>
+                            <div style="background:var(--bg3);border-radius:4px;height:24px;overflow:hidden;">
+                                <div id="funnel-interested-bar" style="background:#e67e22;height:100%;width:0%;transition:width 0.3s;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <!-- Best Performing -->
+                    <div class="card">
+                        <div class="card-header">Best Open Times</div>
+                        <div id="track-best-times" style="font-size:14px;">
+                            <div class="loading-state"><div class="spinner"></div></div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="card">
+                        <div class="card-header">Recent Responses</div>
+                        <div id="track-recent-responses" style="max-height:200px;overflow-y:auto;font-size:14px;">
+                            <div class="loading-state"><div class="spinner"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Response Tracker -->
+                <div class="card mt-4">
                     <div class="card-header">Mark Coach Response</div>
-                    <p class="text-sm text-muted mb-2">When a coach replies to your DM or email, mark it here:</p>
+                    <p class="text-sm text-muted mb-2">When a coach replies, mark it here:</p>
                     <div class="flex gap-2" style="flex-wrap:wrap;">
                         <input type="text" id="response-school" placeholder="School name" style="flex:1;min-width:150px;">
                         <select id="response-type" style="width:120px;">
@@ -1531,28 +1606,9 @@ HTML_TEMPLATE = '''
                             <option value="interested">Interested!</option>
                             <option value="not_interested">Not Interested</option>
                         </select>
-                        <button class="btn btn-sm btn-success" onclick="markCoachResponse()">✓ Mark Response</button>
+                        <button class="btn btn-sm btn-success" onclick="markCoachResponse()">✓ Mark</button>
                     </div>
                     <div id="response-result" class="text-sm mt-2"></div>
-                </div>
-                
-                <div class="pipeline">
-                    <div class="pipeline-col">
-                        <div class="pipeline-title">Not Contacted</div>
-                        <div id="pipeline-not-contacted"></div>
-                    </div>
-                    <div class="pipeline-col">
-                        <div class="pipeline-title">Contacted</div>
-                        <div id="pipeline-contacted"></div>
-                    </div>
-                    <div class="pipeline-col">
-                        <div class="pipeline-title">Replied</div>
-                        <div id="pipeline-replied"></div>
-                    </div>
-                    <div class="pipeline-col">
-                        <div class="pipeline-title">Interested</div>
-                        <div id="pipeline-interested"></div>
-                    </div>
                 </div>
             </div>
         </main>
@@ -1685,7 +1741,7 @@ HTML_TEMPLATE = '''
             if (page === 'find') initSchoolSearch();
             if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); }
             if (page === 'dms') { loadDMQueue(); loadTemplates('dm'); }
-            if (page === 'track') loadPipeline();
+            if (page === 'track') loadTrackStats();
         }
         
         // Dashboard
@@ -1766,6 +1822,22 @@ HTML_TEMPLATE = '''
 
         async function loadTomorrowPreview() {
             try {
+                // First check if emails are paused
+                const pauseRes = await fetch('/api/email/pause');
+                const pauseData = await pauseRes.json();
+
+                if (pauseData.is_paused) {
+                    // Show paused state
+                    document.getElementById('tomorrow-count').textContent = '⏸️';
+                    document.getElementById('tomorrow-count').style.fontSize = '28px';
+                    document.getElementById('optimal-time').textContent = 'PAUSED';
+                    document.getElementById('tomorrow-breakdown').textContent = `Until ${pauseData.paused_until}`;
+                    return;
+                }
+
+                // Reset font size if not paused
+                document.getElementById('tomorrow-count').style.fontSize = '32px';
+
                 const res = await fetch('/api/auto-send/tomorrow-preview');
                 const data = await res.json();
 
@@ -2196,29 +2268,34 @@ HTML_TEMPLATE = '''
                 const homeResumeBtn = document.getElementById('home-resume-btn');
                 console.log('Elements found:', {homeStatus: !!homeStatus, homeStatusText: !!homeStatusText});
 
+                const homeIcon = document.getElementById('home-email-status-icon');
+
                 if (pauseData.is_paused) {
                     if (banner) banner.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
                     if (statusEl) statusEl.innerHTML = `⏸️ PAUSED until ${pauseData.paused_until} (${pauseData.days_left} days left)`;
                     if (resumeBtn) resumeBtn.style.display = '';
-                    // Home page
-                    if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
-                    if (homeStatusText) homeStatusText.innerHTML = `⏸️ PAUSED until ${pauseData.paused_until} (${pauseData.days_left} days left)`;
+                    // Home page - smaller indicator
+                    if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #e74c3c, #c0392b)';
+                    if (homeIcon) homeIcon.textContent = '⏸️';
+                    if (homeStatusText) homeStatusText.textContent = `Paused until ${pauseData.paused_until}`;
                     if (homeResumeBtn) homeResumeBtn.style.display = '';
                 } else if (holidayData.holiday_mode) {
                     if (banner) banner.style.background = 'linear-gradient(135deg, #27ae60 0%, #1e8449 100%)';
                     if (statusEl) statusEl.innerHTML = '🎄 Holiday Mode: No follow-ups, max 5 intros/day';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     // Home page
-                    if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #27ae60 0%, #1e8449 100%)';
-                    if (homeStatusText) homeStatusText.innerHTML = '🎄 Holiday Mode: No follow-ups, max 5 intros/day';
+                    if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #f39c12, #e67e22)';
+                    if (homeIcon) homeIcon.textContent = '🎄';
+                    if (homeStatusText) homeStatusText.textContent = 'Holiday Mode';
                     if (homeResumeBtn) homeResumeBtn.style.display = 'none';
                 } else {
                     if (banner) banner.style.background = 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)';
                     if (statusEl) statusEl.innerHTML = '✅ Normal - Emails are active';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     // Home page
-                    if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)';
-                    if (homeStatusText) homeStatusText.innerHTML = '✅ Emails are active';
+                    if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #27ae60, #1e8449)';
+                    if (homeIcon) homeIcon.textContent = '✅';
+                    if (homeStatusText) homeStatusText.textContent = 'Emails active';
                     if (homeResumeBtn) homeResumeBtn.style.display = 'none';
                 }
             } catch(e) { console.error(e); }
@@ -2591,44 +2668,84 @@ HTML_TEMPLATE = '''
             } catch(e) { showToast('Error', 'error'); }
         }
         
-        // Pipeline
-        async function loadPipeline() {
+        // Track Stats Dashboard
+        async function loadTrackStats() {
             try {
-                const res = await fetch('/api/crm/contacts');
-                const data = await res.json();
-                const contacts = data.contacts || [];
-                
-                // Map CRM stages to pipeline columns
-                const stages = {
-                    'prospect': 'pipeline-not-contacted',
-                    'contacted': 'pipeline-contacted', 
-                    'interested': 'pipeline-replied',
-                    'evaluating': 'pipeline-interested',
-                    'verbal_offer': 'pipeline-interested',
-                    'committed': 'pipeline-interested',
-                    'signed': 'pipeline-interested',
-                    'declined': 'pipeline-not-contacted'
-                };
-                
-                Object.values(stages).forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.innerHTML = '';
-                });
-                
-                contacts.forEach(c => {
-                    const stage = (c.stage || 'prospect').toLowerCase().replace(' ', '_');
-                    const containerId = stages[stage] || 'pipeline-not-contacted';
-                    const el = document.getElementById(containerId);
-                    if (el) {
-                        el.innerHTML += `
-                            <div class="pipeline-card" onclick="openContact('${c.id}')">
-                                <div class="pipeline-school">${c.school_name || c.school || ''}</div>
-                                <div class="pipeline-coach">${c.coach_name || c.name || ''}</div>
-                            </div>
-                        `;
+                // Load tracking stats
+                const trackRes = await fetch('/api/tracking/stats');
+                const trackData = await trackRes.json();
+
+                // Load pipeline stats
+                const statsRes = await fetch('/api/stats');
+                const statsData = await statsRes.json();
+
+                // Load smart times
+                const timesRes = await fetch('/api/tracking/smart-times');
+                const timesData = await timesRes.json();
+
+                // Update key metrics
+                const totalSent = trackData.total_sent || statsData.emails_sent || 0;
+                const totalOpened = trackData.total_opened || 0;
+                const totalReplied = statsData.responses || 0;
+                const interested = statsData.interested || 0;
+
+                document.getElementById('track-total-sent').textContent = totalSent;
+                document.getElementById('track-open-rate').textContent = (trackData.open_rate || 0) + '%';
+                document.getElementById('track-response-rate').textContent = (statsData.response_rate || 0) + '%';
+                document.getElementById('track-interested').textContent = interested;
+
+                // Update funnel
+                document.getElementById('funnel-sent').textContent = totalSent;
+                document.getElementById('funnel-opened').textContent = totalOpened + ' (' + (trackData.open_rate || 0) + '%)';
+                document.getElementById('funnel-replied').textContent = totalReplied;
+                document.getElementById('funnel-interested').textContent = interested;
+
+                // Funnel bars (as percentage of sent)
+                if (totalSent > 0) {
+                    document.getElementById('funnel-opened-bar').style.width = (totalOpened / totalSent * 100) + '%';
+                    document.getElementById('funnel-replied-bar').style.width = (totalReplied / totalSent * 100) + '%';
+                    document.getElementById('funnel-interested-bar').style.width = (interested / totalSent * 100) + '%';
+                }
+
+                // Best times
+                const timesEl = document.getElementById('track-best-times');
+                if (timesData.success && timesData.hour_performance) {
+                    const sorted = Object.entries(timesData.hour_performance)
+                        .sort((a, b) => b[1].opens - a[1].opens)
+                        .slice(0, 5);
+
+                    if (sorted.length > 0) {
+                        timesEl.innerHTML = sorted.map(([hour, data]) => {
+                            const h = parseInt(hour);
+                            const timeStr = h === 0 ? '12 AM' : h < 12 ? h + ' AM' : h === 12 ? '12 PM' : (h - 12) + ' PM';
+                            return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
+                                <span>${timeStr}</span>
+                                <span style="color:var(--accent);">${data.opens} opens</span>
+                            </div>`;
+                        }).join('');
+                    } else {
+                        timesEl.innerHTML = '<div class="text-muted">Not enough data yet</div>';
                     }
-                });
-            } catch(e) { console.error(e); }
+                } else {
+                    timesEl.innerHTML = '<div class="text-muted">Send more emails to see patterns</div>';
+                }
+
+                // Recent responses
+                const responsesEl = document.getElementById('track-recent-responses');
+                if (trackData.recent_opens && trackData.recent_opens.length) {
+                    responsesEl.innerHTML = trackData.recent_opens.slice(0, 5).map(o => `
+                        <div style="padding:6px 0;border-bottom:1px solid var(--border);">
+                            <div style="font-weight:500;">${o.school || 'Unknown'}</div>
+                            <div class="text-muted text-sm">${o.time_ago || ''}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    responsesEl.innerHTML = '<div class="text-muted">No recent activity</div>';
+                }
+
+            } catch(e) {
+                console.error('Track stats error:', e);
+            }
         }
         
         // Settings
@@ -7280,9 +7397,36 @@ def start_auto_send_scheduler():
         # Railway runs on UTC, so we need to offset for user's timezone
         tz_offset = int(get_env('TZ_OFFSET', '-5'))  # -5 for EST, -4 for EDT
 
-        # Random hour between 8am and 6pm LOCAL time
-        # Convert to UTC by subtracting the offset (e.g., 8 AM EST = 8 - (-5) = 13 UTC)
-        local_send_hour = random.randint(8, 18)
+        # Get optimal hour from tracking data, or use random between 8am-6pm
+        def get_optimal_send_hour():
+            """Get the best hour to send based on open tracking data."""
+            try:
+                from collections import defaultdict
+                hour_counts = defaultdict(int)
+                for tid, opens in email_tracking.get('opens', {}).items():
+                    for o in opens:
+                        try:
+                            opened_at = datetime.fromisoformat(o['opened_at'].replace('Z', '+00:00'))
+                            # Convert to local time for comparison
+                            local_hour = (opened_at.hour + tz_offset) % 24
+                            hour_counts[local_hour] += 1
+                        except:
+                            pass
+
+                if hour_counts and sum(hour_counts.values()) >= 10:  # Need at least 10 opens
+                    # Get best hour but keep within business hours (8 AM - 6 PM)
+                    business_hours = {h: c for h, c in hour_counts.items() if 8 <= h <= 18}
+                    if business_hours:
+                        best_hour = max(business_hours.items(), key=lambda x: x[1])[0]
+                        logger.info(f"Using optimal send hour {best_hour}:00 based on {sum(hour_counts.values())} opens")
+                        return best_hour
+            except Exception as e:
+                logger.debug(f"Optimal hour calculation: {e}")
+
+            # Fallback to random hour
+            return random.randint(8, 18)
+
+        local_send_hour = get_optimal_send_hour()
         send_hour_utc = (local_send_hour - tz_offset) % 24
         send_minute = random.randint(0, 59)
         logger.info(f"Today's auto-send scheduled for {local_send_hour}:{send_minute:02d} local (UTC hour: {send_hour_utc})")
@@ -7297,9 +7441,9 @@ def start_auto_send_scheduler():
                 current_minute = datetime.now().minute
                 now = datetime.now()
 
-                # Pick new random time each day (in user's local timezone, converted to UTC)
+                # Pick optimal/random time each day (in user's local timezone, converted to UTC)
                 if last_send_date != today:
-                    local_send_hour = random.randint(8, 18)  # 8 AM - 6 PM local
+                    local_send_hour = get_optimal_send_hour()
                     send_hour_utc = (local_send_hour - tz_offset) % 24
                     send_minute = random.randint(0, 59)
                     logger.info(f"New day - auto-send scheduled for {local_send_hour}:{send_minute:02d} local (UTC: {send_hour_utc}:{send_minute:02d})")
