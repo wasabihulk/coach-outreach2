@@ -6129,8 +6129,9 @@ def api_email_send():
         ol_email_col = find_col(['oc email'])
         ol_contacted_col = find_col(['ol contacted'])
         ol_notes_col = find_col(['ol notes'])
-        
-        logger.info(f"Columns: school={school_col}, rc_email={rc_email_col}, ol_email={ol_email_col}")
+        division_col = find_col(['division', 'div'])
+
+        logger.info(f"Columns: school={school_col}, rc_email={rc_email_col}, ol_email={ol_email_col}, division={division_col}")
         
         if school_col == -1:
             return jsonify({'success': False, 'error': 'No school column found', 'sent': 0, 'errors': 0})
@@ -6216,7 +6217,9 @@ def api_email_send():
             school = row[school_col] if school_col < len(row) else ''
             if not school:
                 continue
-            
+
+            division = row[division_col].strip() if division_col >= 0 and division_col < len(row) else ''
+
             # Check RC
             if rc_email_col >= 0 and rc_email_col < len(row):
                 rc_email = row[rc_email_col].strip()
@@ -6251,13 +6254,14 @@ def api_email_send():
                     if should_send:
                         coaches.append({
                             'email': rc_email, 'name': rc_name, 'school': school, 'type': 'rc',
+                            'division': division,
                             'row_idx': row_idx + 2,
                             'contacted_col': rc_contacted_col + 1 if rc_contacted_col >= 0 else None,
                             'notes_col': rc_notes_col + 1 if rc_notes_col >= 0 else None,
                             'email_type': email_type, 'current_notes': rc_notes,
                             'days_since': days  # Track days since last contact for sorting
                         })
-            
+
             # Check OL/OC
             if ol_email_col >= 0 and ol_email_col < len(row):
                 ol_email = row[ol_email_col].strip()
@@ -6290,13 +6294,14 @@ def api_email_send():
                     if should_send:
                         coaches.append({
                             'email': ol_email, 'name': ol_name, 'school': school, 'type': 'ol',
+                            'division': division,
                             'row_idx': row_idx + 2,
                             'contacted_col': ol_contacted_col + 1 if ol_contacted_col >= 0 else None,
                             'notes_col': ol_notes_col + 1 if ol_notes_col >= 0 else None,
                             'email_type': email_type, 'current_notes': ol_notes,
                             'days_since': days  # Track days since last contact for sorting
                         })
-        
+
         # Sort coaches by days since last contact (oldest first, then new coaches)
         # This ensures coaches who haven't been contacted in a while get priority
         coaches.sort(key=lambda c: (-c['days_since'] if c['days_since'] < 900 else 1000))
@@ -6425,7 +6430,7 @@ def api_email_send():
                     
                     response_tracker.record_sent(
                         coach_email=coach_email, coach_name=coach['name'],
-                        school=coach['school'], division='',
+                        school=coach['school'], division=coach.get('division', ''),
                         coach_type=coach['type'], template_id=template.id
                     )
                     
