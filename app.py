@@ -443,18 +443,42 @@ def analyze_response_sentiment(text: str) -> dict:
 
 def get_tracking_sheet():
     """Get or create the Email_Tracking worksheet."""
+    if not HAS_SHEETS:
+        return None
     try:
-        client = get_gspread_client()
-        if not client:
-            return None
-        spreadsheet = client.open('bardeen')
-        try:
-            return spreadsheet.worksheet('Email_Tracking')
-        except:
-            # Create the worksheet if it doesn't exist
-            sheet = spreadsheet.add_worksheet(title='Email_Tracking', rows=1000, cols=10)
-            sheet.update('A1:H1', [['tracking_id', 'to', 'school', 'coach', 'subject', 'sent_at', 'opened_at', 'open_count']])
-            return sheet
+        # Use same pattern as get_sheet() to get the spreadsheet
+        config_file = Path.home() / '.coach_outreach' / 'settings.json'
+        spreadsheet_name = 'bardeen'
+
+        if config_file.exists():
+            with open(config_file) as f:
+                file_settings = json.load(f)
+                spreadsheet_name = file_settings.get('sheets', {}).get('spreadsheet_name', 'bardeen')
+
+        credentials_file = 'credentials.json'
+        if ENV_GOOGLE_CREDENTIALS:
+            import tempfile
+            creds_str = ENV_GOOGLE_CREDENTIALS.strip()
+            if creds_str.startswith('"') and creds_str.endswith('"'):
+                creds_str = creds_str[1:-1]
+            creds_str = creds_str.replace('\\\\n', '\\n')
+            temp_creds = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+            temp_creds.write(creds_str)
+            temp_creds.close()
+            credentials_file = temp_creds.name
+
+        config = SheetsConfig(spreadsheet_name=spreadsheet_name, credentials_file=credentials_file)
+        manager = SheetsManager(config=config)
+
+        if manager.connect():
+            spreadsheet = manager._client.open(spreadsheet_name)
+            try:
+                return spreadsheet.worksheet('Email_Tracking')
+            except:
+                # Create the worksheet if it doesn't exist
+                sheet = spreadsheet.add_worksheet(title='Email_Tracking', rows=1000, cols=10)
+                sheet.update('A1:H1', [['tracking_id', 'to', 'school', 'coach', 'subject', 'sent_at', 'opened_at', 'open_count']])
+                return sheet
     except Exception as e:
         logger.error(f"Error getting tracking sheet: {e}")
         return None
@@ -1111,14 +1135,6 @@ HTML_TEMPLATE = '''
         <main>
             <!-- HOME PAGE -->
             <div id="page-home" class="page active">
-                <!-- EMAIL STATUS INDICATOR (small bar) -->
-                <div id="home-email-status" style="background:linear-gradient(135deg,#3498db,#2980b9);border-radius:8px;padding:10px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
-                    <div style="display:flex;align-items:center;gap:10px;color:white;">
-                        <span id="home-email-status-icon">✅</span>
-                        <span id="home-email-status-text" style="font-size:14px;font-weight:500;">Loading...</span>
-                    </div>
-                    <button class="btn btn-sm" id="home-resume-btn" onclick="resumeEmails()" style="display:none;background:white;color:#27ae60;font-weight:600;padding:6px 12px;font-size:13px;">▶️ Resume</button>
-                </div>
                 <div class="stats">
                     <div class="stat">
                         <div class="stat-value" id="stat-sent">0</div>

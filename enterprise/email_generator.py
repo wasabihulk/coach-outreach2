@@ -40,6 +40,65 @@ DATA_DIR = Path.home() / '.coach_outreach'
 EMAIL_MEMORY_FILE = DATA_DIR / 'email_memory.json'
 PREGENERATED_EMAILS_FILE = DATA_DIR / 'pregenerated_emails.json'
 SCHOOL_RESEARCH_FILE = DATA_DIR / 'school_research.json'
+API_USAGE_FILE = DATA_DIR / 'api_usage.json'
+
+# Daily API limit (Google Custom Search free tier = 100/day)
+DAILY_API_LIMIT = 100
+SEARCHES_PER_SCHOOL = 5  # Each school research uses 5 searches
+
+
+class APILimitReached(Exception):
+    """Raised when daily API limit is reached."""
+    pass
+
+
+def get_api_usage_today() -> int:
+    """Get the number of API calls made today."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    today = date.today().isoformat()
+
+    if API_USAGE_FILE.exists():
+        try:
+            with open(API_USAGE_FILE, 'r') as f:
+                data = json.load(f)
+                if data.get('date') == today:
+                    return data.get('count', 0)
+        except:
+            pass
+    return 0
+
+
+def increment_api_usage() -> int:
+    """Increment API usage counter. Returns new count."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    today = date.today().isoformat()
+
+    current = 0
+    if API_USAGE_FILE.exists():
+        try:
+            with open(API_USAGE_FILE, 'r') as f:
+                data = json.load(f)
+                if data.get('date') == today:
+                    current = data.get('count', 0)
+        except:
+            pass
+
+    new_count = current + 1
+    with open(API_USAGE_FILE, 'w') as f:
+        json.dump({'date': today, 'count': new_count}, f)
+
+    return new_count
+
+
+def get_remaining_api_calls() -> int:
+    """Get remaining API calls for today."""
+    return max(0, DAILY_API_LIMIT - get_api_usage_today())
+
+
+def get_remaining_schools_today() -> int:
+    """Get how many schools we can still research today."""
+    return get_remaining_api_calls() // SEARCHES_PER_SCHOOL
+
 
 # ============================================================================
 # HUMAN-LIKE WRITING SYSTEM PROMPT
@@ -212,9 +271,15 @@ class SchoolResearch:
 
 
 def google_search(query: str, num_results: int = 5) -> List[Dict]:
-    """Search Google for school information."""
+    """Search Google for school information. Tracks API usage."""
     if not CONFIG['GOOGLE_API_KEY'] or not CONFIG['GOOGLE_CSE_ID']:
         return []
+
+    # Check if we've hit daily limit
+    current_usage = get_api_usage_today()
+    if current_usage >= DAILY_API_LIMIT:
+        logger.warning(f"Daily API limit reached ({current_usage}/{DAILY_API_LIMIT})")
+        raise APILimitReached(f"Daily API limit of {DAILY_API_LIMIT} reached. Resets at midnight Pacific.")
 
     try:
         url = "https://www.googleapis.com/customsearch/v1"
@@ -225,13 +290,26 @@ def google_search(query: str, num_results: int = 5) -> List[Dict]:
             'num': num_results,
         }
         response = requests.get(url, params=params, timeout=10)
+
+        # Track usage (even on error, API call was made)
+        new_count = increment_api_usage()
+
+        # Handle rate limit from Google
+        if response.status_code == 429:
+            logger.warning(f"Google rate limited (429). Usage: {new_count}/{DAILY_API_LIMIT}")
+            raise APILimitReached("Google API returned 429 - rate limited")
+
         response.raise_for_status()
         data = response.json()
+
+        logger.debug(f"API call {new_count}/{DAILY_API_LIMIT}: {query[:50]}...")
 
         return [
             {'title': item.get('title', ''), 'snippet': item.get('snippet', ''), 'link': item.get('link', '')}
             for item in data.get('items', [])
         ]
+    except APILimitReached:
+        raise  # Re-raise limit errors
     except Exception as e:
         logger.warning(f"Google search error: {e}")
         return []
