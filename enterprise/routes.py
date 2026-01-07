@@ -411,10 +411,11 @@ def preview_template():
     variables = data.get('variables', {})
     
     manager = get_template_manager()
-    result = manager.preview_template(template_id, variables)
-    
-    if result:
-        return jsonify({'success': True, 'preview': result})
+    template = manager.get_template(template_id)
+
+    if template:
+        subject, body = template.render(variables)
+        return jsonify({'success': True, 'preview': {'subject': subject, 'body': body}})
     return jsonify({'success': False, 'error': 'Template not found'}), 404
 
 @enterprise_bp.route('/api/templates/random', methods=['POST'])
@@ -431,7 +432,7 @@ def get_random_template():
         'template': {
             'id': template.id,
             'name': template.name,
-            'style': template.style,
+            'template_type': template.template_type,
             'subject': template.subject,
             'body': template.body
         }
@@ -563,18 +564,18 @@ def send_single_followup(followup_id):
     
     # Find the follow-up
     followup = None
-    for f in manager.followups:
+    for f in manager.followups.values():
         if f.id == followup_id:
             followup = f
             break
-    
+
     if not followup:
         return jsonify({'success': False, 'error': 'Follow-up not found'}), 404
-    
+
     # Find the original email record
     email_record = None
-    for e in manager.email_records:
-        if e.id == followup.email_id:
+    for e in manager.emails.values():
+        if e.id == followup.email_record_id:
             email_record = e
             break
     
@@ -618,8 +619,7 @@ def send_single_followup(followup_id):
         }
         
         # Render template
-        subject = template.render_subject(variables)
-        body = template.render_body(variables)
+        subject, body = template.render(variables)
         
         # Send via SMTP
         import smtplib
@@ -684,7 +684,7 @@ def send_due_followups():
 @enterprise_bp.route('/api/followups/send-next-round', methods=['POST'])
 def send_next_round():
     """Send ONE follow-up per coach - the next due one for each coach who hasn't responded"""
-    from .followups import get_followup_manager, FollowUpStatus
+    from .followups import get_followup_manager
     from .templates import get_template_manager
     from pathlib import Path
     import json
@@ -693,19 +693,19 @@ def send_next_round():
     from email.mime.multipart import MIMEMultipart
     
     manager = get_followup_manager(DATA_DIR)
-    
+
     # Get all pending/due followups
-    all_followups = [f for f in manager.followups 
-                     if f.status in [FollowUpStatus.SCHEDULED, FollowUpStatus.DUE, FollowUpStatus.OVERDUE]]
-    
+    all_followups = [f for f in manager.followups.values()
+                     if f.status in ["scheduled", "due", "overdue"]]
+
     if not all_followups:
         return jsonify({'success': True, 'sent': 0, 'message': 'No follow-ups to send'})
-    
+
     # Group by coach email - only get the NEXT (lowest number) follow-up for each coach
     by_coach = {}
     for f in all_followups:
         # Find the email record to get coach email
-        email_record = next((e for e in manager.email_records if e.id == f.email_id), None)
+        email_record = next((e for e in manager.emails.values() if e.id == f.email_record_id), None)
         if not email_record:
             continue
         
@@ -759,9 +759,8 @@ def send_next_round():
                 }
                 
                 # Render template
-                subject = template.render_subject(variables)
-                body = template.render_body(variables)
-                
+                subject, body = template.render(variables)
+
                 # Send
                 msg = MIMEMultipart()
                 msg['From'] = email_addr

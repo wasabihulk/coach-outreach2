@@ -170,13 +170,15 @@ def load_settings() -> Dict:
                             settings['email']['app_password'] = ENV_APP_PASSWORD
                         else:
                             settings['email']['app_password'] = DEFAULT_SETTINGS['email']['app_password']
-                        logger.warning("Using env/default app_password (saved was invalid)")
+                        try: logger.warning("Using env/default app_password (saved was invalid)")
+                        except NameError: pass
                     if not email or not isinstance(email, str) or '@' not in email:
                         if ENV_EMAIL_ADDRESS:
                             settings['email']['email_address'] = ENV_EMAIL_ADDRESS
                         else:
                             settings['email']['email_address'] = DEFAULT_SETTINGS['email']['email_address']
-                        logger.warning("Using env/default email_address (saved was invalid)")
+                        try: logger.warning("Using env/default email_address (saved was invalid)")
+                        except NameError: pass
                 
                 return settings
         except: pass
@@ -443,7 +445,7 @@ def analyze_response_sentiment(text: str) -> dict:
 
 def get_tracking_sheet():
     """Get or create the Email_Tracking worksheet."""
-    if not HAS_SHEETS:
+    if not globals().get('HAS_SHEETS', False):
         return None
     try:
         # Use same pattern as get_sheet() to get the spreadsheet
@@ -2131,7 +2133,7 @@ HTML_TEMPLATE = '''
                 const data = await res.json();
                 if (data.last_result && data.last_result.sent > 0) {
                     showToast(`Auto-send complete: ${data.last_result.sent} emails sent`, 'success');
-                    loadStats();
+                    loadDashboard();
                 }
             } catch(e) {}
         }
@@ -2963,7 +2965,6 @@ HTML_TEMPLATE = '''
                     body: JSON.stringify({ school_name: school, coach_name: coach, email: email, stage: 'prospect' })
                 });
                 showToast('Added to pipeline', 'success');
-                loadPipeline();
             } catch(e) { showToast('Failed to add', 'error'); }
         }
         
@@ -2996,7 +2997,6 @@ HTML_TEMPLATE = '''
                         '<span style="color:var(--success)">✓ Marked ' + school + ' as: ' + labels[type] + '</span>';
                     document.getElementById('response-school').value = '';
                     showToast('Response recorded!', 'success');
-                    loadPipeline();
                 } else {
                     document.getElementById('response-result').innerHTML = 
                         '<span style="color:var(--err)">✗ ' + (data.error || 'School not found') + '</span>';
@@ -3559,7 +3559,6 @@ HTML_TEMPLATE = '''
             }
             
             testSheetConnection();
-            checkTwitterStatus();
         }
         
         // Toast
@@ -4074,22 +4073,6 @@ def api_sheet_debug():
     except Exception as e:
         logger.error(f"Sheet debug error: {e}")
         return jsonify({'success': False, 'error': str(e)})
-    
-    try:
-        from outreach.email_sender import get_analytics
-        analytics = get_analytics()
-        stats = analytics.get_stats()
-        sent = stats.get('emails_sent', 0)
-        responses = stats.get('responses_received', 0)
-    except:
-        pass
-    
-    return jsonify({
-        'total': total,
-        'emails': emails,
-        'sent': sent,
-        'responses': responses
-    })
 
 
 @app.route('/api/schools')
@@ -5842,9 +5825,6 @@ def api_scan_past_responses():
         logger.error(f"Scan past responses error: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return jsonify({'success': False, 'error': str(e)})
-    except Exception as e:
-        logger.error(f"Scan past responses error: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 
