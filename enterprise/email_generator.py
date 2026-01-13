@@ -658,10 +658,13 @@ class EmailGenerator:
 
         school_context = "\n".join(school_context_parts) if school_context_parts else "Limited info available"
 
+        # Get successful email examples for AI to learn from
+        successful_examples = self._get_successful_examples(email_type)
+
         # Different prompts for intro vs followup
         if email_type == 'intro':
             user_prompt = f"""Write a SHORT email to Coach {last_name} at {school}.
-
+{successful_examples}
 SCHOOL INFO:
 {school_context}
 
@@ -686,7 +689,7 @@ Keep it to ONE short paragraph. Be genuine, not fake."""
 
         elif email_type == 'followup_1':
             user_prompt = f"""Write a SHORT follow-up email to Coach {last_name} at {school}.
-
+{successful_examples}
 PREVIOUS EMAIL:
 {previous_context}
 
@@ -712,7 +715,7 @@ Keep it SHORT but SPECIFIC."""
 
         else:  # followup_2
             user_prompt = f"""Write a SHORT final follow-up email to Coach {last_name} at {school}.
-
+{successful_examples}
 PREVIOUS EMAILS:
 {previous_context}
 
@@ -1078,6 +1081,50 @@ Keep it SHORT - one paragraph max."""
         content = re.sub(r'([.!?])\s+\w{1,3}$', r'\1', content)
 
         return content
+
+    def _get_successful_examples(self, email_type: str, max_examples: int = 2) -> str:
+        """
+        Get examples of emails that received positive responses.
+        Used to help AI generate better emails by learning from what works.
+        """
+        try:
+            from sheets.cloud_emails import get_cloud_storage
+            storage = get_cloud_storage()
+            successful = storage.get_successful_emails()
+
+            # Filter by email type and get unique examples
+            relevant = [e for e in successful if e.get('email_type') == email_type]
+
+            if not relevant:
+                return ""
+
+            # Get up to max_examples unique ones
+            examples = []
+            seen_bodies = set()
+            for email in relevant[:max_examples * 2]:  # Check more to find unique ones
+                body = email.get('body', '')[:200]  # First 200 chars for dedup
+                if body not in seen_bodies and len(body) > 50:
+                    seen_bodies.add(body)
+                    # Truncate for prompt
+                    truncated = email.get('body', '')[:500]
+                    if len(email.get('body', '')) > 500:
+                        truncated += '...'
+                    examples.append(truncated)
+                    if len(examples) >= max_examples:
+                        break
+
+            if not examples:
+                return ""
+
+            examples_text = "\n---\n".join(examples)
+            return f"""
+EXAMPLES OF EMAILS THAT GOT RESPONSES (learn from these patterns):
+{examples_text}
+---
+"""
+        except Exception as e:
+            logger.warning(f"Could not load successful examples: {e}")
+            return ""
 
     def _get_fallback_content(self, school: str, email_type: str, research: SchoolResearch) -> str:
         """Get fallback content when AI is unavailable."""

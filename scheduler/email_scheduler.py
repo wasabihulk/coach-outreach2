@@ -133,13 +133,41 @@ def get_optimal_send_hour() -> int:
 
 
 def load_pregenerated_emails() -> Dict[str, Any]:
-    """Load pregenerated AI emails from cache."""
+    """Load pregenerated AI emails from local cache or cloud."""
+    # Try local file first
     if PREGENERATED_EMAILS_FILE.exists():
         try:
             with open(PREGENERATED_EMAILS_FILE, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+                if data:  # If local file has data, use it
+                    return data
         except:
             pass
+
+    # On Railway (no local file), try cloud storage
+    if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('GOOGLE_CREDENTIALS'):
+        try:
+            from sheets.cloud_emails import get_cloud_storage
+            storage = get_cloud_storage()
+            if storage.connect():
+                pending = storage.download_pending_emails()
+                # Convert to expected format
+                emails_by_school = {}
+                for email in pending:
+                    school = email['school']
+                    if school not in emails_by_school:
+                        emails_by_school[school] = []
+                    emails_by_school[school].append({
+                        'coach_name': email['coach_name'],
+                        'coach_email': email['coach_email'],
+                        'email_type': email['email_type'],
+                        'personalized_content': email['body'],
+                        'subject': email['subject']
+                    })
+                logger.info(f"Loaded {len(pending)} emails from cloud storage")
+                return emails_by_school
+        except Exception as e:
+            logger.error(f"Failed to load from cloud: {e}")
     return {}
 
 
@@ -362,6 +390,13 @@ class SchedulerState:
         history = self.get_coach_history(email)
         sent_types = history.get('ai_emails_sent', [])
 
+        # Auto-reset AI cycle after 30 days for a fresh start
+        days_since = self.days_since_last_email(email)
+        if days_since >= 30 and sent_types:
+            logger.info(f"Auto-resetting AI cycle for {email} (30+ days since last email)")
+            self.reset_coach_ai_cycle(email)
+            sent_types = []  # Fresh start
+
         # Order: intro -> followup_1 -> followup_2
         if 'intro' not in sent_types:
             return 'intro'
@@ -397,6 +432,19 @@ class SchedulerState:
             self.coach_history[email_lower]['ai_emails_sent'] = []
             self.coach_history[email_lower]['template_count'] = 0
             self.save()
+
+    def mark_response_received(self, email: str):
+        """Mark that a coach responded - resets AI cycle for fresh outreach."""
+        email_lower = email.lower()
+        history = self.get_coach_history(email_lower)
+        history['last_response'] = datetime.now().isoformat()
+        history['response_count'] = history.get('response_count', 0) + 1
+        # Reset AI cycle so we can send fresh personalized emails
+        history['ai_emails_sent'] = []
+        history['template_count'] = 0
+        self.coach_history[email_lower] = history
+        self.save()
+        logger.info(f"Response received from {email} - AI cycle reset")
 
     def add_error(self, email: str, error: str):
         """Record an error."""
@@ -538,7 +586,18 @@ class EmailScheduler:
         self._callbacks = []
         
         self.logger = logging.getLogger(__name__)
-    
+
+    def _load_settings(self) -> Dict:
+        """Load settings from the settings file."""
+        settings_file = Path.home() / '.coach_outreach' / 'settings.json'
+        if settings_file.exists():
+            try:
+                with open(settings_file, 'r') as f:
+                    return json.load(f)
+            except:
+                pass
+        return {}
+
     def add_callback(self, callback: Callable[[str, Dict], None]):
         """Add a callback for events."""
         self._callbacks.append(callback)
@@ -696,7 +755,25 @@ class EmailScheduler:
         if not self.config.enabled:
             self.logger.info("Scheduler disabled, skipping")
             return {'sent': 0, 'errors': 0}
-        
+
+        # Check holiday mode and pause settings
+        settings = self._load_settings()
+        email_settings = settings.get('email', {})
+
+        if email_settings.get('holiday_mode', False):
+            self.logger.info("Holiday mode enabled - limiting to 5 intro emails only")
+            # Will enforce this limit below
+
+        paused_until = email_settings.get('paused_until')
+        if paused_until:
+            try:
+                pause_date = datetime.fromisoformat(paused_until)
+                if datetime.now() < pause_date:
+                    self.logger.info(f"Scheduler paused until {paused_until}, skipping")
+                    return {'sent': 0, 'errors': 0, 'paused': True}
+            except:
+                pass
+
         self.state.reset_daily_if_needed()
         
         self._emit('job_started', {})
@@ -721,11 +798,16 @@ class EmailScheduler:
                 self._emit('error', {'message': 'Failed to connect to Sheets'})
                 return {'sent': 0, 'errors': 1}
             
+            # Holiday mode limits
+            holiday_mode = email_settings.get('holiday_mode', False)
+            holiday_limit = 5 if holiday_mode else self.config.max_emails_per_day
+            intro_only = holiday_mode  # Only send intros in holiday mode
+
             # Send emails
             for coach in pending:
-                # Check daily limit
-                if self.state.daily_count >= self.config.max_emails_per_day:
-                    self.logger.info(f"Daily limit reached ({self.config.max_emails_per_day})")
+                # Check daily limit (5 in holiday mode, normal limit otherwise)
+                if self.state.daily_count >= holiday_limit:
+                    self.logger.info(f"Daily limit reached ({holiday_limit})" + (" [holiday mode]" if holiday_mode else ""))
                     break
 
                 # Prepare email
@@ -735,6 +817,11 @@ class EmailScheduler:
 
                 # Get the next AI email type for this coach (intro -> followup_1 -> followup_2)
                 next_ai_type = self.state.get_next_ai_email_type(coach['email'])
+
+                # In holiday mode, only send intro emails (skip followups)
+                if intro_only and next_ai_type and next_ai_type != 'intro':
+                    self.logger.info(f"Holiday mode: Skipping followup for {coach['school']}")
+                    continue
 
                 # Try to get AI email if there's a type available
                 ai_email = None

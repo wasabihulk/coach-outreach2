@@ -1454,6 +1454,28 @@ HTML_TEMPLATE = '''
                 </div>
 
                 <div class="card">
+                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                        ☁️ Cloud Email Storage
+                        <button class="btn btn-sm btn-outline" onclick="loadCloudEmailStats()">↻ Refresh</button>
+                    </div>
+                    <p class="text-sm text-muted mb-2">Sync AI emails to Google Sheets so Railway can send them when your laptop is offline.</p>
+                    <div id="cloud-email-stats" class="mb-4 p-2" style="background:var(--bg3);border-radius:6px;font-size:13px;">
+                        <div>Total in cloud: <span id="cloud-total">-</span></div>
+                        <div>Pending to send: <span id="cloud-pending">-</span></div>
+                        <div>Sent: <span id="cloud-sent">-</span></div>
+                        <div>Open rate: <span id="cloud-open-rate">-</span></div>
+                        <div>Response rate: <span id="cloud-response-rate">-</span></div>
+                        <div>Successful (got responses): <span id="cloud-successful">-</span></div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-success" onclick="syncEmailsToCloud()">⬆️ Upload to Cloud</button>
+                        <button class="btn btn-outline" onclick="viewCloudEmails()">📋 View Cloud Emails</button>
+                        <button class="btn btn-outline" onclick="viewSuccessfulEmails()">⭐ View Successful</button>
+                    </div>
+                    <div id="cloud-email-log" class="mt-4 text-sm text-muted"></div>
+                </div>
+
+                <div class="card">
                     <div class="card-header">Follow-up Queue</div>
                     <div id="followup-queue">
                         <p class="text-muted text-sm">No follow-ups due</p>
@@ -3211,7 +3233,120 @@ HTML_TEMPLATE = '''
             loadDMQueue();
             showToast('Queue refreshed', 'success');
         }
-        
+
+        // ========== CLOUD EMAIL FUNCTIONS ==========
+        async function loadCloudEmailStats() {
+            try {
+                const res = await fetch('/api/cloud-emails/stats');
+                const data = await res.json();
+
+                if (data.success) {
+                    document.getElementById('cloud-total').textContent = data.total_emails || 0;
+                    document.getElementById('cloud-pending').textContent = data.pending || 0;
+                    document.getElementById('cloud-sent').textContent = data.sent || 0;
+                    document.getElementById('cloud-open-rate').textContent = (data.open_rate || 0) + '%';
+                    document.getElementById('cloud-response-rate').textContent = (data.response_rate || 0) + '%';
+                    document.getElementById('cloud-successful').textContent = data.responses || 0;
+                } else {
+                    document.getElementById('cloud-email-log').innerHTML = '<span style="color:var(--warning);">Could not load cloud stats: ' + (data.error || 'Unknown error') + '</span>';
+                }
+            } catch(e) {
+                document.getElementById('cloud-email-log').innerHTML = '<span style="color:var(--error);">Error: ' + e.message + '</span>';
+            }
+        }
+
+        async function syncEmailsToCloud() {
+            const log = document.getElementById('cloud-email-log');
+            log.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Syncing emails to cloud...';
+
+            try {
+                const res = await fetch('/api/cloud-emails/sync', { method: 'POST' });
+                const data = await res.json();
+
+                if (data.success) {
+                    log.innerHTML = '<span style="color:var(--success);">Uploaded ' + data.uploaded + ' emails to cloud!</span>';
+                    showToast('Synced ' + data.uploaded + ' emails to cloud', 'success');
+                    loadCloudEmailStats();
+                } else {
+                    log.innerHTML = '<span style="color:var(--error);">Sync failed: ' + (data.error || 'Unknown error') + '</span>';
+                }
+            } catch(e) {
+                log.innerHTML = '<span style="color:var(--error);">Error: ' + e.message + '</span>';
+            }
+        }
+
+        async function viewCloudEmails() {
+            const log = document.getElementById('cloud-email-log');
+            log.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading cloud emails...';
+
+            try {
+                const res = await fetch('/api/cloud-emails/pending');
+                const data = await res.json();
+
+                if (data.success && data.emails) {
+                    if (data.emails.length === 0) {
+                        log.innerHTML = '<em>No pending emails in cloud</em>';
+                        return;
+                    }
+
+                    let html = '<div style="max-height:300px;overflow-y:auto;">';
+                    html += '<strong>' + data.count + ' pending emails:</strong><br><br>';
+                    data.emails.slice(0, 20).forEach(e => {
+                        html += '<div style="padding:8px;margin-bottom:8px;background:var(--bg2);border-radius:4px;">';
+                        html += '<strong>' + e.school + '</strong> - ' + e.email_type + '<br>';
+                        html += '<small style="color:var(--muted);">' + e.coach_name + ' (' + e.coach_email + ')</small>';
+                        html += '</div>';
+                    });
+                    if (data.emails.length > 20) {
+                        html += '<em>... and ' + (data.emails.length - 20) + ' more</em>';
+                    }
+                    html += '</div>';
+                    log.innerHTML = html;
+                } else {
+                    log.innerHTML = '<span style="color:var(--error);">Error: ' + (data.error || 'Unknown') + '</span>';
+                }
+            } catch(e) {
+                log.innerHTML = '<span style="color:var(--error);">Error: ' + e.message + '</span>';
+            }
+        }
+
+        async function viewSuccessfulEmails() {
+            const log = document.getElementById('cloud-email-log');
+            log.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading successful emails...';
+
+            try {
+                const res = await fetch('/api/cloud-emails/successful');
+                const data = await res.json();
+
+                if (data.success && data.emails) {
+                    if (data.emails.length === 0) {
+                        log.innerHTML = '<em>No successful emails yet. Keep sending and tracking responses!</em>';
+                        return;
+                    }
+
+                    let html = '<div style="max-height:400px;overflow-y:auto;">';
+                    html += '<strong>' + data.count + ' emails that got responses:</strong><br><br>';
+                    data.emails.forEach(e => {
+                        html += '<div style="padding:8px;margin-bottom:8px;background:var(--bg2);border-radius:4px;border-left:3px solid var(--success);">';
+                        html += '<strong>' + e.school + '</strong> - ' + e.email_type;
+                        if (e.sentiment) html += ' <span style="color:var(--success);">(' + e.sentiment + ')</span>';
+                        html += '<br>';
+                        html += '<small style="color:var(--muted);white-space:pre-wrap;">' + (e.body || '').substring(0, 200) + '...</small>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                    log.innerHTML = html;
+                } else {
+                    log.innerHTML = '<span style="color:var(--error);">Error: ' + (data.error || 'Unknown') + '</span>';
+                }
+            } catch(e) {
+                log.innerHTML = '<span style="color:var(--error);">Error: ' + e.message + '</span>';
+            }
+        }
+
+        // Load cloud stats on page load
+        setTimeout(loadCloudEmailStats, 2000);
+
         // ========== NEW SCRAPER FUNCTIONS ==========
         let scraperRunning = false;
         
@@ -4026,9 +4161,17 @@ def api_deployment_info():
 @app.route('/api/settings', methods=['GET', 'POST'])
 def api_settings():
     global settings
-    
+
     if request.method == 'POST':
         data = request.get_json()
+
+        # Preserve existing password if masked value is sent back
+        if 'email' in data and data['email'].get('app_password') in ['********', '', None]:
+            # Keep the existing password, don't overwrite with masked value
+            existing_password = settings.get('email', {}).get('app_password')
+            if existing_password:
+                data['email']['app_password'] = existing_password
+
         for key in data:
             if isinstance(data[key], dict) and key in settings:
                 settings[key].update(data[key])
@@ -5329,15 +5472,86 @@ def api_test_tracking():
         return jsonify(result)
 
 
-def mark_coach_replied_in_sheet(sheet, coach_email: str, school_name: str):
-    """Mark a coach as REPLIED in the Google Sheet so they don't get contacted again."""
+# ============================================================================
+# CLOUD EMAIL STORAGE API
+# ============================================================================
+
+@app.route('/api/cloud-emails/sync', methods=['POST'])
+def api_cloud_emails_sync():
+    """Sync local pregenerated emails to Google Sheets cloud storage."""
     try:
+        from sheets.cloud_emails import sync_emails_to_cloud
+        result = sync_emails_to_cloud()
+        return jsonify({'success': True, **result})
+    except Exception as e:
+        logger.error(f"Cloud sync error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/cloud-emails/stats')
+def api_cloud_emails_stats():
+    """Get statistics about cloud-stored emails."""
+    try:
+        from sheets.cloud_emails import get_cloud_storage
+        storage = get_cloud_storage()
+        stats = storage.get_stats()
+        return jsonify({'success': True, **stats})
+    except Exception as e:
+        logger.error(f"Cloud stats error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/cloud-emails/successful')
+def api_cloud_emails_successful():
+    """Get emails that received positive responses (for AI training)."""
+    try:
+        from sheets.cloud_emails import get_cloud_storage
+        storage = get_cloud_storage()
+        emails = storage.get_successful_emails()
+        return jsonify({'success': True, 'emails': emails, 'count': len(emails)})
+    except Exception as e:
+        logger.error(f"Error getting successful emails: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/cloud-emails/pending')
+def api_cloud_emails_pending():
+    """Get pending emails that haven't been sent yet."""
+    try:
+        from sheets.cloud_emails import get_cloud_storage
+        storage = get_cloud_storage()
+        pending = storage.download_pending_emails()
+        return jsonify({'success': True, 'emails': pending, 'count': len(pending)})
+    except Exception as e:
+        logger.error(f"Error getting pending emails: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+def mark_coach_replied_in_sheet(sheet, coach_email: str, school_name: str, sentiment: str = 'positive'):
+    """Mark a coach as REPLIED in the Google Sheet and update all tracking systems."""
+    try:
+        # Also update cloud storage for AI learning
+        try:
+            from sheets.cloud_emails import get_cloud_storage
+            storage = get_cloud_storage()
+            storage.mark_response_received(school_name, coach_email, sentiment)
+        except Exception as e:
+            logger.warning(f"Could not update cloud storage: {e}")
+
+        # Also reset scheduler AI cycle for this coach
+        try:
+            from scheduler.email_scheduler import SchedulerState
+            state = SchedulerState('email_scheduler_state.json')
+            state.mark_response_received(coach_email)
+        except Exception as e:
+            logger.warning(f"Could not reset AI cycle: {e}")
+
         all_data = sheet.get_all_values()
         if len(all_data) < 2:
             return
-        
+
         headers = all_data[0]
-        
+
         def find_col(keywords):
             for i, h in enumerate(headers):
                 h_lower = h.lower()
@@ -5345,7 +5559,7 @@ def mark_coach_replied_in_sheet(sheet, coach_email: str, school_name: str):
                     if kw in h_lower:
                         return i
             return -1
-        
+
         school_col = find_col(['school'])
         rc_email_col = find_col(['rc email'])
         ol_email_col = find_col(['ol email', 'oc email'])
@@ -5353,12 +5567,12 @@ def mark_coach_replied_in_sheet(sheet, coach_email: str, school_name: str):
         ol_contacted_col = find_col(['ol contacted', 'oc contacted'])
         rc_notes_col = find_col(['rc notes'])
         ol_notes_col = find_col(['ol notes', 'oc notes'])
-        
+
         coach_email_lower = coach_email.lower()
-        
+
         for row_idx, row in enumerate(all_data[1:], start=2):
             row_school = row[school_col].strip() if school_col >= 0 and school_col < len(row) else ''
-            
+
             # Check RC email
             rc_email = row[rc_email_col].strip().lower() if rc_email_col >= 0 and rc_email_col < len(row) else ''
             if rc_email == coach_email_lower:
@@ -5371,14 +5585,14 @@ def mark_coach_replied_in_sheet(sheet, coach_email: str, school_name: str):
                 if rc_notes_col >= 0:
                     from datetime import datetime
                     current = row[rc_notes_col] if rc_notes_col < len(row) else ''
-                    note = f"Response received {datetime.now().strftime('%m/%d/%Y')}"
+                    note = f"Response received {datetime.now().strftime('%m/%d/%Y')} ({sentiment})"
                     # Don't add duplicate
                     if 'response received' not in current.lower():
                         new_val = note if not current else note + '; ' + current
                         sheet.update_cell(row_idx, rc_notes_col + 1, new_val)
-                logger.info(f"Marked RC at {row_school} as REPLIED")
+                logger.info(f"Marked RC at {row_school} as REPLIED ({sentiment})")
                 return
-            
+
             # Check OL email
             ol_email = row[ol_email_col].strip().lower() if ol_email_col >= 0 and ol_email_col < len(row) else ''
             if ol_email == coach_email_lower:
@@ -5391,12 +5605,12 @@ def mark_coach_replied_in_sheet(sheet, coach_email: str, school_name: str):
                 if ol_notes_col >= 0:
                     from datetime import datetime
                     current = row[ol_notes_col] if ol_notes_col < len(row) else ''
-                    note = f"Response received {datetime.now().strftime('%m/%d/%Y')}"
+                    note = f"Response received {datetime.now().strftime('%m/%d/%Y')} ({sentiment})"
                     # Don't add duplicate
                     if 'response received' not in current.lower():
                         new_val = note if not current else note + '; ' + current
                         sheet.update_cell(row_idx, ol_notes_col + 1, new_val)
-                logger.info(f"Marked OL at {row_school} as REPLIED")
+                logger.info(f"Marked OL at {row_school} as REPLIED ({sentiment})")
                 return
     except Exception as e:
         logger.error(f"Error marking coach replied: {e}")
