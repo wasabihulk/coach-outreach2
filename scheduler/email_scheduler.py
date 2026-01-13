@@ -42,6 +42,47 @@ from sheets.manager import SheetsManager
 
 logger = logging.getLogger(__name__)
 
+# Path to pregenerated AI emails
+PREGENERATED_EMAILS_FILE = Path.home() / '.coach_outreach' / 'pregenerated_emails.json'
+
+
+def load_pregenerated_emails() -> Dict[str, Any]:
+    """Load pregenerated AI emails from cache."""
+    if PREGENERATED_EMAILS_FILE.exists():
+        try:
+            with open(PREGENERATED_EMAILS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+
+def get_ai_email_for_school(school: str, coach_name: str, email_type: str = 'intro') -> Optional[Dict]:
+    """
+    Get pregenerated AI email for a school/coach.
+    Returns dict with 'subject' and 'body' if found, None otherwise.
+    """
+    emails = load_pregenerated_emails()
+
+    # Try exact match first
+    school_lower = school.lower().strip()
+
+    for cached_school, email_list in emails.items():
+        if cached_school.lower().strip() == school_lower:
+            if isinstance(email_list, list):
+                for email in email_list:
+                    if email.get('email_type', 'intro') == email_type:
+                        content = email.get('personalized_content', '')
+                        if content and len(content) > 50:
+                            # Extract last name for subject
+                            last_name = coach_name.split()[-1] if coach_name else 'Coach'
+                            return {
+                                'subject': f"2026 OL - Keelan Underwood - {school}",
+                                'body': content,
+                                'is_ai': True
+                            }
+    return None
+
 
 # ============================================================================
 # CONFIGURATION
@@ -82,6 +123,9 @@ class EmailSchedulerConfig:
     
     # Persistence
     state_file: str = "email_scheduler_state.json"
+
+    # AI Email Settings
+    ai_emails_per_cycle: int = 2  # Send 2 AI emails, then templates until cycle resets
 
 
 # ============================================================================
@@ -146,15 +190,17 @@ Best regards,
 
 class SchedulerState:
     """Manages persistent state for the scheduler."""
-    
+
     def __init__(self, state_file: str):
         self.state_file = state_file
         self.sent_emails = {}  # email -> timestamp
         self.daily_count = 0
         self.last_reset = datetime.now().date().isoformat()
         self.errors = []
+        self.ai_emails_this_cycle = 0  # Track AI emails sent in current cycle
+        self.cycle_complete = False  # True when all schools have been contacted once
         self._load()
-    
+
     def _load(self):
         """Load state from file."""
         if os.path.exists(self.state_file):
@@ -165,9 +211,11 @@ class SchedulerState:
                     self.daily_count = data.get('daily_count', 0)
                     self.last_reset = data.get('last_reset', datetime.now().date().isoformat())
                     self.errors = data.get('errors', [])[-100:]  # Keep last 100
+                    self.ai_emails_this_cycle = data.get('ai_emails_this_cycle', 0)
+                    self.cycle_complete = data.get('cycle_complete', False)
             except:
                 pass
-    
+
     def save(self):
         """Save state to file."""
         try:
@@ -177,6 +225,8 @@ class SchedulerState:
                     'daily_count': self.daily_count,
                     'last_reset': self.last_reset,
                     'errors': self.errors[-100:],
+                    'ai_emails_this_cycle': self.ai_emails_this_cycle,
+                    'cycle_complete': self.cycle_complete,
                 }, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save state: {e}")
@@ -206,6 +256,27 @@ class SchedulerState:
             'error': error,
             'time': datetime.now().isoformat()
         })
+        self.save()
+
+    def increment_ai_count(self):
+        """Increment AI email count for this cycle."""
+        self.ai_emails_this_cycle += 1
+        self.save()
+
+    def should_use_ai(self, max_ai_per_cycle: int) -> bool:
+        """Check if we should use AI email (vs template) based on cycle."""
+        return self.ai_emails_this_cycle < max_ai_per_cycle
+
+    def reset_cycle(self):
+        """Reset the AI email cycle (called when all schools have been contacted)."""
+        self.ai_emails_this_cycle = 0
+        self.cycle_complete = False
+        self.save()
+
+    def mark_cycle_complete(self):
+        """Mark the current cycle as complete."""
+        self.cycle_complete = True
+        self.ai_emails_this_cycle = 0  # Reset for next cycle
         self.save()
 
 
@@ -351,7 +422,7 @@ class EmailScheduler:
     def get_status(self) -> Dict[str, Any]:
         """Get scheduler status."""
         self.state.reset_daily_if_needed()
-        
+
         return {
             'enabled': self.config.enabled,
             'running': self._running,
@@ -361,6 +432,9 @@ class EmailScheduler:
             'total_sent': len(self.state.sent_emails),
             'recent_errors': self.state.errors[-5:],
             'next_run': schedule.next_run().isoformat() if schedule.jobs else None,
+            'ai_emails_this_cycle': self.state.ai_emails_this_cycle,
+            'ai_emails_per_cycle': self.config.ai_emails_per_cycle,
+            'using_ai_emails': self.state.should_use_ai(self.config.ai_emails_per_cycle),
         }
     
     def get_pending_emails(self) -> List[Dict]:
@@ -472,68 +546,88 @@ class EmailScheduler:
                 if self.state.daily_count >= self.config.max_emails_per_day:
                     self.logger.info(f"Daily limit reached ({self.config.max_emails_per_day})")
                     break
-                
+
                 # Prepare email
                 last_name = coach['name'].split()[-1] if coach['name'] else 'Coach'
-                
-                if coach['type'] == 'RC':
-                    subject = RC_SUBJECT.format(
-                        grad_year=self.config.graduation_year,
-                        athlete_name=self.config.athlete_name
-                    )
-                    body = RC_TEMPLATE.format(
-                        last_name=last_name,
-                        athlete_name=self.config.athlete_name,
-                        grad_year=self.config.graduation_year,
-                        high_school=self.config.high_school or "[HIGH SCHOOL]",
-                        city_state=self.config.city_state or "[CITY, STATE]",
-                        school=coach['school'],
-                        height=self.config.height,
-                        weight=self.config.weight,
-                        positions=self.config.positions,
-                        gpa=self.config.gpa or "[GPA]",
-                        highlight_url=self.config.highlight_url or "[HIGHLIGHT LINK]",
-                        phone=self.config.phone or ""
-                    )
+                used_ai = False
+
+                # Try to get AI email first (if we haven't hit the cycle limit)
+                ai_email = None
+                if self.state.should_use_ai(self.config.ai_emails_per_cycle):
+                    ai_email = get_ai_email_for_school(coach['school'], coach['name'], 'intro')
+
+                if ai_email:
+                    # Use AI-generated email
+                    subject = ai_email['subject']
+                    body = ai_email['body']
+                    used_ai = True
+                    self.logger.info(f"Using AI email for {coach['school']}")
                 else:
-                    subject = OL_SUBJECT.format(
-                        grad_year=self.config.graduation_year,
-                        athlete_name=self.config.athlete_name
-                    )
-                    body = OL_TEMPLATE.format(
-                        last_name=last_name,
-                        athlete_name=self.config.athlete_name,
-                        grad_year=self.config.graduation_year,
-                        high_school=self.config.high_school or "[HIGH SCHOOL]",
-                        city_state=self.config.city_state or "[CITY, STATE]",
-                        school=coach['school'],
-                        height=self.config.height,
-                        weight=self.config.weight,
-                        positions=self.config.positions,
-                        highlight_url=self.config.highlight_url or "[HIGHLIGHT LINK]",
-                        phone=self.config.phone or ""
-                    )
+                    # Fall back to template
+                    if coach['type'] == 'RC':
+                        subject = RC_SUBJECT.format(
+                            grad_year=self.config.graduation_year,
+                            athlete_name=self.config.athlete_name
+                        )
+                        body = RC_TEMPLATE.format(
+                            last_name=last_name,
+                            athlete_name=self.config.athlete_name,
+                            grad_year=self.config.graduation_year,
+                            high_school=self.config.high_school or "[HIGH SCHOOL]",
+                            city_state=self.config.city_state or "[CITY, STATE]",
+                            school=coach['school'],
+                            height=self.config.height,
+                            weight=self.config.weight,
+                            positions=self.config.positions,
+                            gpa=self.config.gpa or "[GPA]",
+                            highlight_url=self.config.highlight_url or "[HIGHLIGHT LINK]",
+                            phone=self.config.phone or ""
+                        )
+                    else:
+                        subject = OL_SUBJECT.format(
+                            grad_year=self.config.graduation_year,
+                            athlete_name=self.config.athlete_name
+                        )
+                        body = OL_TEMPLATE.format(
+                            last_name=last_name,
+                            athlete_name=self.config.athlete_name,
+                            grad_year=self.config.graduation_year,
+                            high_school=self.config.high_school or "[HIGH SCHOOL]",
+                            city_state=self.config.city_state or "[CITY, STATE]",
+                            school=coach['school'],
+                            height=self.config.height,
+                            weight=self.config.weight,
+                            positions=self.config.positions,
+                            highlight_url=self.config.highlight_url or "[HIGHLIGHT LINK]",
+                            phone=self.config.phone or ""
+                        )
+                    self.logger.info(f"Using template for {coach['school']}")
                 
                 # Send
                 success, error = self.sender.send(coach['email'], subject, body)
                 
                 if success:
                     self.state.mark_sent(coach['email'])
-                    
+
+                    # Track AI email usage for cycling
+                    if used_ai:
+                        self.state.increment_ai_count()
+
                     # Mark as contacted in sheet
                     self.sheets.update_cell(
                         coach['row'],
                         coach['contacted_col'],
                         datetime.now().strftime('%Y-%m-%d')
                     )
-                    
+
                     sent += 1
                     self._emit('email_sent', {
                         'school': coach['school'],
                         'type': coach['type'],
-                        'email': coach['email']
+                        'email': coach['email'],
+                        'used_ai': used_ai
                     })
-                    self.logger.info(f"Sent to {coach['email']}")
+                    self.logger.info(f"Sent to {coach['email']} (AI: {used_ai})")
                 else:
                     self.state.add_error(coach['email'], error)
                     errors += 1
@@ -553,10 +647,16 @@ class EmailScheduler:
             self.sender.disconnect()
             self.sheets.disconnect()
         
+        # Check if we've completed a full cycle (no more pending)
+        remaining_pending = self.get_pending_emails()
+        if not remaining_pending:
+            self.logger.info("All schools contacted! Resetting AI email cycle.")
+            self.state.reset_cycle()
+
         self._emit('job_completed', {'sent': sent, 'errors': errors})
         self.logger.info(f"Daily job complete: sent={sent}, errors={errors}")
-        
-        return {'sent': sent, 'errors': errors}
+
+        return {'sent': sent, 'errors': errors, 'ai_emails_this_cycle': self.state.ai_emails_this_cycle}
     
     def _emit(self, event: str, data: Dict):
         """Emit event to callbacks."""

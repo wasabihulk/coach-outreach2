@@ -26,13 +26,13 @@ from dataclasses import dataclass, field, asdict
 
 logger = logging.getLogger(__name__)
 
-# Configuration
+# Configuration - API keys should be set via environment variables only
 CONFIG = {
     'OLLAMA_URL': os.environ.get('OLLAMA_URL', 'http://localhost:11434/api/generate'),
     'OLLAMA_MODEL': os.environ.get('OLLAMA_MODEL', 'llama3.2:3b'),
     'OLLAMA_TIMEOUT': 120,  # Longer timeout for quality
-    'GOOGLE_API_KEY': os.environ.get('GOOGLE_API_KEY', 'AIzaSyBSEzp2OF4lsFWgC-2goTfrZdRoKV_VyfA'),
-    'GOOGLE_CSE_ID': os.environ.get('GOOGLE_CSE_ID', 'a37e7aad7fd3c4c7a'),
+    'GOOGLE_API_KEY': os.environ.get('GOOGLE_API_KEY', ''),
+    'GOOGLE_CSE_ID': os.environ.get('GOOGLE_CSE_ID', ''),
 }
 
 # Data directory
@@ -44,7 +44,7 @@ API_USAGE_FILE = DATA_DIR / 'api_usage.json'
 
 # Daily API limit (Google Custom Search free tier = 100/day)
 DAILY_API_LIMIT = 100
-SEARCHES_PER_SCHOOL = 5  # Each school research uses 5 searches
+SEARCHES_PER_SCHOOL = 3  # Each school research uses 3 searches (D2-optimized)
 
 
 class APILimitReached(Exception):
@@ -107,16 +107,21 @@ def get_remaining_schools_today() -> int:
 HUMANIZE_SYSTEM_PROMPT = """You are Keelan Underwood, a 2026 offensive lineman from Florida (6'3", 295 lbs) writing emails to college coaches.
 
 WRITE EXACTLY LIKE THIS EXAMPLE:
-"Good Morning Coach Kelly, congrats on LSU's successful record this year at 10-1 and winning the national championship, I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're still in need of more offensive lineman for next season please check out my film I think I'd be a great fit for LSU!"
+"Good Morning Coach Kelly, congrats on LSU's 10-1 season, I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're looking to add offensive linemen for next season please check out my film, I think I'd be a great fit for LSU!"
 
 KEY RULES:
-1. Start with "Good Morning Coach [Name]," or "Good Afternoon Coach [Name],"
+1. Start with "Good Morning Coach [LAST NAME ONLY]," - NEVER use full names like "Coach John Smith", only "Coach Smith"
 2. Immediately congratulate them on something SPECIFIC (record, recent win, championship, etc.)
 3. Introduce yourself simply: "I'm Keelan Underwood a class of 2026 offensive lineman from Florida"
-4. Make a simple ask: "if you're still in need of more offensive lineman please check out my film"
+4. Make a simple ask: "if you're looking to add offensive linemen please check out my film"
 5. End with confidence: "I think I'd be a great fit for [School]!"
 
+CRITICAL GRAMMAR:
+- Use "offensive linemen" (plural) NOT "offensive lineman" when referring to the position group
+- Use "lineman" (singular) ONLY when referring to yourself specifically
+
 NEVER USE:
+- Full coach names like "Coach John Smith" - only use "Coach Smith"
 - "I hope this email finds you well"
 - "I am reaching out to"
 - "I wanted to express my interest"
@@ -130,12 +135,58 @@ KEEP IT SHORT - 2-3 sentences max after the greeting. Simple. Direct. Like a rea
 DO NOT include any signature - the signature will be added automatically.
 """
 
-# Standard email signature
+# Standard email signature with Hudl link
 EMAIL_SIGNATURE = """
 Keelan Underwood
 2026 OL | The Benjamin School
 6'3" 295 lbs | 3.0 GPA
+Film: https://www.hudl.com/profile/21702795/Keelan-Underwood
 910-747-1140"""
+
+
+def extract_last_name(full_name: str) -> str:
+    """
+    Extract the last name from a full name.
+    'Brayden Long' -> 'Long'
+    'John Smith Jr.' -> 'Smith'
+    'Coach Davis' -> 'Davis'
+    """
+    if not full_name or not full_name.strip():
+        return ""
+
+    name = full_name.strip()
+
+    # Remove common prefixes
+    prefixes = ['Coach ', 'Dr. ', 'Mr. ', 'Mrs. ', 'Ms. ']
+    for prefix in prefixes:
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+
+    # Remove common suffixes
+    suffixes = [' Jr.', ' Jr', ' Sr.', ' Sr', ' III', ' II', ' IV']
+    for suffix in suffixes:
+        if name.endswith(suffix):
+            name = name[:-len(suffix)]
+
+    # Split and get last part
+    parts = name.strip().split()
+    if len(parts) == 0:
+        return ""
+    elif len(parts) == 1:
+        return parts[0]
+    else:
+        return parts[-1]
+
+
+def validate_coach_name(name: str) -> bool:
+    """Check if a coach name is valid (not empty or placeholder)."""
+    if not name or not name.strip():
+        return False
+
+    name_lower = name.lower().strip()
+    invalid_names = ['coach', 'unknown', 'n/a', 'na', 'tbd', 'tba', '']
+
+    return name_lower not in invalid_names and len(name.strip()) > 1
 
 # ============================================================================
 # EMAIL MEMORY SYSTEM
@@ -255,6 +306,9 @@ class SchoolResearch:
     head_coach: str = ""
     ol_coach: str = ""
     recent_record: str = ""
+    conference_standing: str = ""  # D2: conference champs, playoff appearance, etc.
+    ol_depth_need: str = ""  # D2: graduating seniors, roster gaps
+    notable_academics: str = ""  # D2: known majors, academic programs
     recent_news: List[str] = field(default_factory=list)
     coach_quotes: List[str] = field(default_factory=list)
     notable_facts: List[str] = field(default_factory=list)
@@ -360,13 +414,11 @@ def research_school_deep(school_name: str, coach_name: str = "") -> SchoolResear
 
     logger.info(f"Researching {school_name}...")
 
-    # Search queries to gather info
+    # Search queries optimized for D2/smaller schools
     queries = [
-        f"{school_name} football 2024 season record",
-        f"{school_name} football offensive line coach 2024",
-        f"{school_name} football head coach quotes",
-        f"{school_name} football NFL draft offensive linemen",
-        f"{school_name} football recruiting news 2024 2025",
+        f"{school_name} football 2024 2025 season record conference",  # Record + conference standing
+        f"{school_name} football roster offensive line 2025",  # Roster/OL depth
+        f"{school_name} university academics majors programs",  # Notable academics
     ]
 
     all_results = []
@@ -385,7 +437,7 @@ def research_school_deep(school_name: str, coach_name: str = "") -> SchoolResear
         for r in all_results if r.get('snippet')
     ])[:4000]
 
-    # Use AI to extract and verify information
+    # Use AI to extract and verify information (optimized for D2/smaller schools)
     extract_prompt = f"""Analyze these search results about {school_name} football and extract VERIFIED facts only.
 
 SEARCH RESULTS:
@@ -395,14 +447,15 @@ Extract ONLY information that is clearly stated in the results. Do NOT make anyt
 If something is not mentioned, say "unknown".
 
 Respond in this exact format:
-DIVISION: [FBS/FCS/D2/D3 or unknown]
+DIVISION: [FBS/FCS/D2/D3/NAIA or unknown]
 CONFERENCE: [conference name or unknown]
 HEAD_COACH: [name or unknown]
 OL_COACH: [offensive line coach name or unknown]
 RECENT_RECORD: [2024 or recent record like "8-4" or unknown]
+CONFERENCE_STANDING: [conference champs, playoff appearance, bowl game, or unknown]
+OL_DEPTH_NEED: [number of senior OL graduating, OL roster size, or if they need OL help, or unknown]
+NOTABLE_ACADEMICS: [what the school is known for academically - engineering, business, nursing, etc. or unknown]
 NOTABLE_FACTS: [2-3 specific facts about the program, comma separated]
-NFL_LINEMEN: [any offensive linemen who went to NFL, or "none mentioned"]
-COACH_QUOTE: [any direct quote from a coach, or "none found"]
 """
 
     ai_response = query_ollama(extract_prompt, temperature=0.3)  # Low temp for accuracy
@@ -431,18 +484,22 @@ COACH_QUOTE: [any direct quote from a coach, or "none found"]
                 val = line.replace('RECENT_RECORD:', '').strip()
                 if val.lower() != 'unknown':
                     research.recent_record = val
+            elif line.startswith('CONFERENCE_STANDING:'):
+                val = line.replace('CONFERENCE_STANDING:', '').strip()
+                if val.lower() != 'unknown':
+                    research.conference_standing = val
+            elif line.startswith('OL_DEPTH_NEED:'):
+                val = line.replace('OL_DEPTH_NEED:', '').strip()
+                if val.lower() != 'unknown':
+                    research.ol_depth_need = val
+            elif line.startswith('NOTABLE_ACADEMICS:'):
+                val = line.replace('NOTABLE_ACADEMICS:', '').strip()
+                if val.lower() != 'unknown':
+                    research.notable_academics = val
             elif line.startswith('NOTABLE_FACTS:'):
                 val = line.replace('NOTABLE_FACTS:', '').strip()
                 if val.lower() != 'unknown' and val:
                     research.notable_facts = [f.strip() for f in val.split(',') if f.strip()]
-            elif line.startswith('NFL_LINEMEN:'):
-                val = line.replace('NFL_LINEMEN:', '').strip()
-                if val.lower() not in ['unknown', 'none mentioned', 'none']:
-                    research.ol_nfl_players = [val]
-            elif line.startswith('COACH_QUOTE:'):
-                val = line.replace('COACH_QUOTE:', '').strip()
-                if val.lower() not in ['unknown', 'none found', 'none']:
-                    research.coach_quotes = [val]
 
     research.verified = True
     research.last_updated = datetime.now().isoformat()
@@ -561,6 +618,17 @@ class EmailGenerator:
         Generate personalized email content using AI.
         Returns just the personalized paragraph(s), not the full email.
         """
+        # Validate and extract last name from coach name
+        if not validate_coach_name(coach_name):
+            logger.warning(f"Invalid coach name '{coach_name}' for {school} - using fallback")
+            return self._get_fallback_content(school, email_type, research or SchoolResearch(school_name=school)) + EMAIL_SIGNATURE
+
+        # Extract just the last name for email greeting
+        last_name = extract_last_name(coach_name)
+        if not last_name:
+            logger.warning(f"Could not extract last name from '{coach_name}' for {school} - using fallback")
+            return self._get_fallback_content(school, email_type, research or SchoolResearch(school_name=school)) + EMAIL_SIGNATURE
+
         memory = get_email_memory()
         previous_context = memory.get_context_summary(coach_email)
 
@@ -579,36 +647,45 @@ class EmailGenerator:
             school_context_parts.append(f"OL Coach: {research.ol_coach}")
         if research.recent_record:
             school_context_parts.append(f"Recent Record: {research.recent_record}")
+        if research.conference_standing:
+            school_context_parts.append(f"Conference Standing: {research.conference_standing}")
+        if research.ol_depth_need:
+            school_context_parts.append(f"OL Roster Need: {research.ol_depth_need}")
+        if research.notable_academics:
+            school_context_parts.append(f"School Known For: {research.notable_academics}")
         if research.notable_facts:
             school_context_parts.append(f"Notable Facts: {'; '.join(research.notable_facts[:3])}")
-        if research.ol_nfl_players:
-            school_context_parts.append(f"NFL OL: {', '.join(research.ol_nfl_players)}")
-        if research.coach_quotes:
-            school_context_parts.append(f"Coach Quote: \"{research.coach_quotes[0]}\"")
 
         school_context = "\n".join(school_context_parts) if school_context_parts else "Limited info available"
 
         # Different prompts for intro vs followup
         if email_type == 'intro':
-            user_prompt = f"""Write a SHORT email to Coach {coach_name} at {school}.
+            user_prompt = f"""Write a SHORT email to Coach {last_name} at {school}.
 
 SCHOOL INFO:
 {school_context}
 
 FORMAT - Follow this EXACT structure:
-"Good Morning Coach {coach_name}, [OPENING - see options below], I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're still in need of more offensive lineman for next season please check out my film I think I'd be a great fit for {school}!"
+"Good Morning Coach {last_name}, [OPENING - see options below], I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're looking to add offensive linemen for next season please check out my film, I think I'd be a great fit for {school}!"
 
-OPENING OPTIONS (pick the best one based on their situation):
-- If they had a GOOD season (7+ wins): "congrats on [their record/achievement]"
-- If they had a BAD season (under 7 wins): "excited to see what you're building at {school}" or "love the direction the program is heading"
-- If they have a NEW coach: "excited to see what you're building in your first/second year"
-- If they made a BIG hire or got good recruits: "congrats on [the hire/recruiting class]"
-- If nothing positive: just say "I've been looking at {school}'s program and I'm really interested"
+OPENING OPTIONS (pick the BEST one based on what info you have - be SPECIFIC):
+- If they WON their conference or made playoffs: "congrats on [winning the conference/making the playoffs]"
+- If they had a GOOD season (7+ wins): "congrats on the [their record] season"
+- If they NEED OL help (losing seniors, small roster): "I saw you might be looking to add depth on the offensive line"
+- If you know their ACADEMICS: "I'm interested in {school}'s [specific program - engineering, business, etc.] and the football program"
+- If they have a NEW coach: "excited to see what you're building in your first year"
+- If they had a rough season: "excited to see what you're building at {school}" (don't mention bad record)
+- LAST RESORT only: "I've been looking at {school}'s program and I'm really interested"
+
+CRITICAL RULES:
+- Use SPECIFIC info from above. Do NOT use generic phrases if you have real info.
+- Use "offensive linemen" (plural) when talking about the position group
+- Use ONLY the last name "{last_name}" - never the full name
 
 Keep it to ONE short paragraph. Be genuine, not fake."""
 
         elif email_type == 'followup_1':
-            user_prompt = f"""Write a SHORT follow-up email to Coach {coach_name} at {school}.
+            user_prompt = f"""Write a SHORT follow-up email to Coach {last_name} at {school}.
 
 PREVIOUS EMAIL:
 {previous_context}
@@ -617,14 +694,15 @@ SCHOOL INFO:
 {school_context}
 
 FORMAT - Follow this EXACT structure:
-"Good Morning Coach {coach_name}, just wanted to follow up on my last email, I saw [SPECIFIC THING - pick ONE: recent game result, player award, recruiting news, or coach quote] and I'm still very interested in {school}, please let me know if you've had a chance to check out my film!"
+"Good Morning Coach {last_name}, just wanted to follow up on my last email, I saw [SPECIFIC THING - pick ONE: recent game result, player award, recruiting news, or coach quote] and I'm still very interested in {school}, please let me know if you've had a chance to check out my film!"
 
 CRITICAL RULES:
-1. You MUST mention something SPECIFIC about {school} - a game, a player, a record, SOMETHING
-2. DO NOT just say "I wanted to follow up" with nothing specific
-3. Use the SCHOOL INFO above to find something specific to mention
-4. If you can't find anything specific, mention their conference or division
-5. Keep it to ONE paragraph
+1. Use ONLY the last name "{last_name}" - never the full name
+2. You MUST mention something SPECIFIC about {school} - a game, a player, a record, SOMETHING
+3. DO NOT just say "I wanted to follow up" with nothing specific
+4. Use the SCHOOL INFO above to find something specific to mention
+5. If you can't find anything specific, mention their conference or division
+6. Keep it to ONE paragraph
 
 Example good followup: "Good Morning Coach Smith, just wanted to follow up on my last email, I saw Ohio State beat Penn State 28-17 last week and the offensive line looked dominant, I'm still very interested in Ohio State, please let me know if you've had a chance to check out my film!"
 
@@ -633,7 +711,7 @@ Example BAD followup (DO NOT DO THIS): "I wanted to follow up on my previous ema
 Keep it SHORT but SPECIFIC."""
 
         else:  # followup_2
-            user_prompt = f"""Write a SHORT final follow-up email to Coach {coach_name} at {school}.
+            user_prompt = f"""Write a SHORT final follow-up email to Coach {last_name} at {school}.
 
 PREVIOUS EMAILS:
 {previous_context}
@@ -642,7 +720,9 @@ SCHOOL INFO:
 {school_context}
 
 FORMAT - Follow this structure:
-"Good Morning Coach {coach_name}, I know you're busy but I wanted to check in one more time about {school}, I've been working hard this offseason and would love the opportunity to show you what I can do, let me know if there's anything else you need from me!"
+"Good Morning Coach {last_name}, I know you're busy but I wanted to check in one more time about {school}, I've been working hard this offseason and would love the opportunity to show you what I can do, let me know if there's anything else you need from me!"
+
+CRITICAL: Use ONLY the last name "{last_name}" - never the full name.
 
 Keep it SHORT - one paragraph max."""
 
@@ -843,6 +923,17 @@ Keep it SHORT - one paragraph max."""
         content = re.sub(r'\bit am\b', 'it is', content, flags=re.IGNORECASE)
         content = re.sub(r'\bif it is not too much trouble\b', '', content, flags=re.IGNORECASE)
 
+        # Fix "offensive lineman" to "offensive linemen" when referring to the position group
+        # But keep "lineman" when referring to self ("I'm a... lineman")
+        # Pattern: "more offensive lineman" or "add offensive lineman" should be "linemen"
+        content = re.sub(r'\bmore offensive lineman\b', 'more offensive linemen', content, flags=re.IGNORECASE)
+        content = re.sub(r'\badd offensive lineman\b', 'add offensive linemen', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bneed offensive lineman\b', 'need offensive linemen', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bneed of offensive lineman\b', 'looking for offensive linemen', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bin need of more offensive lineman\b', 'looking to add offensive linemen', content, flags=re.IGNORECASE)
+        content = re.sub(r'\bstill in need of more offensive lineman\b', 'looking to add offensive linemen', content, flags=re.IGNORECASE)
+        content = re.sub(r"if you're still in need of more offensive lineman", "if you're looking to add offensive linemen", content, flags=re.IGNORECASE)
+
         # Remove sign-offs that shouldn't be in the personalized content
         signoff_patterns = [
             r'Best,?\s*\[?Your Name\]?\.?$',
@@ -997,12 +1088,12 @@ Keep it SHORT - one paragraph max."""
                 if record_match:
                     wins, losses = int(record_match.group(1)), int(record_match.group(2))
                     if wins > losses:
-                        return f"Good Morning Coach, congrats on {school}'s {research.recent_record} season, I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're still in need of more offensive lineman for next season please check out my film I think I'd be a great fit for {school}!"
-                return f"Good Morning Coach, excited to see what you're building at {school}, I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're still in need of more offensive lineman for next season please check out my film I think I'd be a great fit for {school}!"
+                        return f"Good Morning Coach, congrats on {school}'s {research.recent_record} season, I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're looking to add offensive linemen for next season please check out my film, I think I'd be a great fit for {school}!"
+                return f"Good Morning Coach, excited to see what you're building at {school}, I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're looking to add offensive linemen for next season please check out my film, I think I'd be a great fit for {school}!"
             elif research.conference:
-                return f"Good Morning Coach, I've been looking at {school}'s program in the {research.conference}, I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're still in need of more offensive lineman for next season please check out my film I think I'd be a great fit for {school}!"
+                return f"Good Morning Coach, I've been looking at {school}'s program in the {research.conference}, I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're looking to add offensive linemen for next season please check out my film, I think I'd be a great fit for {school}!"
             else:
-                return f"Good Morning Coach, I've been researching {school}'s program and I'm really interested, I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're still in need of more offensive lineman for next season please check out my film I think I'd be a great fit for {school}!"
+                return f"Good Morning Coach, I've been researching {school}'s program and I'm really interested, I'm Keelan Underwood a class of 2026 offensive lineman from Florida, if you're looking to add offensive linemen for next season please check out my film, I think I'd be a great fit for {school}!"
 
         elif email_type == 'followup_1':
             # Make followup specific with available info
