@@ -202,7 +202,7 @@ def generate_from_sheet(force_refresh: bool = False, limit: int = None):
     generator = get_email_generator()
 
     # Get schools needing research
-    need_research, has_research, _ = get_schools_needing_research()
+    need_research, has_research, has_emails = get_schools_needing_research()
 
     # Collect schools to process
     schools_to_process = []
@@ -214,8 +214,8 @@ def generate_from_sheet(force_refresh: bool = False, limit: int = None):
 
             school_key = school.lower().strip()
 
-            # Skip if already has good data (unless force refresh)
-            if not force_refresh and school_key in has_research:
+            # Skip if already has emails (unless force refresh)
+            if not force_refresh and school_key in has_emails:
                 continue
 
             # Get coach info

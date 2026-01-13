@@ -72,14 +72,15 @@ class DMRecord:
 
 class TwitterDMTracker:
     """
-    Tracks sent Twitter DMs to prevent duplicates.
+    Tracks sent Twitter DMs and follows to prevent duplicates.
     """
-    
+
     def __init__(self, storage_path: str = None):
         if storage_path is None:
             storage_path = os.path.expanduser("~/.coach_outreach/twitter_dms.json")
         self.storage_path = storage_path
         self.sent_dms: Dict[str, DMRecord] = {}
+        self.followed: Dict[str, dict] = {}  # Track followed handles
         self.daily_count: int = 0
         self.last_reset_date: str = ""
         self._load()
@@ -93,11 +94,12 @@ class TwitterDMTracker:
                     self.sent_dms = {
                         k: DMRecord(**v) for k, v in data.get('sent_dms', {}).items()
                     }
+                    self.followed = data.get('followed', {})
                     self.daily_count = data.get('daily_count', 0)
                     self.last_reset_date = data.get('last_reset_date', '')
             except Exception as e:
                 logger.error(f"Error loading DM tracker: {e}")
-        
+
         # Reset daily count if new day
         today = date.today().isoformat()
         if self.last_reset_date != today:
@@ -110,6 +112,7 @@ class TwitterDMTracker:
         os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
         data = {
             'sent_dms': {k: asdict(v) for k, v in self.sent_dms.items()},
+            'followed': self.followed,
             'daily_count': self.daily_count,
             'last_reset_date': self.last_reset_date,
         }
@@ -146,6 +149,31 @@ class TwitterDMTracker:
     def get_sent_list(self) -> List[DMRecord]:
         """Get list of all sent DMs."""
         return list(self.sent_dms.values())
+
+    def has_followed(self, handle: str) -> bool:
+        """Check if we've already followed this handle."""
+        handle = handle.lower().lstrip('@')
+        return handle in self.followed
+
+    def has_contacted(self, handle: str) -> bool:
+        """Check if we've already DM'd OR followed this handle."""
+        handle = handle.lower().lstrip('@')
+        return handle in self.sent_dms or handle in self.followed
+
+    def mark_followed(self, handle: str, school: str = '', coach_name: str = ''):
+        """Mark a handle as followed (without DM)."""
+        handle = handle.lower().lstrip('@')
+        self.followed[handle] = {
+            'handle': handle,
+            'school': school,
+            'coach_name': coach_name,
+            'followed_at': datetime.now().isoformat()
+        }
+        self._save()
+
+    def get_followed_list(self) -> List[dict]:
+        """Get list of all followed handles."""
+        return list(self.followed.values())
 
 
 # ============================================================================

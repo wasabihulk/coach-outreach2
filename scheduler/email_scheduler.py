@@ -31,6 +31,8 @@ import schedule
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional, List, Dict, Any, Callable, Tuple
+import hashlib
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -44,6 +46,90 @@ logger = logging.getLogger(__name__)
 
 # Path to pregenerated AI emails
 PREGENERATED_EMAILS_FILE = Path.home() / '.coach_outreach' / 'pregenerated_emails.json'
+TRACKING_FILE = Path.home() / '.coach_outreach' / 'email_tracking.json'
+
+
+def load_tracking_data() -> Dict[str, Any]:
+    """Load email tracking data to analyze open times."""
+    if TRACKING_FILE.exists():
+        try:
+            with open(TRACKING_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {'sent': {}, 'opens': {}}
+
+
+def save_tracking_data(data: Dict[str, Any]):
+    """Save email tracking data."""
+    try:
+        with open(TRACKING_FILE, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Failed to save tracking data: {e}")
+
+
+def generate_tracking_id(to_email: str, school: str) -> str:
+    """Generate unique tracking ID for an email."""
+    unique_str = f"{to_email}-{school}-{datetime.now().isoformat()}-{uuid.uuid4().hex[:8]}"
+    return hashlib.sha256(unique_str.encode()).hexdigest()[:16]
+
+
+def record_email_sent(tracking_id: str, to_email: str, school: str, coach: str, subject: str):
+    """Record a sent email in tracking data."""
+    tracking = load_tracking_data()
+    tracking['sent'][tracking_id] = {
+        'to': to_email,
+        'school': school,
+        'coach': coach,
+        'subject': subject,
+        'sent_at': datetime.now().isoformat()
+    }
+    tracking['opens'][tracking_id] = []
+    save_tracking_data(tracking)
+
+
+def get_optimal_send_hour() -> int:
+    """
+    Calculate the optimal hour to send emails based on open tracking data.
+    Returns hour (0-23) when coaches are most likely to open emails.
+    Sends 1 hour BEFORE peak to catch them at the right time.
+    """
+    tracking = load_tracking_data()
+    opens = tracking.get('opens', {})
+
+    if not opens:
+        # Default: 9 AM if no data
+        return 9
+
+    # Count opens by hour
+    hour_counts = {}
+    for tid, open_list in opens.items():
+        for o in open_list:
+            try:
+                opened_at = datetime.fromisoformat(o.get('opened_at', '').replace('Z', '+00:00'))
+                hour = opened_at.hour
+                hour_counts[hour] = hour_counts.get(hour, 0) + 1
+            except:
+                pass
+
+    if not hour_counts:
+        return 9  # Default
+
+    # Find peak hour
+    peak_hour = max(hour_counts, key=hour_counts.get)
+
+    # Send 1 hour before peak to land in inbox before they check
+    optimal_hour = (peak_hour - 1) % 24
+
+    # Clamp to reasonable hours (7 AM - 6 PM)
+    if optimal_hour < 7:
+        optimal_hour = 7
+    elif optimal_hour > 18:
+        optimal_hour = 18
+
+    logger.info(f"Smart timing: Peak opens at {peak_hour}:00, sending at {optimal_hour}:00")
+    return optimal_hour
 
 
 def load_pregenerated_emails() -> Dict[str, Any]:
@@ -124,8 +210,11 @@ class EmailSchedulerConfig:
     # Persistence
     state_file: str = "email_scheduler_state.json"
 
-    # AI Email Settings
-    ai_emails_per_cycle: int = 2  # Send 2 AI emails, then templates until cycle resets
+    # Per-Coach Settings
+    days_between_emails: int = 2  # Wait 2 days between emails to same coach
+
+    # Smart Timing - automatically calculated from email open tracking data
+    use_smart_timing: bool = True  # Use tracking data to determine optimal send time
 
 
 # ============================================================================
@@ -189,16 +278,15 @@ Best regards,
 # ============================================================================
 
 class SchedulerState:
-    """Manages persistent state for the scheduler."""
+    """Manages persistent state for the scheduler with per-coach tracking."""
 
     def __init__(self, state_file: str):
         self.state_file = state_file
-        self.sent_emails = {}  # email -> timestamp
         self.daily_count = 0
         self.last_reset = datetime.now().date().isoformat()
         self.errors = []
-        self.ai_emails_this_cycle = 0  # Track AI emails sent in current cycle
-        self.cycle_complete = False  # True when all schools have been contacted once
+        # Per-coach tracking: {email: {last_sent, ai_emails_sent: [list of types], last_type}}
+        self.coach_history = {}
         self._load()
 
     def _load(self):
@@ -207,12 +295,19 @@ class SchedulerState:
             try:
                 with open(self.state_file, 'r') as f:
                     data = json.load(f)
-                    self.sent_emails = data.get('sent_emails', {})
                     self.daily_count = data.get('daily_count', 0)
                     self.last_reset = data.get('last_reset', datetime.now().date().isoformat())
-                    self.errors = data.get('errors', [])[-100:]  # Keep last 100
-                    self.ai_emails_this_cycle = data.get('ai_emails_this_cycle', 0)
-                    self.cycle_complete = data.get('cycle_complete', False)
+                    self.errors = data.get('errors', [])[-100:]
+                    self.coach_history = data.get('coach_history', {})
+                    # Migrate old format if needed
+                    if 'sent_emails' in data and not self.coach_history:
+                        for email, timestamp in data['sent_emails'].items():
+                            self.coach_history[email.lower()] = {
+                                'last_sent': timestamp,
+                                'ai_emails_sent': ['intro'],
+                                'last_type': 'intro',
+                                'template_count': 0
+                            }
             except:
                 pass
 
@@ -221,16 +316,14 @@ class SchedulerState:
         try:
             with open(self.state_file, 'w') as f:
                 json.dump({
-                    'sent_emails': self.sent_emails,
                     'daily_count': self.daily_count,
                     'last_reset': self.last_reset,
                     'errors': self.errors[-100:],
-                    'ai_emails_this_cycle': self.ai_emails_this_cycle,
-                    'cycle_complete': self.cycle_complete,
+                    'coach_history': self.coach_history,
                 }, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save state: {e}")
-    
+
     def reset_daily_if_needed(self):
         """Reset daily count if it's a new day."""
         today = datetime.now().date().isoformat()
@@ -238,17 +331,73 @@ class SchedulerState:
             self.daily_count = 0
             self.last_reset = today
             self.save()
-    
-    def has_sent_to(self, email: str) -> bool:
-        """Check if we've already sent to this email."""
-        return email.lower() in self.sent_emails
-    
-    def mark_sent(self, email: str):
-        """Mark an email as sent."""
-        self.sent_emails[email.lower()] = datetime.now().isoformat()
+
+    def get_coach_history(self, email: str) -> Dict:
+        """Get history for a specific coach."""
+        return self.coach_history.get(email.lower(), {
+            'last_sent': None,
+            'ai_emails_sent': [],
+            'last_type': None,
+            'template_count': 0
+        })
+
+    def days_since_last_email(self, email: str) -> int:
+        """Get days since last email to this coach. Returns 999 if never emailed."""
+        history = self.get_coach_history(email)
+        if not history.get('last_sent'):
+            return 999  # Never emailed
+
+        try:
+            last_sent = datetime.fromisoformat(history['last_sent'])
+            return (datetime.now() - last_sent).days
+        except:
+            return 999
+
+    def can_email_coach(self, email: str, min_days: int = 2) -> bool:
+        """Check if enough days have passed to email this coach again."""
+        return self.days_since_last_email(email) >= min_days
+
+    def get_next_ai_email_type(self, email: str) -> str:
+        """Get the next AI email type to send to this coach."""
+        history = self.get_coach_history(email)
+        sent_types = history.get('ai_emails_sent', [])
+
+        # Order: intro -> followup_1 -> followup_2
+        if 'intro' not in sent_types:
+            return 'intro'
+        elif 'followup_1' not in sent_types:
+            return 'followup_1'
+        elif 'followup_2' not in sent_types:
+            return 'followup_2'
+        else:
+            return None  # All AI emails sent, use templates
+
+    def mark_email_sent(self, email: str, email_type: str, used_ai: bool):
+        """Record that an email was sent to this coach."""
+        email_lower = email.lower()
+        history = self.get_coach_history(email_lower)
+
+        history['last_sent'] = datetime.now().isoformat()
+        history['last_type'] = email_type
+
+        if used_ai:
+            if email_type not in history.get('ai_emails_sent', []):
+                history.setdefault('ai_emails_sent', []).append(email_type)
+        else:
+            history['template_count'] = history.get('template_count', 0) + 1
+
+        self.coach_history[email_lower] = history
         self.daily_count += 1
         self.save()
-    
+
+    def reset_coach_ai_cycle(self, email: str):
+        """Reset AI cycle for a coach (when new AI emails are generated)."""
+        email_lower = email.lower()
+        if email_lower in self.coach_history:
+            self.coach_history[email_lower]['ai_emails_sent'] = []
+            self.coach_history[email_lower]['template_count'] = 0
+            self.save()
+
     def add_error(self, email: str, error: str):
         """Record an error."""
         self.errors.append({
@@ -256,27 +405,6 @@ class SchedulerState:
             'error': error,
             'time': datetime.now().isoformat()
         })
-        self.save()
-
-    def increment_ai_count(self):
-        """Increment AI email count for this cycle."""
-        self.ai_emails_this_cycle += 1
-        self.save()
-
-    def should_use_ai(self, max_ai_per_cycle: int) -> bool:
-        """Check if we should use AI email (vs template) based on cycle."""
-        return self.ai_emails_this_cycle < max_ai_per_cycle
-
-    def reset_cycle(self):
-        """Reset the AI email cycle (called when all schools have been contacted)."""
-        self.ai_emails_this_cycle = 0
-        self.cycle_complete = False
-        self.save()
-
-    def mark_cycle_complete(self):
-        """Mark the current cycle as complete."""
-        self.cycle_complete = True
-        self.ai_emails_this_cycle = 0  # Reset for next cycle
         self.save()
 
 
@@ -317,11 +445,13 @@ class EmailSender:
         to_email: str,
         subject: str,
         body: str,
-        reply_to: str = None
+        reply_to: str = None,
+        school: str = '',
+        coach_name: str = ''
     ) -> Tuple[bool, str]:
         """
-        Send an email.
-        
+        Send an email with tracking pixel.
+
         Returns:
             Tuple of (success, error_message)
         """
@@ -329,24 +459,49 @@ class EmailSender:
             if not self._connection:
                 if not self.connect():
                     return False, "Not connected to SMTP"
-            
-            msg = MIMEMultipart()
+
+            # Generate tracking ID
+            tracking_id = generate_tracking_id(to_email, school)
+
+            # Get the app URL for tracking pixel
+            app_url = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
+            if app_url and not app_url.startswith('http'):
+                app_url = f"https://{app_url}"
+            if not app_url:
+                app_url = "https://coach-outreach.up.railway.app"
+
+            # Create HTML version with tracking pixel
+            html_body = f"""
+            <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">
+                {body.replace(chr(10), '<br>')}
+            </div>
+            <img src="{app_url}/api/track/open/{tracking_id}" width="1" height="1" style="display:none;" alt="">
+            """
+
+            # Create message with both plain and HTML
+            msg = MIMEMultipart('alternative')
             msg['From'] = self.config.email_address
             msg['To'] = to_email
             msg['Subject'] = subject
             if reply_to:
                 msg['Reply-To'] = reply_to
-            
+
+            # Attach plain text first, then HTML (email clients prefer the last one)
             msg.attach(MIMEText(body, 'plain'))
-            
+            msg.attach(MIMEText(html_body, 'html'))
+
             self._connection.sendmail(
                 self.config.email_address,
                 to_email,
                 msg.as_string()
             )
-            
+
+            # Record in tracking data
+            record_email_sent(tracking_id, to_email, school, coach_name, subject)
+            logger.info(f"Email sent to {to_email}, tracking: {tracking_id}")
+
             return True, ""
-            
+
         except smtplib.SMTPException as e:
             error = str(e)
             logger.error(f"SMTP error sending to {to_email}: {error}")
@@ -392,20 +547,39 @@ class EmailScheduler:
         """Start the scheduler in background."""
         if self._running:
             return True
-        
+
         self._running = True
-        
-        # Schedule daily job
-        schedule.every().day.at(self.config.send_time).do(self._run_daily_job)
-        
+
+        # Calculate optimal send time from tracking data
+        optimal_hour = get_optimal_send_hour()
+        send_time = f"{optimal_hour:02d}:00"
+
+        # Schedule daily job at optimal time
+        schedule.every().day.at(send_time).do(self._run_daily_job)
+
+        # Also schedule a daily recalculation of optimal time at midnight
+        schedule.every().day.at("00:01").do(self._update_schedule_time)
+
         # Start background thread
         self._thread = threading.Thread(target=self._scheduler_loop, daemon=True)
         self._thread.start()
-        
-        self._emit('started', {'time': self.config.send_time})
-        self.logger.info(f"Scheduler started, will run daily at {self.config.send_time}")
-        
+
+        self._emit('started', {'time': send_time, 'smart_timing': True})
+        self.logger.info(f"Scheduler started with smart timing, sending at {send_time} (based on open data)")
+
         return True
+
+    def _update_schedule_time(self):
+        """Recalculate optimal send time daily based on new tracking data."""
+        # Clear existing schedule and reschedule with updated optimal time
+        optimal_hour = get_optimal_send_hour()
+        new_send_time = f"{optimal_hour:02d}:00"
+
+        # Remove old job and add new one
+        schedule.clear('daily_email')
+        schedule.every().day.at(new_send_time).do(self._run_daily_job).tag('daily_email')
+
+        self.logger.info(f"Updated send time to {new_send_time} based on tracking data")
     
     def stop(self):
         """Stop the scheduler."""
@@ -423,33 +597,42 @@ class EmailScheduler:
         """Get scheduler status."""
         self.state.reset_daily_if_needed()
 
+        # Get smart timing info
+        optimal_hour = get_optimal_send_hour()
+        tracking_data = load_tracking_data()
+        total_opens = sum(len(opens) for opens in tracking_data.get('opens', {}).values())
+
         return {
             'enabled': self.config.enabled,
             'running': self._running,
-            'send_time': self.config.send_time,
+            'send_time': f"{optimal_hour:02d}:00",
+            'smart_timing': {
+                'enabled': self.config.use_smart_timing,
+                'optimal_hour': optimal_hour,
+                'total_opens_tracked': total_opens,
+                'status': 'Using tracked data' if total_opens > 0 else 'Using default (9 AM) - send more emails to gather data'
+            },
             'daily_sent': self.state.daily_count,
             'daily_limit': self.config.max_emails_per_day,
-            'total_sent': len(self.state.sent_emails),
+            'total_coaches_contacted': len(self.state.coach_history),
             'recent_errors': self.state.errors[-5:],
             'next_run': schedule.next_run().isoformat() if schedule.jobs else None,
-            'ai_emails_this_cycle': self.state.ai_emails_this_cycle,
-            'ai_emails_per_cycle': self.config.ai_emails_per_cycle,
-            'using_ai_emails': self.state.should_use_ai(self.config.ai_emails_per_cycle),
+            'days_between_emails': self.config.days_between_emails,
         }
     
     def get_pending_emails(self) -> List[Dict]:
-        """Get coaches who haven't been emailed yet."""
+        """Get coaches who are ready to receive an email (respects 2-day gap)."""
         if not self.sheets.connect():
             return []
-        
+
         try:
             data = self.sheets.get_all_data()
             if len(data) < 2:
                 return []
-            
+
             headers = data[0]
             rows = data[1:]
-            
+
             def find_col(keywords):
                 for i, h in enumerate(headers):
                     h_lower = h.lower()
@@ -457,7 +640,7 @@ class EmailScheduler:
                         if kw in h_lower:
                             return i
                 return -1
-            
+
             school_col = find_col(['school'])
             ol_name_col = find_col(['oline', 'ol coach'])
             rc_name_col = find_col(['recruiting'])
@@ -465,20 +648,18 @@ class EmailScheduler:
             rc_email_col = find_col(['rc email'])
             ol_contacted_col = find_col(['ol contacted'])
             rc_contacted_col = find_col(['rc contacted'])
-            
+
             pending = []
-            
+
             for row_idx, row in enumerate(rows):
                 school = row[school_col] if school_col >= 0 and school_col < len(row) else ''
                 ol_name = row[ol_name_col] if ol_name_col >= 0 and ol_name_col < len(row) else ''
                 rc_name = row[rc_name_col] if rc_name_col >= 0 and rc_name_col < len(row) else ''
                 ol_email = row[ol_email_col] if ol_email_col >= 0 and ol_email_col < len(row) else ''
                 rc_email = row[rc_email_col] if rc_email_col >= 0 and rc_email_col < len(row) else ''
-                ol_contacted = row[ol_contacted_col] if ol_contacted_col >= 0 and ol_contacted_col < len(row) else ''
-                rc_contacted = row[rc_contacted_col] if rc_contacted_col >= 0 and rc_contacted_col < len(row) else ''
-                
-                # OL pending?
-                if ol_email and not ol_contacted and not self.state.has_sent_to(ol_email):
+
+                # Check OL coach - ready if 2+ days since last email OR never emailed
+                if ol_email and self.state.can_email_coach(ol_email, self.config.days_between_emails):
                     pending.append({
                         'row': row_idx + 2,
                         'school': school,
@@ -487,9 +668,9 @@ class EmailScheduler:
                         'type': 'OL',
                         'contacted_col': ol_contacted_col + 1,
                     })
-                
-                # RC pending?
-                if rc_email and not rc_contacted and not self.state.has_sent_to(rc_email):
+
+                # Check RC - ready if 2+ days since last email OR never emailed
+                if rc_email and self.state.can_email_coach(rc_email, self.config.days_between_emails):
                     pending.append({
                         'row': row_idx + 2,
                         'school': school,
@@ -498,9 +679,9 @@ class EmailScheduler:
                         'type': 'RC',
                         'contacted_col': rc_contacted_col + 1,
                     })
-            
+
             return pending
-            
+
         finally:
             self.sheets.disconnect()
     
@@ -550,20 +731,26 @@ class EmailScheduler:
                 # Prepare email
                 last_name = coach['name'].split()[-1] if coach['name'] else 'Coach'
                 used_ai = False
+                email_type = 'intro'
 
-                # Try to get AI email first (if we haven't hit the cycle limit)
+                # Get the next AI email type for this coach (intro -> followup_1 -> followup_2)
+                next_ai_type = self.state.get_next_ai_email_type(coach['email'])
+
+                # Try to get AI email if there's a type available
                 ai_email = None
-                if self.state.should_use_ai(self.config.ai_emails_per_cycle):
-                    ai_email = get_ai_email_for_school(coach['school'], coach['name'], 'intro')
+                if next_ai_type:
+                    ai_email = get_ai_email_for_school(coach['school'], coach['name'], next_ai_type)
+                    if ai_email:
+                        email_type = next_ai_type
 
                 if ai_email:
                     # Use AI-generated email
                     subject = ai_email['subject']
                     body = ai_email['body']
                     used_ai = True
-                    self.logger.info(f"Using AI email for {coach['school']}")
+                    self.logger.info(f"Using AI email ({email_type}) for {coach['school']}")
                 else:
-                    # Fall back to template
+                    # Fall back to template - AI emails exhausted for this coach
                     if coach['type'] == 'RC':
                         subject = RC_SUBJECT.format(
                             grad_year=self.config.graduation_year,
@@ -601,17 +788,19 @@ class EmailScheduler:
                             highlight_url=self.config.highlight_url or "[HIGHLIGHT LINK]",
                             phone=self.config.phone or ""
                         )
-                    self.logger.info(f"Using template for {coach['school']}")
+                    email_type = 'template'
+                    self.logger.info(f"Using template for {coach['school']} (AI exhausted)")
                 
-                # Send
-                success, error = self.sender.send(coach['email'], subject, body)
+                # Send with tracking
+                success, error = self.sender.send(
+                    coach['email'], subject, body,
+                    school=coach['school'],
+                    coach_name=coach['name']
+                )
                 
                 if success:
-                    self.state.mark_sent(coach['email'])
-
-                    # Track AI email usage for cycling
-                    if used_ai:
-                        self.state.increment_ai_count()
+                    # Track this email for the coach (for 2-day gap and AI cycling)
+                    self.state.mark_email_sent(coach['email'], email_type, used_ai)
 
                     # Mark as contacted in sheet
                     self.sheets.update_cell(
@@ -623,11 +812,15 @@ class EmailScheduler:
                     sent += 1
                     self._emit('email_sent', {
                         'school': coach['school'],
-                        'type': coach['type'],
+                        'coach_type': coach['type'],
                         'email': coach['email'],
+                        'email_type': email_type,
                         'used_ai': used_ai
                     })
-                    self.logger.info(f"Sent to {coach['email']} (AI: {used_ai})")
+                    self.logger.info(f"Sent to {coach['email']} ({email_type}, AI: {used_ai})")
+
+                    # Short delay between emails to avoid spam filters
+                    time.sleep(self.config.delay_between_emails)
                 else:
                     self.state.add_error(coach['email'], error)
                     errors += 1
@@ -636,27 +829,18 @@ class EmailScheduler:
                         'email': coach['email'],
                         'error': error
                     })
-                
-                # Rate limit delay
-                time.sleep(self.config.delay_between_emails)
-            
+
         except Exception as e:
             self.logger.error(f"Job error: {e}")
             errors += 1
         finally:
             self.sender.disconnect()
             self.sheets.disconnect()
-        
-        # Check if we've completed a full cycle (no more pending)
-        remaining_pending = self.get_pending_emails()
-        if not remaining_pending:
-            self.logger.info("All schools contacted! Resetting AI email cycle.")
-            self.state.reset_cycle()
 
         self._emit('job_completed', {'sent': sent, 'errors': errors})
         self.logger.info(f"Daily job complete: sent={sent}, errors={errors}")
 
-        return {'sent': sent, 'errors': errors, 'ai_emails_this_cycle': self.state.ai_emails_this_cycle}
+        return {'sent': sent, 'errors': errors}
     
     def _emit(self, event: str, data: Dict):
         """Emit event to callbacks."""

@@ -26,6 +26,7 @@ gunicorn>=21.0.0  # Production server for Railway/Render
 # Utilities
 requests>=2.31.0
 python-dotenv>=1.0.0  # Load .env files for local development
+schedule>=1.2.0  # For email scheduling
 
 # Clipboard (for Twitter DM helper)
 pyperclip>=1.8.0

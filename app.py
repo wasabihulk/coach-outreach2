@@ -1331,30 +1331,21 @@ HTML_TEMPLATE = '''
             
             <!-- EMAIL PAGE -->
             <div id="page-email" class="page">
-                <!-- EMAIL CONTROLS BANNER - TOP OF PAGE -->
-                <div id="email-controls-banner" style="background:linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 4px 15px rgba(231,76,60,0.3);">
-                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
-                        <div style="color:white;">
-                            <div style="font-size:18px;font-weight:bold;">⚙️ EMAIL CONTROLS</div>
-                            <div id="email-mode-status" style="font-size:14px;margin-top:4px;opacity:0.9;">Loading status...</div>
-                        </div>
-                        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
-                            <!-- Holiday Mode -->
-                            <div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.15);padding:10px 16px;border-radius:8px;">
-                                <span style="font-size:15px;color:white;">🎄 Holiday Mode</span>
-                                <label class="toggle">
-                                    <input type="checkbox" id="holiday-mode-toggle" onchange="toggleHolidayMode(this.checked)">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                            </div>
-                            <!-- Pause Until -->
-                            <div style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.15);padding:10px 16px;border-radius:8px;">
-                                <span style="font-size:15px;color:white;">⏸️ Pause Until</span>
-                                <input type="date" id="pause-until-date" style="padding:8px 12px;border-radius:6px;border:none;background:white;color:#333;font-size:14px;">
-                                <button class="btn btn-sm" style="background:white;color:#c0392b;font-weight:bold;" onclick="setPauseDate()">Set</button>
-                                <button class="btn btn-sm" id="resume-btn" onclick="resumeEmails()" style="display:none;background:#27ae60;color:white;font-weight:bold;">Resume Now</button>
-                            </div>
-                        </div>
+                <!-- Email Controls - Subtle inline settings -->
+                <div id="email-controls-banner" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;margin-bottom:12px;background:var(--bg3);border-radius:6px;font-size:13px;">
+                    <span id="email-mode-status" style="color:var(--muted);">Loading...</span>
+                    <div style="display:flex;gap:12px;align-items:center;">
+                        <label style="display:flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;">
+                            <input type="checkbox" id="holiday-mode-toggle" onchange="toggleHolidayMode(this.checked)" style="width:14px;height:14px;">
+                            Holiday Mode
+                        </label>
+                        <span style="color:var(--border);">|</span>
+                        <label style="display:flex;align-items:center;gap:6px;color:var(--muted);">
+                            Pause until:
+                            <input type="date" id="pause-until-date" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:12px;">
+                            <button class="btn btn-sm" style="padding:4px 8px;font-size:11px;" onclick="setPauseDate()">Set</button>
+                            <button class="btn btn-sm" id="resume-btn" onclick="resumeEmails()" style="display:none;padding:4px 8px;font-size:11px;background:var(--success);">Resume</button>
+                        </label>
                     </div>
                 </div>
 
@@ -1440,13 +1431,36 @@ HTML_TEMPLATE = '''
                 </div>
 
                 <div class="card">
+                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                        AI Email Generator
+                        <button class="btn btn-sm btn-outline" onclick="loadAIEmailStatus()">Refresh</button>
+                    </div>
+                    <div id="ai-email-status" class="mb-4 p-2" style="background:var(--bg3);border-radius:6px;font-size:13px;">
+                        <div>Schools in spreadsheet: <span id="ai-total-schools">-</span></div>
+                        <div>With AI emails: <span id="ai-with-emails">-</span></div>
+                        <div>Needing AI emails: <span id="ai-needing-emails">-</span></div>
+                        <div>API calls remaining today: <span id="ai-api-remaining">-</span></div>
+                    </div>
+                    <p class="text-sm text-muted mb-2">Generate personalized AI emails for schools from your spreadsheet. Uses Ollama + Google Search to research each school.</p>
+                    <div class="form-group">
+                        <label>Schools to generate (max per run)</label>
+                        <input type="number" id="ai-email-limit" value="5" min="1" max="20">
+                    </div>
+                    <div class="flex gap-2 mb-4">
+                        <button class="btn btn-outline" onclick="loadAIEmailSchools()">View Schools</button>
+                        <button class="btn btn-success" onclick="generateAIEmails()">Generate AI Emails</button>
+                    </div>
+                    <div id="ai-email-schools" style="max-height:300px;overflow-y:auto;font-size:13px;"></div>
+                </div>
+
+                <div class="card">
                     <div class="card-header">Follow-up Queue</div>
                     <div id="followup-queue">
                         <p class="text-muted text-sm">No follow-ups due</p>
                     </div>
                 </div>
             </div>
-            
+
             <!-- DMS PAGE -->
             <div id="page-dms" class="page">
                 <div class="stats">
@@ -1757,7 +1771,7 @@ HTML_TEMPLATE = '''
         function loadPageData(page) {
             if (page === 'home') loadDashboard();
             if (page === 'find') initSchoolSearch();
-            if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); }
+            if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); loadAIEmailStatus(); }
             if (page === 'dms') { loadDMQueue(); loadTemplates('dm'); }
             if (page === 'track') loadTrackStats();
         }
@@ -3058,7 +3072,140 @@ HTML_TEMPLATE = '''
                 loadEmailPage();
             } catch(e) { showToast('Failed to send', 'error'); }
         }
-        
+
+        // ========== AI EMAIL GENERATOR FUNCTIONS ==========
+
+        async function loadAIEmailStatus() {
+            try {
+                // Load schools from spreadsheet
+                const schoolsRes = await fetch('/api/ai-emails/schools');
+                const schoolsData = await schoolsRes.json();
+
+                if (schoolsData.success) {
+                    document.getElementById('ai-total-schools').textContent = schoolsData.total || 0;
+                    document.getElementById('ai-with-emails').textContent = schoolsData.with_ai_emails || 0;
+                    document.getElementById('ai-needing-emails').textContent = schoolsData.needing_ai_emails || 0;
+                }
+
+                // Load API status
+                const statusRes = await fetch('/api/ai-emails/status');
+                const statusData = await statusRes.json();
+
+                if (statusData.success && statusData.api_usage) {
+                    document.getElementById('ai-api-remaining').textContent = statusData.api_usage.remaining_schools || 0;
+                }
+            } catch(e) { console.error('AI email status error:', e); }
+        }
+
+        async function loadAIEmailSchools() {
+            const el = document.getElementById('ai-email-schools');
+            el.innerHTML = '<p class="text-muted">Loading schools from spreadsheet...</p>';
+
+            try {
+                const res = await fetch('/api/ai-emails/schools');
+                const data = await res.json();
+
+                if (!data.success) {
+                    el.innerHTML = `<p class="text-danger">${data.error}</p>`;
+                    return;
+                }
+
+                if (!data.schools || data.schools.length === 0) {
+                    el.innerHTML = '<p class="text-muted">No schools with email addresses in spreadsheet</p>';
+                    return;
+                }
+
+                el.innerHTML = `
+                    <table style="width:100%;font-size:12px;">
+                        <tr style="background:var(--bg3);"><th style="padding:6px;">School</th><th>Coach</th><th>AI Email</th><th></th></tr>
+                        ${data.schools.slice(0, 50).map(s => `
+                            <tr style="border-bottom:1px solid var(--border);">
+                                <td style="padding:6px;">${s.school}</td>
+                                <td>${s.rc_name || s.ol_name || 'Coach'}</td>
+                                <td>${s.has_ai_email ? '<span style="color:var(--success);">Yes</span>' : '<span style="color:var(--warning);">No</span>'}</td>
+                                <td>
+                                    ${s.has_ai_email
+                                        ? `<button class="btn btn-sm btn-outline" onclick="previewAIEmail('${s.school.replace(/'/g, "\\'")}')">Preview</button>`
+                                        : `<button class="btn btn-sm" onclick="generateOneAIEmail('${s.school.replace(/'/g, "\\'")}')">Generate</button>`
+                                    }
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                    ${data.schools.length > 50 ? `<p class="text-muted mt-2">Showing 50 of ${data.schools.length} schools</p>` : ''}
+                `;
+            } catch(e) {
+                el.innerHTML = `<p class="text-danger">Error: ${e.message}</p>`;
+            }
+        }
+
+        async function generateAIEmails() {
+            const limit = parseInt(document.getElementById('ai-email-limit').value) || 5;
+            showToast(`Generating AI emails for ${limit} schools...`);
+
+            try {
+                const res = await fetch('/api/ai-emails/generate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ limit })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    if (data.count > 0) {
+                        showToast(`Generated AI emails for ${data.count} schools!`, 'success');
+                    } else {
+                        showToast('No new schools to generate emails for', 'info');
+                    }
+                    loadAIEmailStatus();
+                    loadAIEmailSchools();
+                } else {
+                    showToast(data.error || 'Generation failed', 'error');
+                }
+            } catch(e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        }
+
+        async function generateOneAIEmail(school) {
+            showToast(`Generating AI email for ${school}...`);
+
+            try {
+                const res = await fetch('/api/ai-emails/generate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ school, limit: 1 })
+                });
+                const data = await res.json();
+
+                if (data.success && data.count > 0) {
+                    showToast(`Generated AI email for ${school}!`, 'success');
+                    loadAIEmailStatus();
+                    loadAIEmailSchools();
+                } else {
+                    showToast(data.error || 'Generation failed', 'error');
+                }
+            } catch(e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        }
+
+        async function previewAIEmail(school) {
+            try {
+                const res = await fetch(`/api/ai-emails/preview/${encodeURIComponent(school)}`);
+                const data = await res.json();
+
+                if (data.success && data.emails && data.emails.length > 0) {
+                    const email = data.emails[0];
+                    alert(`AI Email Preview for ${school}\\n\\n${email.content}\\n\\n---\\nResearch: ${email.research_used ? 'Yes' : 'No'}\\nGenerated: ${email.generated_at}`);
+                } else {
+                    showToast(data.error || 'No preview available', 'error');
+                }
+            } catch(e) {
+                showToast('Preview error: ' + e.message, 'error');
+            }
+        }
+
         // Refresh DM queue (Fix #12)
         function refreshDMQueue() {
             loadDMQueue();
@@ -4475,7 +4622,7 @@ def api_dm_queue():
     sheet = get_sheet()
     if not sheet:
         return jsonify({'queue': [], 'sent': 0, 'no_handle': 0, 'replied': 0})
-    
+
     try:
         data = sheet.get_all_values()
         if len(data) < 2:
@@ -4713,7 +4860,7 @@ def api_dm_mark():
     school = data.get('school', '')
     twitter = data.get('twitter', '').lower().strip().lstrip('@')
     status = data.get('status', 'messaged')  # 'messaged', 'followed', 'skipped'
-    
+
     sheet = get_sheet()
     if not sheet:
         return jsonify({'success': False, 'error': 'Sheet not connected'})
@@ -6688,6 +6835,282 @@ def api_hooks_for_school(school):
         return jsonify({'success': False, 'error': str(e)})
 
 
+# ============================================================================
+# AI EMAIL GENERATION FROM SPREADSHEET
+# ============================================================================
+
+@app.route('/api/ai-emails/schools')
+def api_ai_emails_schools():
+    """Get schools from spreadsheet that can have AI emails generated."""
+    sheet = get_sheet()
+    if not sheet:
+        return jsonify({'success': False, 'error': 'Google Sheet not connected'})
+
+    try:
+        data = sheet.get_all_values()
+        if len(data) < 2:
+            return jsonify({'success': True, 'schools': [], 'message': 'No data in sheet'})
+
+        headers = [h.lower() for h in data[0]]
+        rows = data[1:]
+
+        def find_col(keywords):
+            for i, h in enumerate(headers):
+                for kw in keywords:
+                    if kw in h:
+                        return i
+            return -1
+
+        school_col = find_col(['school'])
+        rc_name_col = find_col(['recruiting coordinator', 'rc name'])
+        rc_email_col = find_col(['rc email'])
+        ol_name_col = find_col(['oline coach', 'ol coach', 'position coach'])
+        ol_email_col = find_col(['oc email', 'ol email'])
+
+        # Check which schools already have AI emails
+        existing_schools = set()
+        try:
+            from enterprise.email_generator import get_email_generator
+            generator = get_email_generator()
+            existing_schools = set(s.lower() for s in generator.pregenerated.keys())
+        except:
+            pass
+
+        schools = []
+        for row in rows:
+            def get_val(col):
+                return row[col].strip() if col >= 0 and col < len(row) else ''
+
+            school = get_val(school_col)
+            if not school:
+                continue
+
+            rc_email = get_val(rc_email_col)
+            rc_name = get_val(rc_name_col) or 'Coach'
+            ol_email = get_val(ol_email_col)
+            ol_name = get_val(ol_name_col) or 'Coach'
+
+            has_email = (rc_email and '@' in rc_email) or (ol_email and '@' in ol_email)
+            has_ai_email = school.lower() in existing_schools
+
+            if has_email:
+                schools.append({
+                    'school': school,
+                    'rc_name': rc_name,
+                    'rc_email': rc_email,
+                    'ol_name': ol_name,
+                    'ol_email': ol_email,
+                    'has_ai_email': has_ai_email
+                })
+
+        return jsonify({
+            'success': True,
+            'schools': schools,
+            'total': len(schools),
+            'with_ai_emails': sum(1 for s in schools if s['has_ai_email']),
+            'needing_ai_emails': sum(1 for s in schools if not s['has_ai_email'])
+        })
+    except Exception as e:
+        logger.error(f"Error getting AI email schools: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/ai-emails/generate', methods=['POST'])
+def api_ai_emails_generate():
+    """Generate AI emails for schools from spreadsheet."""
+    data = request.get_json() or {}
+    school_name = data.get('school')  # Optional: specific school
+    limit = data.get('limit', 5)  # Max schools to process
+
+    sheet = get_sheet()
+    if not sheet:
+        return jsonify({'success': False, 'error': 'Google Sheet not connected'})
+
+    try:
+        from enterprise.email_generator import get_email_generator, APILimitReached, get_remaining_schools_today
+        generator = get_email_generator()
+
+        # Check API limits
+        remaining = get_remaining_schools_today()
+        if remaining == 0:
+            return jsonify({
+                'success': False,
+                'error': 'Daily API limit reached. Try again tomorrow.',
+                'remaining_schools': 0
+            })
+
+        sheet_data = sheet.get_all_values()
+        if len(sheet_data) < 2:
+            return jsonify({'success': False, 'error': 'No data in sheet'})
+
+        headers = [h.lower() for h in sheet_data[0]]
+        rows = sheet_data[1:]
+
+        def find_col(keywords):
+            for i, h in enumerate(headers):
+                for kw in keywords:
+                    if kw in h:
+                        return i
+            return -1
+
+        school_col = find_col(['school'])
+        rc_name_col = find_col(['recruiting coordinator', 'rc name'])
+        rc_email_col = find_col(['rc email'])
+        ol_name_col = find_col(['oline coach', 'ol coach', 'position coach'])
+        ol_email_col = find_col(['oc email', 'ol email'])
+
+        generated = []
+        errors = []
+
+        # Process limit to API remaining
+        actual_limit = min(limit, remaining)
+        processed = 0
+
+        for row in rows:
+            if processed >= actual_limit:
+                break
+
+            def get_val(col):
+                return row[col].strip() if col >= 0 and col < len(row) else ''
+
+            school = get_val(school_col)
+            if not school:
+                continue
+
+            # If specific school requested, skip others
+            if school_name and school.lower() != school_name.lower():
+                continue
+
+            # Skip if already has AI email
+            if school.lower() in [s.lower() for s in generator.pregenerated.keys()]:
+                continue
+
+            rc_email = get_val(rc_email_col)
+            rc_name = get_val(rc_name_col) or 'Coach'
+            ol_email = get_val(ol_email_col)
+            ol_name = get_val(ol_name_col) or 'Coach'
+
+            # Use RC email if available, otherwise OL
+            if rc_email and '@' in rc_email:
+                coach_email = rc_email
+                coach_name = rc_name
+            elif ol_email and '@' in ol_email:
+                coach_email = ol_email
+                coach_name = ol_name
+            else:
+                continue  # No valid email
+
+            try:
+                emails = generator.pregenerate_for_school(
+                    school=school,
+                    coach_name=coach_name,
+                    coach_email=coach_email,
+                    num_emails=2
+                )
+                generated.append({
+                    'school': school,
+                    'coach': coach_name,
+                    'emails_generated': len(emails)
+                })
+                processed += 1
+                logger.info(f"Generated AI emails for {school}")
+            except APILimitReached as e:
+                errors.append(f"API limit reached after {school}")
+                break
+            except Exception as e:
+                errors.append(f"{school}: {str(e)}")
+                logger.error(f"Error generating for {school}: {e}")
+
+        return jsonify({
+            'success': True,
+            'generated': generated,
+            'count': len(generated),
+            'errors': errors,
+            'remaining_schools': get_remaining_schools_today()
+        })
+    except ImportError as e:
+        return jsonify({'success': False, 'error': f'AI email module not available: {e}'})
+    except Exception as e:
+        logger.error(f"Error generating AI emails: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/ai-emails/status')
+def api_ai_emails_status():
+    """Get AI email generation status."""
+    try:
+        from enterprise.email_generator import (
+            get_email_generator, get_api_usage_today,
+            get_remaining_api_calls, get_remaining_schools_today,
+            DAILY_API_LIMIT
+        )
+
+        generator = get_email_generator()
+        stats = generator.get_stats()
+
+        return jsonify({
+            'success': True,
+            'stats': stats,
+            'api_usage': {
+                'used_today': get_api_usage_today(),
+                'limit': DAILY_API_LIMIT,
+                'remaining_calls': get_remaining_api_calls(),
+                'remaining_schools': get_remaining_schools_today()
+            }
+        })
+    except ImportError:
+        return jsonify({
+            'success': True,
+            'stats': {'schools_with_emails': 0, 'total_pregenerated': 0},
+            'note': 'AI email module not available'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/ai-emails/preview/<school>')
+def api_ai_emails_preview(school):
+    """Preview AI-generated emails for a school."""
+    try:
+        from enterprise.email_generator import get_email_generator
+        generator = get_email_generator()
+
+        # Get pregenerated emails for this school
+        emails = generator.pregenerated.get(school.lower(), [])
+        if not emails:
+            # Try exact match
+            for key in generator.pregenerated.keys():
+                if key.lower() == school.lower():
+                    emails = generator.pregenerated[key]
+                    break
+
+        if not emails:
+            return jsonify({
+                'success': False,
+                'error': f'No AI emails found for {school}',
+                'hint': 'Generate AI emails first using /api/ai-emails/generate'
+            })
+
+        return jsonify({
+            'success': True,
+            'school': school,
+            'emails': [
+                {
+                    'type': e.email_type,
+                    'coach_name': e.coach_name,
+                    'content': e.personalized_content,
+                    'research_used': e.research_used,
+                    'generated_at': e.generated_at,
+                    'used': e.used
+                } for e in emails
+            ]
+        })
+    except ImportError:
+        return jsonify({'success': False, 'error': 'AI email module not available'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/api/followups/due')
 def api_followups_due():
     """Get due follow-ups."""
@@ -7100,21 +7523,23 @@ def api_twitter_send_dm():
     data = request.get_json() or {}
     handle = data.get('handle', '').strip().lstrip('@')
     message = data.get('message', '')
-    
+    school = data.get('school', '')
+    coach_name = data.get('coach_name', '')
+
     if not handle or not message:
         return jsonify({'success': False, 'error': 'Handle and message required'})
-    
+
     if len(message) > 500:
         return jsonify({'success': False, 'error': 'Message too long (max 500 chars)'})
-    
+
     try:
         from outreach.twitter_sender import get_twitter_sender
         sender = get_twitter_sender()
-        
+
         if not sender.check_logged_in():
             return jsonify({'success': False, 'error': 'Not logged in to Twitter'})
-        
-        success = sender.send_dm(handle, message)
+
+        success = sender.send_dm(handle, message, school=school, coach_name=coach_name)
         if success:
             return jsonify({'success': True})
         return jsonify({'success': False, 'error': 'Failed to send DM'})
