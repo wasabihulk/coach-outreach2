@@ -1578,6 +1578,17 @@ HTML_TEMPLATE = '''
             <div id="page-track" class="page">
                 <div class="card-header" style="margin-bottom:16px;">📊 Stats Dashboard</div>
 
+                <!-- Backfill Notice -->
+                <div id="backfill-notice" class="card mb-4" style="background:#2c2a1e;border:1px solid #e67e22;display:none;">
+                    <div style="padding:15px;display:flex;align-items:center;justify-content:space-between;">
+                        <div>
+                            <strong style="color:#e67e22;">Missing Tracking Data?</strong>
+                            <p class="text-sm text-muted mb-0">If you sent emails before tracking was added, click to import them from your sheet.</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="backfillTracking()">Import Sent Emails</button>
+                    </div>
+                </div>
+
                 <!-- Key Metrics Row -->
                 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
                     <div class="card" style="text-align:center;padding:20px;">
@@ -1836,6 +1847,14 @@ HTML_TEMPLATE = '''
                 const res = await fetch('/api/tracking/stats');
                 const data = await res.json();
 
+                // Show backfill notice if tracking is empty but sheet has contacts
+                const backfillNotice = document.getElementById('backfill-notice');
+                if (backfillNotice && data.total_sent === 0) {
+                    backfillNotice.style.display = 'block';
+                } else if (backfillNotice) {
+                    backfillNotice.style.display = 'none';
+                }
+
                 // Update open rate stat
                 document.getElementById('stat-opens').textContent = (data.open_rate || 0) + '%';
 
@@ -1883,6 +1902,27 @@ HTML_TEMPLATE = '''
                     bestTimeEl.innerHTML = 'Send more emails to discover best times';
                 }
             } catch(e) { console.error(e); }
+        }
+
+        async function backfillTracking() {
+            if (!confirm('This will import all contacted coaches from your sheet into tracking. Continue?')) {
+                return;
+            }
+            showToast('Importing sent emails...');
+            try {
+                const res = await fetch('/api/tracking/backfill', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`Imported ${data.backfilled} emails! Total tracked: ${data.total_tracked}`, 'success');
+                    document.getElementById('backfill-notice').style.display = 'none';
+                    loadTrackingStats();
+                    loadDashboard();
+                } else {
+                    showToast(data.error || 'Import failed', 'error');
+                }
+            } catch(e) {
+                showToast('Import failed: ' + e.message, 'error');
+            }
         }
 
         async function loadTomorrowPreview() {
@@ -4176,6 +4216,108 @@ def smart_send_times():
         'recommendation': recommendation,
         'total_opens_analyzed': sum(hour_counts.values())
     })
+
+
+@app.route('/api/tracking/backfill', methods=['POST'])
+def api_tracking_backfill():
+    """Backfill tracking data from coaches already marked as contacted in the sheet."""
+    try:
+        sheet = get_sheet()
+        if not sheet:
+            return jsonify({'success': False, 'error': 'Sheet not connected'})
+
+        all_data = sheet.get_all_values()
+        if len(all_data) < 2:
+            return jsonify({'success': False, 'error': 'No data in sheet'})
+
+        headers = [h.lower().strip() for h in all_data[0]]
+        rows = all_data[1:]
+
+        def find_col(keywords):
+            for i, h in enumerate(headers):
+                for kw in keywords:
+                    if kw in h:
+                        return i
+            return -1
+
+        school_col = find_col(['school'])
+        rc_name_col = find_col(['recruiting coordinator'])
+        rc_email_col = find_col(['rc email'])
+        rc_contacted_col = find_col(['rc contacted'])
+        ol_name_col = find_col(['oline coach', 'oline'])
+        ol_email_col = find_col(['oc email'])
+        ol_contacted_col = find_col(['ol contacted'])
+
+        backfilled = 0
+        existing = 0
+
+        # Check if this email is already in tracking
+        tracked_emails = {info.get('to', '').lower() for info in email_tracking['sent'].values()}
+
+        for row in rows:
+            school = row[school_col] if school_col >= 0 and school_col < len(row) else ''
+            if not school:
+                continue
+
+            # Check RC
+            if rc_email_col >= 0 and rc_email_col < len(row):
+                rc_email = row[rc_email_col].strip()
+                rc_contacted = row[rc_contacted_col].strip() if rc_contacted_col >= 0 and rc_contacted_col < len(row) else ''
+                rc_name = row[rc_name_col] if rc_name_col >= 0 and rc_name_col < len(row) else 'Coach'
+
+                if rc_email and '@' in rc_email and rc_contacted:
+                    if rc_email.lower() not in tracked_emails:
+                        tracking_id = generate_tracking_id(rc_email, school)
+                        email_tracking['sent'][tracking_id] = {
+                            'to': rc_email,
+                            'school': school,
+                            'coach': rc_name,
+                            'subject': 'Intro Email (backfilled)',
+                            'sent_at': rc_contacted,
+                            'template_id': 'backfill'
+                        }
+                        email_tracking['opens'][tracking_id] = []
+                        tracked_emails.add(rc_email.lower())
+                        backfilled += 1
+                    else:
+                        existing += 1
+
+            # Check OL
+            if ol_email_col >= 0 and ol_email_col < len(row):
+                ol_email = row[ol_email_col].strip()
+                ol_contacted = row[ol_contacted_col].strip() if ol_contacted_col >= 0 and ol_contacted_col < len(row) else ''
+                ol_name = row[ol_name_col] if ol_name_col >= 0 and ol_name_col < len(row) else 'Coach'
+
+                if ol_email and '@' in ol_email and ol_contacted:
+                    if ol_email.lower() not in tracked_emails:
+                        tracking_id = generate_tracking_id(ol_email, school)
+                        email_tracking['sent'][tracking_id] = {
+                            'to': ol_email,
+                            'school': school,
+                            'coach': ol_name,
+                            'subject': 'Intro Email (backfilled)',
+                            'sent_at': ol_contacted,
+                            'template_id': 'backfill'
+                        }
+                        email_tracking['opens'][tracking_id] = []
+                        tracked_emails.add(ol_email.lower())
+                        backfilled += 1
+                    else:
+                        existing += 1
+
+        # Save the backfilled data
+        save_tracking()
+
+        return jsonify({
+            'success': True,
+            'backfilled': backfilled,
+            'already_tracked': existing,
+            'total_tracked': len(email_tracking['sent'])
+        })
+
+    except Exception as e:
+        logger.error(f"Backfill error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 
 @app.route('/api/deployment-info')
@@ -6899,12 +7041,46 @@ def api_email_send():
                 if use_gmail_api:
                     success = send_email_gmail_api(coach_email, subject, body, email_addr, school=coach['school'], coach_name=coach['name'], template_id=template.id)
                 else:
-                    msg = MIMEMultipart()
+                    # SMTP fallback with tracking
+                    tracking_id = generate_tracking_id(coach_email, coach['school'])
+
+                    # Get app URL for tracking pixel
+                    app_url = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
+                    if app_url and not app_url.startswith('http'):
+                        app_url = f"https://{app_url}"
+                    if not app_url:
+                        app_url = "https://coach-outreach.up.railway.app"
+
+                    # Create HTML version with tracking pixel
+                    html_body = f"""
+                    <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">
+                        {body.replace(chr(10), '<br>')}
+                    </div>
+                    <img src="{app_url}/api/track/open/{tracking_id}" width="1" height="1" style="display:none;" alt="">
+                    """
+
+                    msg = MIMEMultipart('alternative')
                     msg['From'] = email_addr
                     msg['To'] = coach_email
                     msg['Subject'] = subject
                     msg.attach(MIMEText(body, 'plain'))
+                    msg.attach(MIMEText(html_body, 'html'))
                     smtp.sendmail(email_addr, coach_email, msg.as_string())
+
+                    # Store tracking info
+                    email_tracking['sent'][tracking_id] = {
+                        'to': coach_email,
+                        'school': coach['school'],
+                        'coach': coach['name'],
+                        'subject': subject,
+                        'sent_at': datetime.now().isoformat(),
+                        'template_id': template.id
+                    }
+                    email_tracking['opens'][tracking_id] = []
+                    save_tracking()
+                    save_tracking_to_sheet(tracking_id, is_open=False)
+
+                    logger.info(f"Email sent via SMTP to {coach_email}, tracking: {tracking_id}")
                     success = True
                 
                 if success:
