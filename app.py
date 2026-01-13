@@ -1390,6 +1390,17 @@ HTML_TEMPLATE = '''
                             <div>Next scheduled: <span id="next-auto-send">Not scheduled</span></div>
                         </div>
 
+                        <div id="tomorrow-preview" class="mb-4 p-3" style="background:linear-gradient(135deg, var(--bg3) 0%, var(--bg2) 100%);border-radius:8px;border-left:3px solid var(--primary);">
+                            <div style="font-weight:600;margin-bottom:8px;">📬 Tomorrow's Emails</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+                                <div>Total coaches ready: <strong id="tomorrow-total">-</strong></div>
+                                <div>AI personalized: <strong id="tomorrow-ai" style="color:var(--success);">-</strong></div>
+                                <div>Template fallback: <strong id="tomorrow-template" style="color:var(--warning);">-</strong></div>
+                                <div>Daily limit: <strong id="tomorrow-limit">25</strong></div>
+                            </div>
+                            <button class="btn btn-sm btn-outline mt-2" onclick="loadTomorrowPreview()">↻ Refresh</button>
+                        </div>
+
                         <div class="form-group">
                             <label>Max emails to send</label>
                             <input type="number" id="email-limit" value="100" min="1" max="100">
@@ -3346,6 +3357,28 @@ HTML_TEMPLATE = '''
 
         // Load cloud stats on page load
         setTimeout(loadCloudEmailStats, 2000);
+
+        // Tomorrow's email preview
+        async function loadTomorrowPreview() {
+            try {
+                const res = await fetch('/api/email/tomorrow-preview');
+                const data = await res.json();
+
+                if (data.success) {
+                    document.getElementById('tomorrow-total').textContent = data.total;
+                    document.getElementById('tomorrow-ai').textContent = data.will_send_ai + ' / ' + data.ai;
+                    document.getElementById('tomorrow-template').textContent = data.will_send_template + ' / ' + data.template;
+                    document.getElementById('tomorrow-limit').textContent = data.limit;
+                } else {
+                    console.error('Tomorrow preview error:', data.error);
+                }
+            } catch(e) {
+                console.error('Tomorrow preview error:', e);
+            }
+        }
+
+        // Load tomorrow preview on page load
+        setTimeout(loadTomorrowPreview, 1500);
 
         // ========== NEW SCRAPER FUNCTIONS ==========
         let scraperRunning = false;
@@ -5524,6 +5557,122 @@ def api_cloud_emails_pending():
         return jsonify({'success': True, 'emails': pending, 'count': len(pending)})
     except Exception as e:
         logger.error(f"Error getting pending emails: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/email/tomorrow-preview')
+def api_email_tomorrow_preview():
+    """Preview how many emails will be sent tomorrow and breakdown by AI vs template."""
+    try:
+        from pathlib import Path
+        import json
+        from datetime import datetime, timedelta
+
+        # Load pregenerated emails
+        pregenerated_file = Path.home() / '.coach_outreach' / 'pregenerated_emails.json'
+        pregenerated = {}
+        if pregenerated_file.exists():
+            with open(pregenerated_file) as f:
+                pregenerated = json.load(f)
+
+        pregenerated_schools = set(s.lower() for s in pregenerated.keys())
+
+        # Get daily limit from settings
+        daily_limit = settings.get('email', {}).get('auto_send_count', 25)
+
+        # Get coaches ready to receive emails (2+ days since last email)
+        sheet = get_sheet()
+        if not sheet:
+            return jsonify({'success': False, 'error': 'Could not connect to sheet'})
+
+        data = sheet.get_all_values()
+        if len(data) < 2:
+            return jsonify({'success': True, 'total': 0, 'ai': 0, 'template': 0, 'limit': daily_limit})
+
+        headers = [h.lower() for h in data[0]]
+
+        def find_col(keywords):
+            for i, h in enumerate(headers):
+                for kw in keywords:
+                    if kw in h:
+                        return i
+            return -1
+
+        school_col = find_col(['school'])
+        ol_email_col = find_col(['oc email', 'ol email'])
+        ol_contacted_col = find_col(['ol contacted', 'oc contacted'])
+        rc_email_col = find_col(['rc email'])
+        rc_contacted_col = find_col(['rc contacted'])
+
+        # Count coaches ready (not contacted in last 2 days)
+        two_days_ago = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+        ready_coaches = []
+
+        for row in data[1:]:
+            school = row[school_col].strip() if school_col >= 0 and school_col < len(row) else ''
+
+            # Check OL coach
+            ol_email = row[ol_email_col].strip() if ol_email_col >= 0 and ol_email_col < len(row) else ''
+            ol_contacted = row[ol_contacted_col].strip() if ol_contacted_col >= 0 and ol_contacted_col < len(row) else ''
+
+            if ol_email and 'REPLIED' not in ol_contacted.upper():
+                # Check if contacted recently
+                is_recent = False
+                if ol_contacted:
+                    try:
+                        # Parse date from contacted field
+                        date_part = ol_contacted.split(',')[0].strip()
+                        if date_part >= two_days_ago:
+                            is_recent = True
+                    except:
+                        pass
+
+                if not is_recent:
+                    has_ai = school.lower() in pregenerated_schools
+                    ready_coaches.append({'school': school, 'type': 'OL', 'has_ai': has_ai})
+
+            # Check RC coach
+            rc_email = row[rc_email_col].strip() if rc_email_col >= 0 and rc_email_col < len(row) else ''
+            rc_contacted = row[rc_contacted_col].strip() if rc_contacted_col >= 0 and rc_contacted_col < len(row) else ''
+
+            if rc_email and 'REPLIED' not in rc_contacted.upper():
+                is_recent = False
+                if rc_contacted:
+                    try:
+                        date_part = rc_contacted.split(',')[0].strip()
+                        if date_part >= two_days_ago:
+                            is_recent = True
+                    except:
+                        pass
+
+                if not is_recent:
+                    has_ai = school.lower() in pregenerated_schools
+                    ready_coaches.append({'school': school, 'type': 'RC', 'has_ai': has_ai})
+
+        total_ready = len(ready_coaches)
+        ai_count = sum(1 for c in ready_coaches if c['has_ai'])
+        template_count = total_ready - ai_count
+
+        # Only count up to daily limit
+        will_send = min(total_ready, daily_limit)
+        will_send_ai = min(ai_count, will_send)
+        will_send_template = will_send - will_send_ai
+
+        return jsonify({
+            'success': True,
+            'total': total_ready,
+            'ai': ai_count,
+            'template': template_count,
+            'will_send': will_send,
+            'will_send_ai': will_send_ai,
+            'will_send_template': will_send_template,
+            'limit': daily_limit
+        })
+
+    except Exception as e:
+        logger.error(f"Tomorrow preview error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)})
 
 

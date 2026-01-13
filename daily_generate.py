@@ -165,7 +165,7 @@ def sync_to_cloud():
 
 def main():
     parser = argparse.ArgumentParser(description='Daily AI Email Generation')
-    parser.add_argument('-n', '--num', type=int, default=10, help='Number of schools to generate for')
+    parser.add_argument('-n', '--num', type=int, default=33, help='Number of schools to generate for (default: 33)')
     parser.add_argument('--all', action='store_true', help='Generate for ALL schools needing emails')
     parser.add_argument('--sync', action='store_true', help='Only sync to cloud, skip generation')
     parser.add_argument('--no-sync', action='store_true', help='Skip cloud sync after generation')
@@ -180,26 +180,52 @@ def main():
     uploaded = 0
 
     if not args.sync:
-        # Generate emails
+        # Generate ALL emails first (default 33 schools = ~99 emails)
         limit = 9999 if args.all else args.num
+        print(f"\nGenerating for up to {limit} schools...")
+        print("(This may take a while - will sync to cloud when ALL are done)\n")
         generated = generate_emails(limit)
-        print(f"\nGenerated {generated} new AI emails")
+        print(f"\nFinished generating {generated} new AI emails")
 
     if not args.no_sync:
-        # Sync to cloud
+        # Only sync AFTER all generation is complete
+        print("\nSyncing all emails to cloud...")
         uploaded = sync_to_cloud()
         print(f"Synced {uploaded} emails to cloud")
 
     print("\n" + "=" * 60)
     print("SUMMARY")
+    print(f"  Schools processed: {args.num if not args.all else 'ALL'}")
     print(f"  Emails generated: {generated}")
-    print(f"  Emails synced: {uploaded}")
+    print(f"  Emails synced to cloud: {uploaded}")
     print("=" * 60)
 
-    # Log to file for tracking
+    # Log to file for tracking improvements over time
     log_file = DATA_DIR / 'daily_generate.log'
     with open(log_file, 'a') as f:
         f.write(f"{datetime.now().isoformat()} - Generated: {generated}, Synced: {uploaded}\n")
+
+    # Also log to AI improvement history
+    history_file = DATA_DIR / 'ai_improvement_history.json'
+    history = []
+    if history_file.exists():
+        try:
+            with open(history_file) as f:
+                history = json.load(f)
+        except:
+            pass
+
+    history.append({
+        'date': datetime.now().isoformat(),
+        'emails_generated': generated,
+        'emails_synced': uploaded,
+        'schools_processed': limit if not args.all else 'all'
+    })
+
+    # Keep last 100 entries
+    history = history[-100:]
+    with open(history_file, 'w') as f:
+        json.dump(history, f, indent=2)
 
 
 if __name__ == '__main__':
