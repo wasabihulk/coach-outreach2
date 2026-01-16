@@ -23,6 +23,17 @@ from datetime import datetime, date
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
+from urllib.parse import quote_plus
+
+# Browser manager for free Google scraping
+try:
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from browser.manager import BrowserManager, BrowserConfig
+    from bs4 import BeautifulSoup
+    HAS_BROWSER = True
+except ImportError:
+    HAS_BROWSER = False
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +42,8 @@ CONFIG = {
     'OLLAMA_URL': os.environ.get('OLLAMA_URL', 'http://localhost:11434/api/generate'),
     'OLLAMA_MODEL': os.environ.get('OLLAMA_MODEL', 'llama3.2:3b'),
     'OLLAMA_TIMEOUT': 120,  # Longer timeout for quality
-    'GOOGLE_API_KEY': os.environ.get('GOOGLE_API_KEY', ''),
-    'GOOGLE_CSE_ID': os.environ.get('GOOGLE_CSE_ID', ''),
+    'GOOGLE_API_KEY': os.environ.get('GOOGLE_API_KEY', 'AIzaSyBSEzp2OF4lsFWgC-2goTfrZdRoKV_VyfA'),
+    'GOOGLE_CSE_ID': os.environ.get('GOOGLE_CSE_ID', 'a37e7aad7fd3c4c7a'),
 }
 
 # Data directory
@@ -369,6 +380,129 @@ def google_search(query: str, num_results: int = 5) -> List[Dict]:
         return []
 
 
+# Global browser instance for reuse
+_browser_manager: Optional[BrowserManager] = None
+
+
+def bing_search_free(query: str, num_results: int = 5) -> List[Dict]:
+    """
+    Free search using Bing (no CAPTCHA, scraper-friendly).
+    No API limits - can do unlimited searches.
+    """
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    try:
+        encoded_query = quote_plus(query)
+        url = f"https://www.bing.com/search?q={encoded_query}&count={num_results + 5}"
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
+
+        response = requests.get(url, headers=headers, timeout=15, verify=False)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'lxml')
+        results = []
+
+        # Bing uses 'b_algo' class for organic results
+        for result in soup.find_all('li', class_='b_algo'):
+            try:
+                # Get title and link
+                h2 = result.find('h2')
+                if not h2:
+                    continue
+
+                link_elem = h2.find('a')
+                if not link_elem:
+                    continue
+
+                title = link_elem.get_text(strip=True)
+                link = link_elem.get('href', '')
+
+                # Get snippet
+                snippet_elem = result.find('p')
+                snippet = snippet_elem.get_text(strip=True) if snippet_elem else ''
+
+                if title and link and link.startswith('http'):
+                    results.append({
+                        'title': title,
+                        'snippet': snippet,
+                        'link': link
+                    })
+
+                    if len(results) >= num_results:
+                        break
+
+            except Exception:
+                continue
+
+        # Small delay between searches
+        time.sleep(random.uniform(0.5, 1.5))
+
+        logger.debug(f"Bing found {len(results)} results for: {query[:40]}...")
+        return results
+
+    except Exception as e:
+        logger.warning(f"Bing search error: {e}")
+        return []
+
+
+def google_search_free(query: str, num_results: int = 5) -> List[Dict]:
+    """
+    Free search - uses Bing (Google blocks scrapers with CAPTCHA).
+    No API limits - can do unlimited searches.
+    """
+    return bing_search_free(query, num_results)
+
+
+def smart_search(query: str, num_results: int = 5, prefer_free: bool = True) -> List[Dict]:
+    """
+    Smart search that uses free headless scraping by default.
+    Falls back to API if browser unavailable.
+
+    Args:
+        query: Search query
+        num_results: Number of results to return
+        prefer_free: If True, use free scraping first (unlimited). If False, use API first.
+    """
+    if prefer_free:
+        # Try free scraping first (unlimited)
+        results = google_search_free(query, num_results)
+        if results:
+            return results
+
+        # Fall back to API
+        logger.info("Free search failed, falling back to API")
+        try:
+            return google_search(query, num_results)
+        except APILimitReached:
+            logger.warning("API limit reached and free search unavailable")
+            return []
+    else:
+        # Try API first
+        try:
+            results = google_search(query, num_results)
+            if results:
+                return results
+        except APILimitReached:
+            pass
+
+        # Fall back to free scraping
+        return google_search_free(query, num_results)
+
+
+def cleanup_browser():
+    """Clean up browser resources. Call when done with searches."""
+    global _browser_manager
+    if _browser_manager:
+        _browser_manager.stop()
+        _browser_manager = None
+
+
 def query_ollama(prompt: str, system_prompt: str = None, temperature: float = 0.7) -> Optional[str]:
     """Query Ollama with optional system prompt."""
     try:
@@ -423,9 +557,10 @@ def research_school_deep(school_name: str, coach_name: str = "") -> SchoolResear
 
     all_results = []
     for query in queries:
-        results = google_search(query, num_results=3)
+        # Use API (free scraping blocked by network filter)
+        results = smart_search(query, num_results=3, prefer_free=False)
         all_results.extend(results)
-        time.sleep(0.5)  # Rate limit
+        time.sleep(0.3)  # Small delay between searches
 
     if not all_results:
         logger.warning(f"No search results for {school_name}")
@@ -524,12 +659,16 @@ class PregeneratedEmail:
     research_used: Dict  # Research data that was used
     generated_at: str
     used: bool = False
+    research_failed: bool = False  # True if research had no real data - Railway should use templates
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict) -> 'PregeneratedEmail':
+        # Handle older emails without research_failed field
+        if 'research_failed' not in data:
+            data['research_failed'] = False
         return cls(**data)
 
 
@@ -1170,6 +1309,19 @@ EXAMPLES OF EMAILS THAT GOT RESPONSES (learn from these patterns):
         # Get research first (reused for all emails)
         research = self.get_research(school, coach_name)
 
+        # Check if research has real data
+        has_real_research = bool(
+            research.recent_record or
+            research.notable_facts or
+            research.conference or
+            research.head_coach or
+            research.coach_quotes
+        )
+        research_failed = not has_real_research
+
+        if research_failed:
+            logger.warning(f"Research failed for {school} - marking for Railway template fallback")
+
         generated = []
         email_types = ['intro', 'followup_1'] if num_emails >= 2 else ['intro']
 
@@ -1190,7 +1342,8 @@ EXAMPLES OF EMAILS THAT GOT RESPONSES (learn from these patterns):
                 personalized_content=content,
                 research_used=research.to_dict(),
                 generated_at=datetime.now().isoformat(),
-                used=False
+                used=False,
+                research_failed=research_failed
             )
             generated.append(email)
 

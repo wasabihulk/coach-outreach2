@@ -169,14 +169,14 @@ def generate_from_sheet(force_refresh: bool = False, limit: int = None):
     sheet = get_sheet()
     if not sheet:
         print("ERROR: Could not connect to Google Sheet")
-        return
+        sys.exit(1)
 
     print("\n✓ Connected to Google Sheet")
 
     data = sheet.get_all_values()
     if len(data) < 2:
         print("ERROR: Sheet has no data")
-        return
+        sys.exit(1)
 
     headers = [h.lower() for h in data[0]]
     rows = data[1:]

@@ -52,6 +52,17 @@ from flask import Flask, render_template_string, jsonify, request, Response, str
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Import AI email functions from scheduler
+try:
+    from scheduler.email_scheduler import load_pregenerated_emails, get_ai_email_for_school
+    AI_EMAILS_AVAILABLE = True
+except ImportError:
+    AI_EMAILS_AVAILABLE = False
+    def load_pregenerated_emails():
+        return {}
+    def get_ai_email_for_school(school, coach_name, email_type='intro'):
+        return None
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -7004,42 +7015,73 @@ def api_email_send():
 
                 # Get appropriate template based on email type
                 email_type = coach.get('email_type', 'intro')
-                if email_type == 'followup_1':
-                    template = template_mgr.get_followup_template(1)
-                elif email_type == 'followup_2':
-                    template = template_mgr.get_followup_template(2)
-                else:
-                    template = template_mgr.get_next_template(coach['type'], coach['school'])
 
-                if not template:
-                    errors += 1
-                    continue
-
-                # Generate personalized hook for intro emails
-                if ai_hooks_available and email_type == 'intro':
+                # =========================================================================
+                # FIRST: Try to get pregenerated AI email (from local or cloud)
+                # =========================================================================
+                ai_email = None
+                used_ai_email = False
+                if AI_EMAILS_AVAILABLE:
                     try:
-                        hook = generate_personalized_hook(
-                            school=variables['school'],
-                            division=coach.get('division', ''),
-                            conference=coach.get('conference', ''),
-                            email_type=email_type,
-                            use_ai=True
+                        ai_email = get_ai_email_for_school(
+                            school=coach['school'],
+                            coach_name=coach['name'],
+                            email_type=email_type
                         )
-                        variables['personalized_hook'] = hook
-                        logger.debug(f"Generated hook for {variables['school']}: {hook[:50]}...")
+                        if ai_email and ai_email.get('body'):
+                            logger.info(f"Using AI email for {coach['school']} ({email_type})")
+                            used_ai_email = True
                     except Exception as e:
-                        logger.warning(f"Hook generation failed for {variables['school']}: {e}")
-                        variables['personalized_hook'] = f"I am very interested in {variables['school']}'s program."
-                else:
-                    # Default hook for follow-ups or when AI unavailable
-                    variables['personalized_hook'] = f"I remain very interested in {variables['school']}'s program."
+                        logger.warning(f"AI email lookup failed for {coach['school']}: {e}")
 
-                subject, body = template.render(variables)
+                if used_ai_email and ai_email:
+                    # Use pregenerated AI email
+                    subject = ai_email.get('subject', f"2026 OL - {athlete.get('name', 'Keelan Underwood')} - {coach['school']}")
+                    body = ai_email['body']
+                else:
+                    # =========================================================================
+                    # FALLBACK: Use templates if no AI email available
+                    # =========================================================================
+                    if email_type == 'followup_1':
+                        template = template_mgr.get_followup_template(1)
+                    elif email_type == 'followup_2':
+                        template = template_mgr.get_followup_template(2)
+                    else:
+                        template = template_mgr.get_next_template(coach['type'], coach['school'])
+
+                    if not template:
+                        errors += 1
+                        continue
+
+                    # Generate personalized hook for intro emails
+                    if ai_hooks_available and email_type == 'intro':
+                        try:
+                            hook = generate_personalized_hook(
+                                school=variables['school'],
+                                division=coach.get('division', ''),
+                                conference=coach.get('conference', ''),
+                                email_type=email_type,
+                                use_ai=True
+                            )
+                            variables['personalized_hook'] = hook
+                            logger.debug(f"Generated hook for {variables['school']}: {hook[:50]}...")
+                        except Exception as e:
+                            logger.warning(f"Hook generation failed for {variables['school']}: {e}")
+                            variables['personalized_hook'] = f"I am very interested in {variables['school']}'s program."
+                    else:
+                        # Default hook for follow-ups or when AI unavailable
+                        variables['personalized_hook'] = f"I remain very interested in {variables['school']}'s program."
+
+                    subject, body = template.render(variables)
+                    logger.info(f"Using template for {coach['school']} ({email_type}) - no AI email found")
                 coach_email = coach['email'].strip()
-                
+
+                # Determine template ID for tracking (AI emails use 'ai_generated')
+                tracking_template_id = 'ai_generated' if used_ai_email else (template.id if 'template' in dir() and template else 'unknown')
+
                 # Send email with template_id for A/B testing
                 if use_gmail_api:
-                    success = send_email_gmail_api(coach_email, subject, body, email_addr, school=coach['school'], coach_name=coach['name'], template_id=template.id)
+                    success = send_email_gmail_api(coach_email, subject, body, email_addr, school=coach['school'], coach_name=coach['name'], template_id=tracking_template_id)
                 else:
                     # SMTP fallback with tracking
                     tracking_id = generate_tracking_id(coach_email, coach['school'])
@@ -7074,7 +7116,8 @@ def api_email_send():
                         'coach': coach['name'],
                         'subject': subject,
                         'sent_at': datetime.now().isoformat(),
-                        'template_id': template.id
+                        'template_id': tracking_template_id,
+                        'used_ai_email': used_ai_email
                     }
                     email_tracking['opens'][tracking_id] = []
                     save_tracking()
@@ -7085,7 +7128,7 @@ def api_email_send():
                 
                 if success:
                     sent += 1
-                    
+
                     # Track counts
                     if email_type == 'followup_1':
                         followup1_count += 1
@@ -7093,12 +7136,23 @@ def api_email_send():
                         followup2_count += 1
                     else:
                         intro_count += 1
-                    
+
                     response_tracker.record_sent(
                         coach_email=coach_email, coach_name=coach['name'],
                         school=coach['school'], division=coach.get('division', ''),
-                        coach_type=coach['type'], template_id=template.id
+                        coach_type=coach['type'], template_id=tracking_template_id
                     )
+
+                    # Mark AI email as sent in cloud storage
+                    if used_ai_email:
+                        try:
+                            from sheets.cloud_emails import get_cloud_storage
+                            storage = get_cloud_storage()
+                            if storage.connect():
+                                storage.mark_email_sent(coach['school'], coach_email, email_type)
+                                logger.info(f"Marked AI email as sent in cloud: {coach['school']} ({email_type})")
+                        except Exception as e:
+                            logger.warning(f"Failed to mark AI email sent in cloud: {e}")
                     
                     # Update sheet
                     if coach.get('contacted_col'):

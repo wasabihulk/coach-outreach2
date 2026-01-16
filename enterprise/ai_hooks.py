@@ -35,8 +35,8 @@ CONFIG = {
     'OLLAMA_URL': os.environ.get('OLLAMA_URL', 'http://localhost:11434/api/generate'),
     'OLLAMA_MODEL': os.environ.get('OLLAMA_MODEL', 'llama3.2:3b'),
     'OLLAMA_TIMEOUT': 60,
-    'GOOGLE_API_KEY': os.environ.get('GOOGLE_API_KEY', ''),
-    'GOOGLE_CSE_ID': os.environ.get('GOOGLE_CSE_ID', ''),
+    'GOOGLE_API_KEY': os.environ.get('GOOGLE_API_KEY', 'AIzaSyBSEzp2OF4lsFWgC-2goTfrZdRoKV_VyfA'),
+    'GOOGLE_CSE_ID': os.environ.get('GOOGLE_CSE_ID', 'a37e7aad7fd3c4c7a'),
 }
 
 # Data directory
