@@ -4125,6 +4125,7 @@ def track_open(tracking_id):
         }
         if tracking_id not in email_tracking['opens']:
             email_tracking['opens'][tracking_id] = []
+        is_first_open = len(email_tracking['opens'][tracking_id]) == 0
         email_tracking['opens'][tracking_id].append(open_event)
         save_tracking()
         # Also update Google Sheets for persistence
@@ -4132,6 +4133,18 @@ def track_open(tracking_id):
 
         info = email_tracking['sent'][tracking_id]
         logger.info(f"📬 Email OPENED: {info.get('school')} - {info.get('coach')}")
+
+        # Send phone notification on FIRST open only
+        if is_first_open:
+            try:
+                current_settings = load_settings()
+                if current_settings.get('notifications', {}).get('enabled'):
+                    send_phone_notification(
+                        title="📬 Coach Opened Email!",
+                        message=f"{info.get('coach', 'A coach')} at {info.get('school', 'Unknown')} just opened your email!"
+                    )
+            except Exception as e:
+                logger.warning(f"Could not send open notification: {e}")
 
     return Response(TRACKING_PIXEL, mimetype='image/png', headers={
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -8247,17 +8260,37 @@ def auto_send_emails():
                 
                 if result.get('sent', 0) > 0:
                     logger.info(f"Auto-send: Sent {result['sent']} emails")
-                    
+
                     # Send notification if enabled
                     if current_settings.get('notifications', {}).get('enabled'):
                         send_phone_notification(
                             title="Emails Sent!",
                             message=f"Auto-sent {result['sent']} emails to coaches. {result.get('intro', 0)} intros, {result.get('followup1', 0)} follow-up 1s, {result.get('followup2', 0)} follow-up 2s."
                         )
-    
+
+                # Notify on failures
+                if result.get('errors', 0) > 0 or result.get('error'):
+                    if current_settings.get('notifications', {}).get('enabled'):
+                        error_msg = result.get('error', f"{result.get('errors', 0)} emails failed to send")
+                        send_phone_notification(
+                            title="⚠️ Email Send Error",
+                            message=f"Auto-send issue: {error_msg}"
+                        )
+
     except Exception as e:
         logger.error(f"Auto-send error: {e}")
         auto_send_state['last_result'] = {'error': str(e)}
+
+        # Notify on critical auto-send failures
+        try:
+            current_settings = load_settings()
+            if current_settings.get('notifications', {}).get('enabled'):
+                send_phone_notification(
+                    title="🚨 Auto-Send Failed!",
+                    message=f"Email auto-send crashed: {str(e)[:100]}"
+                )
+        except:
+            pass
     
     finally:
         auto_send_state['running'] = False
