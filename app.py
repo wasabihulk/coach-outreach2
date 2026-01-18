@@ -5734,7 +5734,7 @@ def api_email_tomorrow_preview():
         import json
         from datetime import datetime, timedelta
 
-        # Load pregenerated emails
+        # Load pregenerated emails from local file first
         pregenerated_file = Path.home() / '.coach_outreach' / 'pregenerated_emails.json'
         pregenerated = {}
         if pregenerated_file.exists():
@@ -5742,6 +5742,19 @@ def api_email_tomorrow_preview():
                 pregenerated = json.load(f)
 
         pregenerated_schools = set(s.lower() for s in pregenerated.keys())
+
+        # Also check cloud storage for AI emails (Railway doesn't have local file)
+        if not pregenerated_schools:
+            try:
+                from sheets.cloud_emails import get_cloud_storage
+                storage = get_cloud_storage()
+                if storage.connect():
+                    pending = storage.download_pending_emails()
+                    cloud_schools = set(e.get('school', '').lower() for e in pending if e.get('school'))
+                    pregenerated_schools = cloud_schools
+                    logger.info(f"Loaded {len(pregenerated_schools)} schools with AI emails from cloud")
+            except Exception as e:
+                logger.warning(f"Could not load cloud AI emails: {e}")
 
         # Get daily limit from settings
         daily_limit = settings.get('email', {}).get('auto_send_count', 25)
