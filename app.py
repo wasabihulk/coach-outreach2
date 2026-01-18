@@ -1251,17 +1251,6 @@ HTML_TEMPLATE = '''
                             </div>
                         </div>
 
-                        <div class="card">
-                            <div class="card-header">Response Rate by Division</div>
-                            <div class="div-stats" id="division-stats">
-                                <div class="div-stat"><div class="div-name">FBS</div><div class="div-rate">-</div></div>
-                                <div class="div-stat"><div class="div-name">FCS</div><div class="div-rate">-</div></div>
-                                <div class="div-stat"><div class="div-name">D2</div><div class="div-rate">-</div></div>
-                                <div class="div-stat"><div class="div-name">D3</div><div class="div-rate">-</div></div>
-                                <div class="div-stat"><div class="div-name">NAIA</div><div class="div-rate">-</div></div>
-                                <div class="div-stat"><div class="div-name">JUCO</div><div class="div-rate">-</div></div>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -1342,24 +1331,6 @@ HTML_TEMPLATE = '''
             
             <!-- EMAIL PAGE -->
             <div id="page-email" class="page">
-                <!-- Email Controls - Subtle inline settings -->
-                <div id="email-controls-banner" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;margin-bottom:12px;background:var(--bg3);border-radius:6px;font-size:13px;">
-                    <span id="email-mode-status" style="color:var(--muted);">Loading...</span>
-                    <div style="display:flex;gap:12px;align-items:center;">
-                        <label style="display:flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;">
-                            <input type="checkbox" id="holiday-mode-toggle" onchange="toggleHolidayMode(this.checked)" style="width:14px;height:14px;">
-                            Holiday Mode
-                        </label>
-                        <span style="color:var(--border);">|</span>
-                        <label style="display:flex;align-items:center;gap:6px;color:var(--muted);">
-                            Pause until:
-                            <input type="date" id="pause-until-date" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:12px;">
-                            <button class="btn btn-sm" style="padding:4px 8px;font-size:11px;" onclick="setPauseDate()">Set</button>
-                            <button class="btn btn-sm" id="resume-btn" onclick="resumeEmails()" style="display:none;padding:4px 8px;font-size:11px;background:var(--success);">Resume</button>
-                        </label>
-                    </div>
-                </div>
-
                 <div class="stats">
                     <div class="stat">
                         <div class="stat-value" id="email-ready">0</div>
@@ -1497,10 +1468,13 @@ HTML_TEMPLATE = '''
                     <div id="cloud-email-log" class="mt-4 text-sm text-muted"></div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">Follow-up Queue</div>
-                    <div id="followup-queue">
-                        <p class="text-muted text-sm">No follow-ups due</p>
+                <!-- Pause controls at bottom -->
+                <div id="email-pause-footer" style="margin-top:16px;padding:10px 12px;background:var(--bg3);border-radius:6px;font-size:12px;display:flex;justify-content:space-between;align-items:center;">
+                    <span id="email-mode-status" style="color:var(--muted);">Auto-send active</span>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="date" id="pause-until-date" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:11px;">
+                        <button class="btn btn-sm" style="padding:3px 8px;font-size:11px;" onclick="setPauseDate()">Pause</button>
+                        <button class="btn btn-sm" id="resume-btn" onclick="resumeEmails()" style="display:none;padding:3px 8px;font-size:11px;background:var(--success);">Resume</button>
                     </div>
                 </div>
             </div>
@@ -1587,115 +1561,43 @@ HTML_TEMPLATE = '''
             
             <!-- TRACK PAGE -->
             <div id="page-track" class="page">
-                <div class="card-header" style="margin-bottom:16px;">📊 Stats Dashboard</div>
-
-                <!-- Backfill Notice -->
-                <div id="backfill-notice" class="card mb-4" style="background:#2c2a1e;border:1px solid #e67e22;display:none;">
-                    <div style="padding:15px;display:flex;align-items:center;justify-content:space-between;">
-                        <div>
-                            <strong style="color:#e67e22;">Missing Tracking Data?</strong>
-                            <p class="text-sm text-muted mb-0">If you sent emails before tracking was added, click to import them from your sheet.</p>
-                        </div>
-                        <button class="btn btn-primary" onclick="backfillTracking()">Import Sent Emails</button>
-                    </div>
-                </div>
-
                 <!-- Key Metrics Row -->
                 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
                     <div class="card" style="text-align:center;padding:20px;">
-                        <div style="font-size:36px;font-weight:bold;color:var(--accent);" id="track-total-sent">-</div>
-                        <div class="text-sm text-muted">Total Sent</div>
+                        <div style="font-size:32px;font-weight:bold;color:var(--accent);" id="track-total-sent">-</div>
+                        <div class="text-sm text-muted">Sent</div>
                     </div>
                     <div class="card" style="text-align:center;padding:20px;">
-                        <div style="font-size:36px;font-weight:bold;color:#27ae60;" id="track-open-rate">-</div>
+                        <div style="font-size:32px;font-weight:bold;color:#3498db;" id="track-opened">-</div>
+                        <div class="text-sm text-muted">Opened</div>
+                    </div>
+                    <div class="card" style="text-align:center;padding:20px;">
+                        <div style="font-size:32px;font-weight:bold;color:#27ae60;" id="track-open-rate">-</div>
                         <div class="text-sm text-muted">Open Rate</div>
                     </div>
                     <div class="card" style="text-align:center;padding:20px;">
-                        <div style="font-size:36px;font-weight:bold;color:#9b59b6;" id="track-response-rate">-</div>
+                        <div style="font-size:32px;font-weight:bold;color:#9b59b6;" id="track-response-rate">-</div>
                         <div class="text-sm text-muted">Response Rate</div>
-                    </div>
-                    <div class="card" style="text-align:center;padding:20px;">
-                        <div style="font-size:36px;font-weight:bold;color:#e67e22;" id="track-interested">-</div>
-                        <div class="text-sm text-muted">Interested</div>
-                    </div>
-                </div>
-
-                <!-- Outreach Funnel -->
-                <div class="card mb-4">
-                    <div class="card-header">Outreach Funnel</div>
-                    <div id="track-funnel" style="padding:10px 0;">
-                        <div style="margin-bottom:12px;">
-                            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                                <span>Emails Sent</span>
-                                <span id="funnel-sent">-</span>
-                            </div>
-                            <div style="background:var(--bg3);border-radius:4px;height:24px;overflow:hidden;">
-                                <div id="funnel-sent-bar" style="background:var(--accent);height:100%;width:100%;transition:width 0.3s;"></div>
-                            </div>
-                        </div>
-                        <div style="margin-bottom:12px;">
-                            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                                <span>Opened</span>
-                                <span id="funnel-opened">-</span>
-                            </div>
-                            <div style="background:var(--bg3);border-radius:4px;height:24px;overflow:hidden;">
-                                <div id="funnel-opened-bar" style="background:#27ae60;height:100%;width:0%;transition:width 0.3s;"></div>
-                            </div>
-                        </div>
-                        <div style="margin-bottom:12px;">
-                            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                                <span>Replied</span>
-                                <span id="funnel-replied">-</span>
-                            </div>
-                            <div style="background:var(--bg3);border-radius:4px;height:24px;overflow:hidden;">
-                                <div id="funnel-replied-bar" style="background:#9b59b6;height:100%;width:0%;transition:width 0.3s;"></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                                <span>Interested</span>
-                                <span id="funnel-interested">-</span>
-                            </div>
-                            <div style="background:var(--bg3);border-radius:4px;height:24px;overflow:hidden;">
-                                <div id="funnel-interested-bar" style="background:#e67e22;height:100%;width:0%;transition:width 0.3s;"></div>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
                 <div class="grid-2">
-                    <!-- Best Performing -->
+                    <!-- Recent Opens - Actionable! -->
                     <div class="card">
-                        <div class="card-header">Best Open Times</div>
-                        <div id="track-best-times" style="font-size:14px;">
-                            <div class="loading-state"><div class="spinner"></div></div>
+                        <div class="card-header">📬 Recent Opens</div>
+                        <p class="text-sm text-muted mb-2">Coaches who recently opened your email - good time to follow up!</p>
+                        <div id="track-recent-opens" style="max-height:300px;overflow-y:auto;font-size:13px;">
+                            <div class="text-muted text-sm">Loading...</div>
                         </div>
                     </div>
 
-                    <!-- Recent Activity -->
+                    <!-- Recent Responses -->
                     <div class="card">
-                        <div class="card-header">Recent Responses</div>
-                        <div id="track-recent-responses" style="max-height:200px;overflow-y:auto;font-size:14px;">
-                            <div class="loading-state"><div class="spinner"></div></div>
+                        <div class="card-header">💬 Recent Responses</div>
+                        <div id="track-recent-responses" style="max-height:300px;overflow-y:auto;font-size:13px;">
+                            <div class="text-muted text-sm">Loading...</div>
                         </div>
                     </div>
-                </div>
-
-                <!-- Quick Response Tracker -->
-                <div class="card mt-4">
-                    <div class="card-header">Mark Coach Response</div>
-                    <p class="text-sm text-muted mb-2">When a coach replies, mark it here:</p>
-                    <div class="flex gap-2" style="flex-wrap:wrap;">
-                        <input type="text" id="response-school" placeholder="School name" style="flex:1;min-width:150px;">
-                        <select id="response-type" style="width:120px;">
-                            <option value="dm_reply">DM Reply</option>
-                            <option value="email_reply">Email Reply</option>
-                            <option value="interested">Interested!</option>
-                            <option value="not_interested">Not Interested</option>
-                        </select>
-                        <button class="btn btn-sm btn-success" onclick="markCoachResponse()">✓ Mark</button>
-                    </div>
-                    <div id="response-result" class="text-sm mt-2"></div>
                 </div>
             </div>
         </main>
@@ -1844,7 +1746,6 @@ HTML_TEMPLATE = '''
                 // Load responses
                 loadRecentResponses();
                 loadHotLeads();
-                loadDivisionStats();
                 loadHudlViews();
                 loadTrackingStats();
                 loadTomorrowPreview();
@@ -2376,7 +2277,7 @@ HTML_TEMPLATE = '''
 
                 const statusEl = document.getElementById('email-mode-status');
                 const resumeBtn = document.getElementById('resume-btn');
-                const banner = document.getElementById('email-controls-banner');
+                const footer = document.getElementById('email-pause-footer');
 
                 // Also update home page banner
                 const homeStatus = document.getElementById('home-email-status');
@@ -2387,8 +2288,8 @@ HTML_TEMPLATE = '''
                 const homeIcon = document.getElementById('home-email-status-icon');
 
                 if (pauseData.is_paused) {
-                    if (banner) banner.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
-                    if (statusEl) statusEl.innerHTML = `⏸️ PAUSED until ${pauseData.paused_until} (${pauseData.days_left} days left)`;
+                    if (footer) footer.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
+                    if (statusEl) statusEl.innerHTML = `⏸️ Paused until ${pauseData.paused_until}`;
                     if (resumeBtn) resumeBtn.style.display = '';
                     // Home page - smaller indicator
                     if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #e74c3c, #c0392b)';
@@ -2396,8 +2297,8 @@ HTML_TEMPLATE = '''
                     if (homeStatusText) homeStatusText.textContent = `Paused until ${pauseData.paused_until}`;
                     if (homeResumeBtn) homeResumeBtn.style.display = '';
                 } else if (holidayData.holiday_mode) {
-                    if (banner) banner.style.background = 'linear-gradient(135deg, #27ae60 0%, #1e8449 100%)';
-                    if (statusEl) statusEl.innerHTML = '🎄 Holiday Mode: No follow-ups, max 5 intros/day';
+                    if (footer) footer.style.background = 'linear-gradient(135deg, #27ae60 0%, #1e8449 100%)';
+                    if (statusEl) statusEl.innerHTML = '🎄 Holiday mode active';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     // Home page
                     if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #f39c12, #e67e22)';
@@ -2405,8 +2306,8 @@ HTML_TEMPLATE = '''
                     if (homeStatusText) homeStatusText.textContent = 'Holiday Mode';
                     if (homeResumeBtn) homeResumeBtn.style.display = 'none';
                 } else {
-                    if (banner) banner.style.background = 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)';
-                    if (statusEl) statusEl.innerHTML = '✅ Normal - Emails are active';
+                    if (footer) footer.style.background = 'var(--bg3)';
+                    if (statusEl) statusEl.innerHTML = '✅ Auto-send active';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     // Home page
                     if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #27ae60, #1e8449)';
@@ -2795,68 +2696,47 @@ HTML_TEMPLATE = '''
                 const statsRes = await fetch('/api/stats');
                 const statsData = await statsRes.json();
 
-                // Load smart times
-                const timesRes = await fetch('/api/tracking/smart-times');
-                const timesData = await timesRes.json();
-
                 // Update key metrics
                 const totalSent = trackData.total_sent || statsData.emails_sent || 0;
                 const totalOpened = trackData.total_opened || 0;
-                const totalReplied = statsData.responses || 0;
-                const interested = statsData.interested || 0;
 
                 document.getElementById('track-total-sent').textContent = totalSent;
+                document.getElementById('track-opened').textContent = totalOpened;
                 document.getElementById('track-open-rate').textContent = (trackData.open_rate || 0) + '%';
                 document.getElementById('track-response-rate').textContent = (statsData.response_rate || 0) + '%';
-                document.getElementById('track-interested').textContent = interested;
 
-                // Update funnel
-                document.getElementById('funnel-sent').textContent = totalSent;
-                document.getElementById('funnel-opened').textContent = totalOpened + ' (' + (trackData.open_rate || 0) + '%)';
-                document.getElementById('funnel-replied').textContent = totalReplied;
-                document.getElementById('funnel-interested').textContent = interested;
-
-                // Funnel bars (as percentage of sent)
-                if (totalSent > 0) {
-                    document.getElementById('funnel-opened-bar').style.width = (totalOpened / totalSent * 100) + '%';
-                    document.getElementById('funnel-replied-bar').style.width = (totalReplied / totalSent * 100) + '%';
-                    document.getElementById('funnel-interested-bar').style.width = (interested / totalSent * 100) + '%';
-                }
-
-                // Best times
-                const timesEl = document.getElementById('track-best-times');
-                if (timesData.success && timesData.hour_performance) {
-                    const sorted = Object.entries(timesData.hour_performance)
-                        .sort((a, b) => b[1].opens - a[1].opens)
-                        .slice(0, 5);
-
-                    if (sorted.length > 0) {
-                        timesEl.innerHTML = sorted.map(([hour, data]) => {
-                            const h = parseInt(hour);
-                            const timeStr = h === 0 ? '12 AM' : h < 12 ? h + ' AM' : h === 12 ? '12 PM' : (h - 12) + ' PM';
-                            return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);">
-                                <span>${timeStr}</span>
-                                <span style="color:var(--accent);">${data.opens} opens</span>
-                            </div>`;
-                        }).join('');
-                    } else {
-                        timesEl.innerHTML = '<div class="text-muted">Not enough data yet</div>';
-                    }
+                // Recent opens
+                const opensEl = document.getElementById('track-recent-opens');
+                if (trackData.recent_opens && trackData.recent_opens.length) {
+                    opensEl.innerHTML = trackData.recent_opens.slice(0, 10).map(o => `
+                        <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+                            <div style="font-weight:500;">${o.school || 'Unknown'}</div>
+                            <div style="display:flex;justify-content:space-between;">
+                                <span class="text-muted">${o.coach || ''}</span>
+                                <span class="text-muted">${o.opened_at ? new Date(o.opened_at).toLocaleDateString() : ''}</span>
+                            </div>
+                        </div>
+                    `).join('');
                 } else {
-                    timesEl.innerHTML = '<div class="text-muted">Send more emails to see patterns</div>';
+                    opensEl.innerHTML = '<div class="text-muted">No opens tracked yet</div>';
                 }
 
                 // Recent responses
                 const responsesEl = document.getElementById('track-recent-responses');
-                if (trackData.recent_opens && trackData.recent_opens.length) {
-                    responsesEl.innerHTML = trackData.recent_opens.slice(0, 5).map(o => `
-                        <div style="padding:6px 0;border-bottom:1px solid var(--border);">
-                            <div style="font-weight:500;">${o.school || 'Unknown'}</div>
-                            <div class="text-muted text-sm">${o.time_ago || ''}</div>
+                const responsesRes = await fetch('/api/responses/recent');
+                const responsesData = await responsesRes.json();
+                if (responsesData.responses && responsesData.responses.length) {
+                    responsesEl.innerHTML = responsesData.responses.slice(0, 10).map(r => `
+                        <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+                            <div style="font-weight:500;">${r.school || 'Unknown'}</div>
+                            <div style="display:flex;justify-content:space-between;">
+                                <span class="text-muted">${r.coach || ''}</span>
+                                <span style="color:${r.sentiment === 'positive' ? '#27ae60' : r.sentiment === 'negative' ? '#e74c3c' : 'var(--muted)'};">${r.sentiment || ''}</span>
+                            </div>
                         </div>
                     `).join('');
                 } else {
-                    responsesEl.innerHTML = '<div class="text-muted">No recent activity</div>';
+                    responsesEl.innerHTML = '<div class="text-muted">No responses yet</div>';
                 }
 
             } catch(e) {
