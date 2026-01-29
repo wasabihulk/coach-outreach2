@@ -925,288 +925,1068 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Coach Outreach Pro</title>
+    <title>RecruitSignal</title>
     <!-- PWA Support -->
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#6366f1">
+    <meta name="theme-color" content="#0f1419">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Coach Outreach">
+    <meta name="apple-mobile-web-app-title" content="RecruitSignal">
     <link rel="apple-touch-icon" href="/icon-192.png">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
         :root {
-            --bg: #0f0f14; --bg2: #16161d; --bg3: #1c1c26;
-            --border: #2a2a3a; --text: #fff; --muted: #888;
-            --accent: #6366f1; --success: #22c55e; --warn: #f59e0b; --err: #ef4444;
+            --bg-deep: #0a0f14;
+            --bg-primary: #0f1419;
+            --bg-secondary: #151c24;
+            --bg-tertiary: #1a2332;
+            --bg-elevated: #212d3b;
+            --border: #2a3544;
+            --border-bright: #3d4f63;
+            --text: #e8eaed;
+            --text-secondary: #9aa5b1;
+            --text-dim: #6b7785;
+            --accent: #3b82f6;
+            --accent-dim: #2563eb;
+            --accent-glow: rgba(59, 130, 246, 0.12);
+            --volt: #3b82f6;
+            --volt-dim: #2563eb;
+            --volt-glow: rgba(59, 130, 246, 0.12);
+            --cyan: #3b82f6;
+            --cyan-dim: #2563eb;
+            --success: #22c55e;
+            --warn: #f59e0b;
+            --err: #ef4444;
+            --gradient-volt: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            --gradient-dark: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-deep) 100%);
         }
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-        
-        /* Layout */
-        .app { display: flex; flex-direction: column; height: 100vh; }
-        header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
-        header h1 { font-size: 18px; font-weight: 600; }
-        .header-actions { display: flex; gap: 12px; align-items: center; }
-        .gear-btn { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 8px; }
-        .gear-btn:hover { color: var(--text); }
-        
-        /* Tabs */
-        nav { background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; padding: 0 24px; }
-        .tab { padding: 14px 20px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; transition: all 0.2s; }
-        .tab:hover { color: var(--text); }
-        .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-        
-        /* Main content */
-        main { flex: 1; overflow-y: auto; padding: 24px; }
-        .page { display: none; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* === APP CONTAINER === */
+        .app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* === HEADER - PROFESSIONAL STYLE === */
+        header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 0;
+            display: flex;
+            align-items: stretch;
+            position: relative;
+            z-index: 10;
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 24px;
+            background: var(--bg-tertiary);
+            border-right: 1px solid var(--border);
+        }
+
+        .header-logo {
+            width: 36px;
+            height: 36px;
+            background: var(--accent);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: white;
+        }
+
+        .header-title {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-title h1 {
+            font-family: 'Inter', sans-serif;
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--text);
+            line-height: 1;
+        }
+
+        .header-title h1 span {
+            color: var(--accent);
+        }
+
+        .header-subtitle {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-top: 3px;
+        }
+
+        .header-athlete {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 0 24px;
+            flex: 1;
+        }
+
+        .athlete-name {
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .athlete-stats {
+            display: flex;
+            gap: 12px;
+        }
+
+        .athlete-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 6px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        .athlete-stat-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .athlete-stat-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 0 20px;
+            margin-left: auto;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+            50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+        }
+
+        .gear-btn {
+            width: 36px;
+            height: 36px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .gear-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        /* === NAVIGATION === */
+        nav {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            padding: 0 24px;
+            gap: 2px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .tab {
+            padding: 14px 20px;
+            cursor: pointer;
+            color: var(--text-dim);
+            font-size: 13px;
+            font-weight: 500;
+            border: none;
+            background: transparent;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .tab::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent);
+            transform: scaleX(0);
+            transition: transform 0.2s ease;
+        }
+
+        .tab:hover {
+            color: var(--text);
+        }
+
+        .tab.active {
+            color: var(--accent);
+        }
+
+        .tab.active::before {
+            transform: scaleX(1);
+        }
+
+        /* === MAIN CONTENT === */
+        main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .page { display: none; animation: fadeSlideIn 0.4s ease-out; }
         .page.active { display: block; }
-        
-        /* Cards */
-        .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
-        .card-header { font-size: 14px; font-weight: 600; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-        
-        /* Stats grid */
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
-        .stat-value { font-size: 32px; font-weight: 700; color: var(--accent); }
-        .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
-        
-        /* Buttons */
-        .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
-        .btn:hover { opacity: 0.9; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-        .btn-sm { padding: 6px 12px; font-size: 13px; }
-        .btn-success { background: var(--success); }
-        .btn-warn { background: var(--warn); }
-        
-        /* Inputs */
-        input, select, textarea { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 6px; width: 100%; font-size: 14px; }
-        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
-        label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-        .form-group { margin-bottom: 16px; }
-        
-        /* Table */
-        table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); }
-        th { color: var(--muted); font-size: 12px; text-transform: uppercase; font-weight: 500; }
-        tr:hover { background: var(--bg3); }
-        
-        /* Modal */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1000; }
+
+        @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* === CARDS === */
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            position: relative;
+        }
+
+        .card-header {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* === STATS GRID === */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .stat-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 18px 16px;
+            text-align: center;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .stat-panel:hover {
+            border-color: var(--border-bright);
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1;
+        }
+
+        .stat-value.highlight { color: var(--accent); }
+        .stat-value.cyan { color: var(--accent); }
+        .stat-value.success { color: var(--success); }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 8px;
+        }
+
+        /* === COMMAND PANEL (Auto-Send) === */
+        .command-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .command-info h3 {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .command-display {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+        }
+
+        .command-number {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--accent);
+            line-height: 1;
+        }
+
+        .command-unit {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .command-time {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--accent);
+            padding: 6px 12px;
+            background: var(--accent-glow);
+            border: 1px solid var(--accent-dim);
+            border-radius: 6px;
+        }
+
+        .command-breakdown {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 8px;
+        }
+
+        .command-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        /* === TOGGLE SWITCH === */
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .toggle-track {
+            width: 44px;
+            height: 24px;
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            position: relative;
+            transition: all 0.2s;
+        }
+
+        .toggle-track::before {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            background: var(--text-dim);
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .toggle-switch input { display: none; }
+
+        .toggle-switch input:checked + .toggle-track {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .toggle-switch input:checked + .toggle-track::before {
+            transform: translateX(20px);
+            background: white;
+        }
+
+        /* === BUTTONS === */
+        .btn {
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-dim);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #16a34a;
+        }
+
+        .btn-sm {
+            padding: 8px 14px;
+            font-size: 12px;
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* === GRID LAYOUTS === */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        /* === RESPONSE ITEMS === */
+        .response-item {
+            display: flex;
+            gap: 14px;
+            padding: 14px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+        }
+
+        .response-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .response-avatar {
+            width: 40px;
+            height: 40px;
+            background: var(--accent);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .response-content { flex: 1; }
+
+        .response-school {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text);
+        }
+
+        .response-snippet {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+
+        .response-time {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        /* === PERFORMANCE GRID === */
+        .perf-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .perf-stat {
+            text-align: center;
+            padding: 18px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        .perf-value {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .perf-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 8px;
+        }
+
+        /* === INPUTS === */
+        input, select, textarea {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 10px 14px;
+            font-size: 14px;
+            width: 100%;
+            transition: all 0.2s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .form-group { margin-bottom: 18px; }
+
+        /* === TABLES === */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-tertiary);
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+
+        tr:hover td {
+            background: var(--bg-tertiary);
+        }
+
+        /* === MODAL === */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 15, 20, 0.85);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
         .modal-overlay.active { display: flex; }
-        .modal { background: var(--bg2); border-radius: 12px; padding: 24px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .modal-title { font-size: 18px; font-weight: 600; }
-        .modal-close { background: none; border: none; color: var(--muted); font-size: 24px; cursor: pointer; }
-        
-        /* Toast */
-        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg2); border: 1px solid var(--border); padding: 12px 20px; border-radius: 8px; z-index: 2000; animation: slideIn 0.3s; }
-        .toast.success { border-color: var(--success); }
-        .toast.error { border-color: var(--err); }
-        @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } }
 
-        /* Loading Spinner */
-        .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
-        .spinner-lg { width: 32px; height: 32px; border-width: 3px; }
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            animation: modalIn 0.2s ease-out;
+        }
+
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.98) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            border-color: var(--err);
+            color: var(--err);
+        }
+
+        /* === TOAST === */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 20px;
+            z-index: 2000;
+            animation: toastIn 0.2s ease-out;
+            font-size: 13px;
+            max-width: 360px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .toast.success { border-left: 3px solid var(--success); }
+        .toast.error { border-left: 3px solid var(--err); }
+        .toast.info { border-left: 3px solid var(--accent); }
+
+        @keyframes toastIn {
+            from { transform: translateX(100px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* === SPINNER === */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
         @keyframes spin { to { transform: rotate(360deg); } }
-        .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; color: var(--muted); gap: 12px; }
-        .loading-state .spinner { margin-bottom: 8px; }
 
-        /* Empty States */
-        .empty-state { text-align: center; padding: 32px 16px; color: var(--muted); }
-        .empty-state-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
-        .empty-state-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
-        .empty-state-text { font-size: 14px; line-height: 1.5; max-width: 280px; margin: 0 auto; }
-        .empty-state .btn { margin-top: 16px; }
-        
-        /* Template toggle */
-        .template-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; }
+        .loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: var(--text-dim);
+            gap: 12px;
+        }
+
+        /* === EMPTY STATES === */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-dim);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.4;
+        }
+
+        .empty-state-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .empty-state-text {
+            font-size: 13px;
+            line-height: 1.5;
+            max-width: 280px;
+            margin: 0 auto;
+        }
+
+        /* === TEMPLATE ITEMS === */
+        .template-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 10px;
+            background: var(--bg-tertiary);
+            transition: all 0.2s;
+        }
+
+        .template-item:hover {
+            border-color: var(--border-bright);
+        }
+
         .template-info { flex: 1; }
-        .template-name { font-weight: 500; }
-        .template-type { font-size: 12px; color: var(--muted); }
+        .template-name { font-weight: 600; font-size: 14px; }
+        .template-type { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
         .toggle { position: relative; width: 44px; height: 24px; }
         .toggle input { opacity: 0; width: 0; height: 0; }
-        .toggle-slider { position: absolute; inset: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 24px; cursor: pointer; transition: 0.2s; }
-        .toggle-slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 2px; bottom: 2px; background: var(--muted); border-radius: 50%; transition: 0.2s; }
-        .toggle input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
-        .toggle input:checked + .toggle-slider:before { transform: translateX(20px); background: white; }
-        
-        /* DM Card */
-        .dm-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-        .dm-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
-        .dm-school { font-weight: 600; }
-        .dm-coach { color: var(--muted); font-size: 14px; }
-        .dm-textarea { min-height: 80px; resize: vertical; margin-bottom: 8px; }
-        .char-count { text-align: right; font-size: 12px; color: var(--muted); }
+        .toggle-slider {
+            position: absolute;
+            inset: 0;
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .toggle-slider:before {
+            content: '';
+            position: absolute;
+            height: 18px;
+            width: 18px;
+            left: 2px;
+            bottom: 2px;
+            background: var(--text-dim);
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+        .toggle input:checked + .toggle-slider {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+        .toggle input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+            background: white;
+        }
+
+        /* === DM CARD === */
+        .dm-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 18px;
+            margin-bottom: 14px;
+        }
+
+        .dm-header { display: flex; justify-content: space-between; margin-bottom: 14px; }
+        .dm-school { font-weight: 600; font-size: 15px; }
+        .dm-coach { color: var(--text-secondary); font-size: 13px; }
+        .dm-textarea { min-height: 90px; resize: vertical; margin-bottom: 10px; }
+        .char-count { text-align: right; font-size: 11px; color: var(--text-dim); }
         .char-count.over { color: var(--err); }
-        .dm-actions { display: flex; gap: 8px; margin-top: 12px; }
-        
-        /* Pipeline */
-        .pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-        .pipeline-col { background: var(--bg2); border-radius: 8px; padding: 12px; min-height: 300px; }
-        .pipeline-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-        .pipeline-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 8px; cursor: pointer; }
-        .pipeline-card:hover { border-color: var(--accent); }
-        .pipeline-school { font-weight: 500; font-size: 13px; }
-        .pipeline-coach { font-size: 12px; color: var(--muted); }
-        
-        /* Response list */
-        .response-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
-        .response-avatar { width: 40px; height: 40px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; }
-        .response-content { flex: 1; }
-        .response-school { font-weight: 500; }
-        .response-snippet { font-size: 13px; color: var(--muted); margin-top: 4px; }
-        .response-time { font-size: 12px; color: var(--muted); }
-        
-        /* Division stats */
-        .div-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-        .div-stat { background: var(--bg3); padding: 12px; border-radius: 6px; text-align: center; }
-        .div-name { font-size: 11px; color: var(--muted); text-transform: uppercase; }
-        .div-rate { font-size: 20px; font-weight: 700; margin-top: 4px; }
-        
-        /* Hot leads */
-        .lead-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border); }
-        .lead-info { }
-        .lead-school { font-weight: 500; }
-        .lead-coach { font-size: 13px; color: var(--muted); }
-        .lead-badge { background: var(--warn); color: #000; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-        
-        /* Search */
-        .search-box { position: relative; margin-bottom: 16px; }
-        .search-box input { padding-left: 40px; }
-        .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); }
-        
-        /* Utility */
+        .dm-actions { display: flex; gap: 10px; margin-top: 14px; }
+
+        /* === LEAD ITEMS === */
+        .lead-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .lead-school { font-weight: 600; font-size: 14px; }
+        .lead-coach { font-size: 12px; color: var(--text-dim); }
+        .lead-badge {
+            background: var(--warn);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        /* === KEYBOARD SHORTCUTS === */
+        kbd {
+            font-family: monospace;
+            font-size: 11px;
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            padding: 3px 7px;
+            border-radius: 4px;
+        }
+
+        /* === UTILITY CLASSES === */
         .flex { display: flex; }
         .gap-2 { gap: 8px; }
         .gap-4 { gap: 16px; }
+        .mt-2 { margin-top: 8px; }
         .mt-4 { margin-top: 16px; }
+        .mb-2 { margin-bottom: 8px; }
         .mb-4 { margin-bottom: 16px; }
+        .p-2 { padding: 8px; }
         .text-center { text-align: center; }
-        .text-muted { color: var(--muted); }
-        .text-sm { font-size: 13px; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .text-muted { color: var(--text-dim); }
+        .text-sm { font-size: 12px; }
+        .text-success { color: var(--success); }
+        .text-warning { color: var(--warn); }
+        .text-danger { color: var(--err); }
 
-        /* Mobile Responsive */
+        /* === MOBILE RESPONSIVE === */
+        @media (max-width: 1024px) {
+            .header-athlete { display: none; }
+            .athlete-stats { display: none; }
+            .stats-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+
         @media (max-width: 768px) {
-            header { padding: 10px 16px; }
-            header h1 { font-size: 14px; }
-            nav { padding: 0 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            header { flex-wrap: wrap; }
+            .header-brand {
+                width: 100%;
+                clip-path: none;
+                padding: 12px 16px;
+            }
+            .header-actions {
+                width: 100%;
+                justify-content: space-between;
+                padding: 10px 16px;
+                border-top: 1px solid var(--border);
+            }
+            nav {
+                padding: 0 12px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
             nav::-webkit-scrollbar { display: none; }
-            .tab { padding: 12px 14px; font-size: 13px; white-space: nowrap; }
-            main { padding: 12px; }
-            .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-            .stat { padding: 12px 8px; }
-            .stat-value { font-size: 24px; }
-            .stat-label { font-size: 10px; }
+            .tab {
+                padding: 12px 16px;
+                font-size: 11px;
+                white-space: nowrap;
+            }
+            main { padding: 16px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            .stat-panel { padding: 14px 10px; }
+            .stat-value { font-size: 32px; }
+            .stat-label { font-size: 9px; }
             .grid-2 { grid-template-columns: 1fr; }
-            .card { padding: 14px; margin-bottom: 12px; }
-            .card-header { font-size: 12px; margin-bottom: 8px; }
-            .btn { padding: 12px 16px; font-size: 14px; width: 100%; margin-bottom: 8px; }
-            .btn-sm { padding: 10px 14px; width: auto; }
-            .form-group input, .form-group select, .form-group textarea { font-size: 16px; padding: 12px; }
-            table { font-size: 12px; }
-            table th, table td { padding: 8px 6px; }
-            .modal-content { width: 95%; max-width: none; margin: 10px; padding: 16px; max-height: 90vh; }
-            .flex.gap-2 { flex-wrap: wrap; }
-            .dm-card { padding: 12px; }
-            .dm-textarea { font-size: 14px; min-height: 100px; }
-            #keyboard-shortcuts { font-size: 11px; padding: 8px; }
-            #keyboard-shortcuts kbd { padding: 2px 4px; font-size: 10px; }
-            .response-item, .lead-item { padding: 10px 0; }
-            .pipeline-card { padding: 10px; }
-            .hide-mobile { display: none !important; }
+            .command-panel { flex-direction: column; align-items: flex-start; }
+            .command-actions { width: 100%; flex-wrap: wrap; }
+            .card { padding: 16px; }
+            .btn { width: 100%; margin-bottom: 8px; }
+            .btn-sm { width: auto; }
+            .perf-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+            .perf-stat { padding: 14px 10px; }
+            .perf-value { font-size: 28px; }
+            .modal { width: 95%; padding: 20px; }
         }
 
         @media (max-width: 480px) {
-            .stats { grid-template-columns: repeat(2, 1fr); }
-            .stat-value { font-size: 20px; }
-            header h1 { font-size: 13px; }
-            .tab { padding: 10px 12px; font-size: 12px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .header-logo { width: 36px; height: 36px; font-size: 20px; }
+            .header-title h1 { font-size: 18px; }
+            .command-number { font-size: 36px; }
         }
     </style>
 </head>
 <body>
     <div class="app">
         <header>
-            <h1>🏈 <span id="header-name">Keelan Underwood</span> <span class="text-muted" style="font-size:0.6em;font-weight:normal;" id="header-info">2026 OL</span></h1>
+            <div class="header-brand">
+                <div class="header-logo">RS</div>
+                <div class="header-title">
+                    <h1>Recruit<span>Signal</span></h1>
+                    <div class="header-subtitle">Recruiting Platform</div>
+                </div>
+            </div>
+
+            <div class="header-athlete">
+                <span class="athlete-name" id="header-name">Keelan Underwood</span>
+                <div class="athlete-stats">
+                    <div class="athlete-stat">
+                        <span class="athlete-stat-value" id="header-year">2026</span>
+                        <span class="athlete-stat-label">Class</span>
+                    </div>
+                    <div class="athlete-stat">
+                        <span class="athlete-stat-value" id="header-position">OL</span>
+                        <span class="athlete-stat-label">Pos</span>
+                    </div>
+                    <div class="athlete-stat">
+                        <span class="athlete-stat-value" id="header-size">6'3/295</span>
+                        <span class="athlete-stat-label">Size</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="header-actions">
-                <span id="connection-status" class="text-sm text-muted">Connecting...</span>
-                <button class="gear-btn" onclick="openSettings()">⚙️</button>
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span id="connection-status">Connecting</span>
+                </div>
+                <button class="gear-btn" onclick="openSettings()">&#9881;</button>
             </div>
         </header>
-        
+
         <nav>
-            <div class="tab active" data-page="home">Home</div>
-            <div class="tab" data-page="find">Find</div>
+            <div class="tab active" data-page="home">Dashboard</div>
+            <div class="tab" data-page="find">Find Schools</div>
             <div class="tab" data-page="email">Email</div>
-            <div class="tab" data-page="dms">DMs</div>
-            <div class="tab" data-page="track">Track</div>
+            <div class="tab" data-page="dms">Messages</div>
+            <div class="tab" data-page="track">Analytics</div>
         </nav>
-        
+
         <main>
             <!-- HOME PAGE -->
             <div id="page-home" class="page active">
-                <div class="stats">
-                    <div class="stat">
-                        <div class="stat-value" id="stat-sent">0</div>
+                <!-- Stats Grid - Scoreboard Style -->
+                <div class="stats-grid">
+                    <div class="stat-panel">
+                        <div class="stat-value highlight" id="stat-sent">0</div>
                         <div class="stat-label">Emails Sent</div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-value" id="stat-responses">0</div>
+                    <div class="stat-panel">
+                        <div class="stat-value cyan" id="stat-responses">0</div>
                         <div class="stat-label">Responses</div>
                     </div>
-                    <div class="stat">
+                    <div class="stat-panel">
                         <div class="stat-value" id="stat-rate">0%</div>
                         <div class="stat-label">Response Rate</div>
                     </div>
-                    <div class="stat">
+                    <div class="stat-panel">
                         <div class="stat-value" id="stat-opens">0%</div>
                         <div class="stat-label">Open Rate</div>
                     </div>
-                    <div class="stat">
+                    <div class="stat-panel">
                         <div class="stat-value" id="stat-followups">0</div>
                         <div class="stat-label">Follow-ups Due</div>
                     </div>
-                    <div class="stat" style="cursor:pointer;" onclick="window.open(hudlUrl, '_blank')" title="Click to view on Hudl">
-                        <div class="stat-value" id="stat-hudl-views"><span class="spinner" style="width:20px;height:20px;"></span></div>
-                        <div class="stat-label">🎬 Film Views</div>
+                    <div class="stat-panel" style="cursor:pointer;" onclick="window.open(hudlUrl, '_blank')" title="View Film">
+                        <div class="stat-value success" id="stat-hudl-views"><span class="spinner" style="width:24px;height:24px;"></span></div>
+                        <div class="stat-label">Film Views</div>
                     </div>
-                </div>
-                
-                <!-- Quick Actions Row -->
-                <div class="card" style="background: linear-gradient(135deg, var(--bg2) 0%, var(--bg3) 100%);">
-                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
-                        <div>
-                            <div style="font-size:14px;color:var(--muted);margin-bottom:4px;">Next Auto-Send</div>
-                            <div style="display:flex;align-items:baseline;gap:12px;">
-                                <span style="font-size:32px;font-weight:bold;color:var(--accent);" id="tomorrow-count"><span class="spinner"></span></span>
-                                <span class="text-muted">coaches</span>
-                                <span style="color:var(--muted);">at</span>
-                                <span style="font-size:18px;font-weight:600;" id="optimal-time">--:--</span>
-                            </div>
-                            <div class="text-sm text-muted" id="tomorrow-breakdown" style="margin-top:4px;"></div>
-                        </div>
-                        <div style="display:flex;gap:12px;align-items:center;">
-                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
-                                <input type="checkbox" id="auto-send-toggle" onchange="toggleAutoSend(this.checked)" style="width:18px;height:18px;">
-                                Auto-send daily
-                            </label>
-                            <button class="btn btn-sm" onclick="runAutoSendNow()">Run Now</button>
-                        </div>
-                    </div>
-                    <div id="auto-send-status" class="text-sm text-muted mt-2"></div>
                 </div>
 
-                <!-- Main Dashboard Grid -->
+                <!-- Command Panel - Auto Send -->
+                <div class="command-panel">
+                    <div class="command-info">
+                        <h3>Next Auto-Send</h3>
+                        <div class="command-display">
+                            <span class="command-number" id="tomorrow-count">—</span>
+                            <span class="command-unit">coaches</span>
+                            <span style="color:var(--text-dim);margin:0 8px;">@</span>
+                            <span class="command-time" id="optimal-time">--:--</span>
+                        </div>
+                        <div class="command-breakdown" id="tomorrow-breakdown"></div>
+                    </div>
+                    <div class="command-actions">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="auto-send-toggle" onchange="toggleAutoSend(this.checked)">
+                            <span class="toggle-track"></span>
+                            Auto-send daily
+                        </label>
+                        <button class="btn btn-primary btn-sm" onclick="runAutoSendNow()">RUN NOW</button>
+                    </div>
+                </div>
+                <div id="auto-send-status" class="text-sm text-muted mb-4"></div>
+
+                <!-- Dashboard Grid -->
                 <div class="grid-2">
-                    <!-- Left Column: Responses & Activity -->
+                    <!-- Left Column -->
                     <div>
                         <div class="card">
                             <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
                                 Coach Responses
-                                <button class="btn btn-outline btn-sm" onclick="checkInbox()">Check Inbox</button>
+                                <button class="btn btn-secondary btn-sm" onclick="checkInbox()">Check Inbox</button>
                             </div>
                             <div id="recent-responses">
                                 <div class="loading-state">
@@ -1218,7 +1998,7 @@ HTML_TEMPLATE = '''
 
                         <div class="card">
                             <div class="card-header">Email Opens</div>
-                            <div id="recent-opens" style="max-height:200px;overflow-y:auto;">
+                            <div id="recent-opens" style="max-height:220px;overflow-y:auto;">
                                 <div class="loading-state">
                                     <div class="spinner"></div>
                                     <span>Loading...</span>
@@ -1227,30 +2007,29 @@ HTML_TEMPLATE = '''
                         </div>
                     </div>
 
-                    <!-- Right Column: Performance -->
+                    <!-- Right Column -->
                     <div>
                         <div class="card">
                             <div class="card-header">Email Performance</div>
-                            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
-                                <div style="text-align:center;padding:16px;background:var(--bg3);border-radius:8px;">
-                                    <div style="font-size:28px;font-weight:bold;" id="perf-sent">-</div>
-                                    <div class="text-sm text-muted">Tracked</div>
+                            <div class="perf-grid">
+                                <div class="perf-stat">
+                                    <div class="perf-value" id="perf-sent">—</div>
+                                    <div class="perf-label">Tracked</div>
                                 </div>
-                                <div style="text-align:center;padding:16px;background:var(--bg3);border-radius:8px;">
-                                    <div style="font-size:28px;font-weight:bold;color:var(--accent);" id="perf-opened">-</div>
-                                    <div class="text-sm text-muted">Opened</div>
+                                <div class="perf-stat">
+                                    <div class="perf-value" style="color:var(--cyan);" id="perf-opened">—</div>
+                                    <div class="perf-label">Opened</div>
                                 </div>
-                                <div style="text-align:center;padding:16px;background:var(--bg3);border-radius:8px;">
-                                    <div style="font-size:28px;font-weight:bold;color:var(--success);" id="perf-replied">-</div>
-                                    <div class="text-sm text-muted">Replied</div>
+                                <div class="perf-stat">
+                                    <div class="perf-value" style="color:var(--success);" id="perf-replied">—</div>
+                                    <div class="perf-label">Replied</div>
                                 </div>
                             </div>
-                            <div class="text-sm" id="perf-best-time" style="color:var(--muted);text-align:center;padding:8px;background:var(--bg3);border-radius:6px;">
+                            <div class="text-sm" id="perf-best-time" style="color:var(--text-dim);text-align:center;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);">
                                 <span class="spinner" style="width:14px;height:14px;border-width:2px;vertical-align:middle;margin-right:8px;"></span>
                                 Analyzing best send times...
                             </div>
                         </div>
-
                     </div>
                 </div>
             </div>
@@ -1259,9 +2038,9 @@ HTML_TEMPLATE = '''
             <div id="page-find" class="page">
                 <div class="card">
                     <div class="card-header">Search Schools</div>
-                    <div class="flex gap-4 mb-4">
-                        <input type="text" id="school-search" placeholder="Search by name..." style="flex:2">
-                        <select id="division-filter" style="flex:1">
+                    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+                        <input type="text" id="school-search" placeholder="Search by name..." style="flex:2;min-width:200px;">
+                        <select id="division-filter" style="flex:1;min-width:120px;">
                             <option value="">All Divisions</option>
                             <option value="FBS">FBS</option>
                             <option value="FCS">FCS</option>
@@ -1270,30 +2049,32 @@ HTML_TEMPLATE = '''
                             <option value="NAIA">NAIA</option>
                             <option value="JUCO">JUCO</option>
                         </select>
-                        <select id="state-filter" style="flex:1">
+                        <select id="state-filter" style="flex:1;min-width:100px;">
                             <option value="">All States</option>
                         </select>
-                        <button class="btn" onclick="searchSchools()">Search</button>
+                        <button class="btn btn-primary" onclick="searchSchools()">SEARCH</button>
                     </div>
-                    
-                    <table id="schools-table">
-                        <thead>
-                            <tr><th>School</th><th>Division</th><th>State</th><th>Conference</th><th>Actions</th></tr>
-                        </thead>
-                        <tbody id="schools-body">
-                            <tr><td colspan="5" class="text-center text-muted">Search for schools above</td></tr>
-                        </tbody>
-                    </table>
+
+                    <div style="overflow-x:auto;">
+                        <table id="schools-table">
+                            <thead>
+                                <tr><th>School</th><th>Division</th><th>State</th><th>Conference</th><th>Actions</th></tr>
+                            </thead>
+                            <tbody id="schools-body">
+                                <tr><td colspan="5" class="text-center text-muted" style="padding:40px;">Enter a search query above to find schools</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                
-                <div class="card mt-4">
+
+                <div class="card">
                     <div class="card-header">Scraper Tools</div>
-                    <p class="text-sm text-muted mb-4">Scrape coach names, emails, and Twitter handles from your Google Sheet schools</p>
-                    
+                    <p class="text-sm text-muted mb-4">Extract coach names, emails, and Twitter handles from your Google Sheet schools</p>
+
                     <div class="grid-2">
                         <div>
                             <div class="form-group">
-                                <label>What to scrape</label>
+                                <label>Data Type</label>
                                 <select id="scrape-type">
                                     <option value="emails">Coach Emails</option>
                                     <option value="twitter">Twitter Handles</option>
@@ -1302,7 +2083,7 @@ HTML_TEMPLATE = '''
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Schools to scrape</label>
+                                <label>Scope</label>
                                 <select id="scrape-scope">
                                     <option value="missing">Only missing data</option>
                                     <option value="all">All schools</option>
@@ -1310,81 +2091,83 @@ HTML_TEMPLATE = '''
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Batch size</label>
+                                <label>Batch Size</label>
                                 <input type="number" id="scrape-batch" value="10" min="1" max="50">
                             </div>
                         </div>
                         <div>
                             <div class="form-group">
-                                <label>Selected school (optional)</label>
+                                <label>Target School (optional)</label>
                                 <input type="text" id="scrape-school" placeholder="Enter school name">
                             </div>
-                            <button class="btn" onclick="startScraper()">Start Scraping</button>
-                            <button class="btn btn-outline" onclick="stopScraper()">Stop</button>
+                            <div style="display:flex;gap:10px;margin-top:24px;">
+                                <button class="btn btn-primary" onclick="startScraper()">START SCRAPE</button>
+                                <button class="btn btn-secondary" onclick="stopScraper()">STOP</button>
+                            </div>
                             <div id="scraper-status" class="mt-4 text-sm"></div>
                         </div>
                     </div>
-                    
-                    <div id="scraper-log" class="mt-4" style="max-height:200px;overflow:auto;font-family:monospace;font-size:12px;background:var(--bg3);padding:8px;border-radius:4px;"></div>
+
+                    <div id="scraper-log" class="mt-4" style="max-height:200px;overflow:auto;font-family:monospace;font-size:11px;background:var(--bg-deep);border:1px solid var(--border);padding:12px;"></div>
                 </div>
             </div>
             
             <!-- EMAIL PAGE -->
             <div id="page-email" class="page">
-                <div class="stats">
-                    <div class="stat">
-                        <div class="stat-value" id="email-ready">0</div>
+                <!-- Email Stats Row -->
+                <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+                    <div class="stat-panel">
+                        <div class="stat-value highlight" id="email-ready">0</div>
                         <div class="stat-label">Ready to Send</div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-value" id="email-today">0</div>
+                    <div class="stat-panel">
+                        <div class="stat-value cyan" id="email-today">0</div>
                         <div class="stat-label">Sent Today</div>
                     </div>
-                    <div class="stat">
+                    <div class="stat-panel">
                         <div class="stat-value" id="email-followups">0</div>
                         <div class="stat-label">Follow-ups Due</div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-value" id="email-responded">0</div>
-                        <div class="stat-label">Responded ✓</div>
+                    <div class="stat-panel">
+                        <div class="stat-value success" id="email-responded">0</div>
+                        <div class="stat-label">Responded</div>
                     </div>
                 </div>
 
-                <div class="card mb-4" style="background:var(--bg3);">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div>
-                            <strong>Email Queue Summary</strong>
-                            <div class="text-sm text-muted" id="email-queue-summary"><span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading queue...</div>
-                        </div>
-                        <div class="flex gap-2">
-                            <button class="btn btn-sm btn-outline" onclick="scanPastResponses()">🔍 Scan Past Responses</button>
-                            <button class="btn btn-sm btn-outline" onclick="cleanupSheet()">🧹 Cleanup Sheet</button>
-                            <button class="btn btn-sm btn-outline" onclick="loadEmailQueueStatus()">↻ Refresh</button>
-                        </div>
+                <!-- Queue Summary Bar -->
+                <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-left:3px solid var(--cyan);padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <div style="font-family:monospace;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Queue Status</div>
+                        <div class="text-sm" id="email-queue-summary" style="margin-top:4px;"><span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading queue...</div>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-secondary btn-sm" onclick="scanPastResponses()">Scan Responses</button>
+                        <button class="btn btn-secondary btn-sm" onclick="cleanupSheet()">Cleanup</button>
+                        <button class="btn btn-secondary btn-sm" onclick="loadEmailQueueStatus()">Refresh</button>
                     </div>
                 </div>
-                
+
                 <div class="grid-2">
                     <div class="card">
                         <div class="card-header">Send Emails</div>
-                        <div id="auto-send-info" class="mb-4 p-2" style="background:var(--bg3);border-radius:6px;font-size:13px;">
-                            <div>Last auto-send: <span id="last-auto-send">Never</span></div>
-                            <div>Next scheduled: <span id="next-auto-send">Not scheduled</span></div>
+                        <div id="auto-send-info" class="mb-4" style="background:var(--bg-tertiary);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:12px;">
+                            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-dim);">Last auto-send:</span> <span id="last-auto-send">Never</span></div>
+                            <div style="display:flex;justify-content:space-between;margin-top:6px;"><span style="color:var(--text-dim);">Next scheduled:</span> <span id="next-auto-send">Not scheduled</span></div>
                         </div>
 
-                        <div id="tomorrow-preview" class="mb-4 p-3" style="background:linear-gradient(135deg, var(--bg3) 0%, var(--bg2) 100%);border-radius:8px;border-left:3px solid var(--primary);">
-                            <div style="font-weight:600;margin-bottom:8px;">📬 Tomorrow's Emails</div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
-                                <div>Total coaches ready: <strong id="tomorrow-total">-</strong></div>
-                                <div>AI personalized: <strong id="tomorrow-ai" style="color:var(--success);">-</strong></div>
-                                <div>Template fallback: <strong id="tomorrow-template" style="color:var(--warning);">-</strong></div>
-                                <div>Daily limit: <strong id="tomorrow-limit">25</strong></div>
+                        <div id="tomorrow-preview" class="mb-4" style="background:var(--bg-tertiary);border:1px solid var(--border);border-left:3px solid var(--volt);padding:16px;">
+                            <div style="font-weight:600;margin-bottom:12px;font-size:13px;color:var(--volt);">TOMORROW'S QUEUE</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
+                                <div style="display:flex;justify-content:space-between;"><span class="text-muted">Total ready:</span> <strong id="tomorrow-total">-</strong></div>
+                                <div style="display:flex;justify-content:space-between;"><span class="text-muted">AI personalized:</span> <strong id="tomorrow-ai" style="color:var(--success);">-</strong></div>
+                                <div style="display:flex;justify-content:space-between;"><span class="text-muted">Template fallback:</span> <strong id="tomorrow-template" style="color:var(--warn);">-</strong></div>
+                                <div style="display:flex;justify-content:space-between;"><span class="text-muted">Daily limit:</span> <strong id="tomorrow-limit">25</strong></div>
                             </div>
-                            <button class="btn btn-sm btn-outline mt-2" onclick="loadTomorrowPreview()">↻ Refresh</button>
+                            <button class="btn btn-secondary btn-sm mt-4" onclick="loadTomorrowPreview()">Refresh Preview</button>
                         </div>
 
                         <div class="form-group">
-                            <label>Max emails to send</label>
+                            <label>Max Emails to Send</label>
                             <input type="number" id="email-limit" value="100" min="1" max="100">
                         </div>
                         <div class="form-group">
@@ -1398,26 +2181,25 @@ HTML_TEMPLATE = '''
                             <label>Select Template</label>
                             <select id="template-select"></select>
                         </div>
-                        <p class="text-sm text-muted mb-2">Sends to coaches not emailed recently, oldest first. Each coach gets the next email in their sequence (Intro → Follow-up 1 → Follow-up 2).</p>
-                        <div class="flex gap-2">
-                            <button class="btn btn-outline" onclick="previewEmail()">Preview</button>
-                            <button class="btn btn-outline" onclick="sendTestEmail()">Test (to me)</button>
-                            <button class="btn btn-success" onclick="sendEmails()">Send Emails</button>
+                        <p class="text-sm text-muted mb-4">Sends to coaches not emailed recently. Each coach gets the next email in sequence.</p>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                            <button class="btn btn-secondary" onclick="previewEmail()">Preview</button>
+                            <button class="btn btn-secondary" onclick="sendTestEmail()">Test Email</button>
+                            <button class="btn btn-success" onclick="sendEmails()">SEND EMAILS</button>
                         </div>
                         <div id="email-log" class="mt-4 text-sm text-muted"></div>
                     </div>
-                    
+
                     <div class="card">
                         <div class="card-header">Templates</div>
                         <div id="email-templates"></div>
-                        <button class="btn btn-outline btn-sm mt-4" onclick="openCreateTemplate('email')">+ Create Template</button>
+                        <button class="btn btn-secondary btn-sm mt-4" onclick="openCreateTemplate('email')">+ New Template</button>
 
-                        <!-- Template A/B Performance -->
                         <div class="card-header mt-4" style="display:flex;justify-content:space-between;align-items:center;">
-                            📊 Template Performance (A/B)
-                            <button class="btn btn-sm btn-outline" onclick="loadTemplatePerformance()">↻</button>
+                            Template Performance
+                            <button class="btn btn-secondary btn-sm" onclick="loadTemplatePerformance()">Refresh</button>
                         </div>
-                        <div id="template-performance" style="font-size:13px;">
+                        <div id="template-performance" style="font-size:12px;">
                             <p class="text-muted text-sm">Loading performance data...</p>
                         </div>
                     </div>
@@ -1426,134 +2208,141 @@ HTML_TEMPLATE = '''
                 <div class="card">
                     <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
                         AI Email Generator
-                        <button class="btn btn-sm btn-outline" onclick="loadAIEmailStatus()">Refresh</button>
+                        <button class="btn btn-secondary btn-sm" onclick="loadAIEmailStatus()">Refresh</button>
                     </div>
-                    <div id="ai-email-status" class="mb-4 p-2" style="background:var(--bg3);border-radius:6px;font-size:13px;">
-                        <div>Schools in spreadsheet: <span id="ai-total-schools">-</span></div>
-                        <div>With AI emails: <span id="ai-with-emails">-</span></div>
-                        <div>Needing AI emails: <span id="ai-needing-emails">-</span></div>
-                        <div>API calls remaining today: <span id="ai-api-remaining">-</span></div>
+                    <div id="ai-email-status" class="mb-4" style="background:var(--bg-tertiary);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                            <div><span class="text-muted">Schools in sheet:</span> <span id="ai-total-schools">-</span></div>
+                            <div><span class="text-muted">With AI emails:</span> <span id="ai-with-emails" style="color:var(--success);">-</span></div>
+                            <div><span class="text-muted">Needing AI:</span> <span id="ai-needing-emails" style="color:var(--warn);">-</span></div>
+                            <div><span class="text-muted">API remaining:</span> <span id="ai-api-remaining">-</span></div>
+                        </div>
                     </div>
-                    <p class="text-sm text-muted mb-2">Generate personalized AI emails for schools from your spreadsheet. Uses Ollama + Google Search to research each school.</p>
+                    <p class="text-sm text-muted mb-4">Generate personalized AI emails using Ollama + Google Search.</p>
                     <div class="form-group">
-                        <label>Schools to generate (max per run)</label>
+                        <label>Schools to Generate (max per run)</label>
                         <input type="number" id="ai-email-limit" value="5" min="1" max="20">
                     </div>
-                    <div class="flex gap-2 mb-4">
-                        <button class="btn btn-outline" onclick="loadAIEmailSchools()">View Schools</button>
-                        <button class="btn btn-success" onclick="generateAIEmails()">Generate AI Emails</button>
+                    <div style="display:flex;gap:10px;margin-bottom:16px;">
+                        <button class="btn btn-secondary" onclick="loadAIEmailSchools()">View Schools</button>
+                        <button class="btn btn-success" onclick="generateAIEmails()">GENERATE AI</button>
                     </div>
-                    <div id="ai-email-schools" style="max-height:300px;overflow-y:auto;font-size:13px;"></div>
+                    <div id="ai-email-schools" style="max-height:300px;overflow-y:auto;font-size:12px;"></div>
                 </div>
 
                 <div class="card">
                     <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-                        ☁️ Cloud Email Storage
-                        <button class="btn btn-sm btn-outline" onclick="loadCloudEmailStats()">↻ Refresh</button>
+                        Cloud Email Storage
+                        <button class="btn btn-secondary btn-sm" onclick="loadCloudEmailStats()">Refresh</button>
                     </div>
-                    <p class="text-sm text-muted mb-2">Sync AI emails to Google Sheets so Railway can send them when your laptop is offline.</p>
-                    <div id="cloud-email-stats" class="mb-4 p-2" style="background:var(--bg3);border-radius:6px;font-size:13px;">
-                        <div>Total in cloud: <span id="cloud-total">-</span></div>
-                        <div>Pending to send: <span id="cloud-pending">-</span></div>
-                        <div>Sent: <span id="cloud-sent">-</span></div>
-                        <div>Open rate: <span id="cloud-open-rate">-</span></div>
-                        <div>Response rate: <span id="cloud-response-rate">-</span></div>
-                        <div>Successful (got responses): <span id="cloud-successful">-</span></div>
+                    <p class="text-sm text-muted mb-4">Sync AI emails to Google Sheets for Railway deployment.</p>
+                    <div id="cloud-email-stats" class="mb-4" style="background:var(--bg-tertiary);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                            <div><span class="text-muted">Total in cloud:</span> <span id="cloud-total">-</span></div>
+                            <div><span class="text-muted">Pending:</span> <span id="cloud-pending" style="color:var(--cyan);">-</span></div>
+                            <div><span class="text-muted">Sent:</span> <span id="cloud-sent" style="color:var(--success);">-</span></div>
+                            <div><span class="text-muted">Open rate:</span> <span id="cloud-open-rate">-</span></div>
+                            <div><span class="text-muted">Response rate:</span> <span id="cloud-response-rate">-</span></div>
+                            <div><span class="text-muted">Successful:</span> <span id="cloud-successful" style="color:var(--success);">-</span></div>
+                        </div>
                     </div>
-                    <div class="flex gap-2">
-                        <button class="btn btn-success" onclick="syncEmailsToCloud()">⬆️ Upload to Cloud</button>
-                        <button class="btn btn-outline" onclick="viewCloudEmails()">📋 View Cloud Emails</button>
-                        <button class="btn btn-outline" onclick="viewSuccessfulEmails()">⭐ View Successful</button>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <button class="btn btn-success" onclick="syncEmailsToCloud()">UPLOAD TO CLOUD</button>
+                        <button class="btn btn-secondary" onclick="viewCloudEmails()">View Emails</button>
+                        <button class="btn btn-secondary" onclick="viewSuccessfulEmails()">View Successful</button>
                     </div>
                     <div id="cloud-email-log" class="mt-4 text-sm text-muted"></div>
                 </div>
 
-                <!-- Pause controls at bottom -->
-                <div id="email-pause-footer" style="margin-top:16px;padding:10px 12px;background:var(--bg3);border-radius:6px;font-size:12px;display:flex;justify-content:space-between;align-items:center;">
-                    <span id="email-mode-status" style="color:var(--muted);">Auto-send active</span>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <input type="date" id="pause-until-date" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:11px;">
-                        <button class="btn btn-sm" style="padding:3px 8px;font-size:11px;" onclick="setPauseDate()">Pause</button>
-                        <button class="btn btn-sm" id="resume-btn" onclick="resumeEmails()" style="display:none;padding:3px 8px;font-size:11px;background:var(--success);">Resume</button>
+                <!-- Pause Controls Footer -->
+                <div id="email-pause-footer" style="margin-top:20px;padding:14px 18px;background:var(--bg-tertiary);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+                    <span id="email-mode-status" style="font-family:monospace;font-size:12px;color:var(--text-dim);">Auto-send active</span>
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        <input type="date" id="pause-until-date" style="padding:8px 12px;font-size:12px;">
+                        <button class="btn btn-secondary btn-sm" onclick="setPauseDate()">Pause</button>
+                        <button class="btn btn-success btn-sm" id="resume-btn" onclick="resumeEmails()" style="display:none;">Resume</button>
                     </div>
                 </div>
             </div>
 
             <!-- DMS PAGE -->
             <div id="page-dms" class="page">
-                <div class="stats">
-                    <div class="stat">
-                        <div class="stat-value" id="dm-queue">0</div>
+                <!-- DM Stats -->
+                <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+                    <div class="stat-panel">
+                        <div class="stat-value highlight" id="dm-queue">0</div>
                         <div class="stat-label">In Queue</div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-value" id="dm-sent">0</div>
+                    <div class="stat-panel">
+                        <div class="stat-value cyan" id="dm-sent">0</div>
                         <div class="stat-label">DMs Sent</div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-value" id="dm-replied">0</div>
-                        <div class="stat-label">Replied ❤️</div>
+                    <div class="stat-panel">
+                        <div class="stat-value success" id="dm-replied">0</div>
+                        <div class="stat-label">Replied</div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-value" id="dm-no-handle">0</div>
+                    <div class="stat-panel">
+                        <div class="stat-value" style="color:var(--text-dim);" id="dm-no-handle">0</div>
                         <div class="stat-label">No Twitter</div>
                     </div>
                 </div>
-                
+
                 <!-- Current Coach Card -->
-                <div class="card mb-4" id="current-dm-card">
-                    <div class="card-header">Current Coach</div>
-                    <div id="current-coach-info" style="padding:16px 0;">
-                        <p class="text-muted">Click "Start DM Session" to begin</p>
+                <div class="card mb-4" id="current-dm-card" style="border-left:3px solid var(--cyan);">
+                    <div class="card-header">Active Session</div>
+                    <div id="current-coach-info" style="padding:20px 0;">
+                        <p class="text-muted">Click "Start DM Session" to begin outreach</p>
                     </div>
-                    <div id="dm-message-preview" style="background:var(--card);padding:12px;border-radius:8px;margin-bottom:16px;display:none;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <div class="text-sm text-muted">Message (copied to clipboard):</div>
-                            <button class="btn btn-sm btn-outline" onclick="reCopyMessage()">📋 Re-copy</button>
+                    <div id="dm-message-preview" style="background:var(--bg-tertiary);border:1px solid var(--border);padding:16px;margin-bottom:16px;display:none;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <div style="font-family:monospace;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Message (copied)</div>
+                            <button class="btn btn-secondary btn-sm" onclick="reCopyMessage()">Re-copy</button>
                         </div>
-                        <div id="dm-message-text" style="white-space:pre-wrap;font-size:13px;"></div>
+                        <div id="dm-message-text" style="white-space:pre-wrap;font-size:13px;line-height:1.5;"></div>
                     </div>
-                    <div id="keyboard-shortcuts" style="background:var(--bg3);padding:10px;border-radius:6px;margin-bottom:12px;display:none;">
-                        <div class="text-sm"><strong>Keyboard Shortcuts:</strong> <kbd>M</kbd> = Messaged | <kbd>F</kbd> = Followed Only | <kbd>S</kbd> = Skip | <kbd>W</kbd> = Wrong Twitter | <kbd>C</kbd> = Re-copy</div>
+                    <div id="keyboard-shortcuts" style="background:var(--bg-deep);border:1px solid var(--border);padding:12px 16px;margin-bottom:16px;display:none;">
+                        <div style="font-size:12px;"><strong style="color:var(--volt);">SHORTCUTS:</strong> <kbd>M</kbd> Messaged <kbd>F</kbd> Followed <kbd>S</kbd> Skip <kbd>W</kbd> Wrong <kbd>C</kbd> Re-copy</div>
                     </div>
-                    <div class="flex gap-2" style="flex-wrap:wrap;align-items:center;">
-                        <button class="btn" id="btn-start-dm" onclick="startDMSession()">▶ Start DM Session</button>
-                        <button class="btn btn-outline" id="btn-end-dm" onclick="endDMSession()" style="display:none;">⏹ End Session</button>
-                        <button class="btn btn-success" id="btn-followed-messaged" onclick="markDM('messaged')" style="display:none;">✓ Messaged (M)</button>
-                        <button class="btn btn-outline" id="btn-followed-only" onclick="markDM('followed')" style="display:none;">👤 Followed Only (F)</button>
-                        <button class="btn btn-outline" id="btn-skip" onclick="markDM('skipped')" style="display:none;">→ Skip (S)</button>
-                        <button class="btn" id="btn-wrong-twitter" onclick="markWrongTwitter()" style="display:none;background:var(--err);">✗ Wrong Twitter (W)</button>
-                        <label id="auto-advance-label" style="display:none;margin-left:12px;font-size:13px;cursor:pointer;">
-                            <input type="checkbox" id="auto-advance-toggle" style="margin-right:4px;"> Auto-advance (8s)
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                        <button class="btn btn-primary" id="btn-start-dm" onclick="startDMSession()">START SESSION</button>
+                        <button class="btn btn-secondary" id="btn-end-dm" onclick="endDMSession()" style="display:none;">END SESSION</button>
+                        <button class="btn btn-success" id="btn-followed-messaged" onclick="markDM('messaged')" style="display:none;">MESSAGED (M)</button>
+                        <button class="btn btn-secondary" id="btn-followed-only" onclick="markDM('followed')" style="display:none;">FOLLOWED (F)</button>
+                        <button class="btn btn-secondary" id="btn-skip" onclick="markDM('skipped')" style="display:none;">SKIP (S)</button>
+                        <button class="btn" id="btn-wrong-twitter" onclick="markWrongTwitter()" style="display:none;background:var(--err);color:var(--bg-deep);">WRONG (W)</button>
+                        <label id="auto-advance-label" style="display:none;margin-left:12px;font-size:12px;cursor:pointer;color:var(--text-secondary);">
+                            <input type="checkbox" id="auto-advance-toggle" style="margin-right:6px;"> Auto-advance (8s)
                         </label>
                     </div>
-                    <div id="dm-progress" class="text-sm text-muted mt-4" style="display:none;"></div>
+                    <div id="dm-progress" class="mt-4" style="display:none;font-family:monospace;font-size:12px;color:var(--text-dim);"></div>
                 </div>
-                
+
                 <div class="grid-2">
                     <div class="card">
                         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
                             DM Queue
-                            <button class="btn btn-sm btn-outline" onclick="refreshDMQueue()">↻ Refresh</button>
+                            <button class="btn btn-secondary btn-sm" onclick="refreshDMQueue()">Refresh</button>
                         </div>
-                        <div id="dm-queue-list" style="max-height:300px;overflow-y:auto;">
+                        <div id="dm-queue-list" style="max-height:320px;overflow-y:auto;">
                             <div class="loading-state">
                                 <div class="spinner"></div>
                                 <span>Loading coaches...</span>
                             </div>
                         </div>
                     </div>
-                    
+
                     <div class="card">
                         <div class="card-header">DM Templates</div>
                         <div id="dm-templates"></div>
-                        <button class="btn btn-outline btn-sm mt-4" onclick="openCreateTemplate('dm')">+ Create Template</button>
-                        
-                        <div class="card-header mt-4">Keyboard Shortcuts</div>
-                        <div class="text-sm">
-                            <p><kbd>M</kbd> - Followed & Messaged</p>
-                            <p><kbd>F</kbd> - Followed Only</p>
-                            <p><kbd>S</kbd> or <kbd>→</kbd> - Skip to Next</p>
+                        <button class="btn btn-secondary btn-sm mt-4" onclick="openCreateTemplate('dm')">+ New Template</button>
+
+                        <div class="card-header mt-4">Keyboard Reference</div>
+                        <div style="font-size:12px;line-height:2;">
+                            <div><kbd>M</kbd> Followed & Messaged</div>
+                            <div><kbd>F</kbd> Followed Only</div>
+                            <div><kbd>S</kbd> or <kbd>→</kbd> Skip to Next</div>
+                            <div><kbd>C</kbd> Re-copy Message</div>
+                            <div><kbd>W</kbd> Mark Wrong Handle</div>
                         </div>
                     </div>
                 </div>
@@ -1561,41 +2350,47 @@ HTML_TEMPLATE = '''
             
             <!-- TRACK PAGE -->
             <div id="page-track" class="page">
-                <!-- Key Metrics Row -->
-                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
-                    <div class="card" style="text-align:center;padding:20px;">
-                        <div style="font-size:32px;font-weight:bold;color:var(--accent);" id="track-total-sent">-</div>
-                        <div class="text-sm text-muted">Sent</div>
+                <!-- Track Stats Grid -->
+                <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px;">
+                    <div class="stat-panel">
+                        <div class="stat-value highlight" id="track-total-sent">—</div>
+                        <div class="stat-label">Total Sent</div>
                     </div>
-                    <div class="card" style="text-align:center;padding:20px;">
-                        <div style="font-size:32px;font-weight:bold;color:#3498db;" id="track-opened">-</div>
-                        <div class="text-sm text-muted">Opened</div>
+                    <div class="stat-panel">
+                        <div class="stat-value cyan" id="track-opened">—</div>
+                        <div class="stat-label">Opened</div>
                     </div>
-                    <div class="card" style="text-align:center;padding:20px;">
-                        <div style="font-size:32px;font-weight:bold;color:#27ae60;" id="track-open-rate">-</div>
-                        <div class="text-sm text-muted">Open Rate</div>
+                    <div class="stat-panel">
+                        <div class="stat-value" id="track-open-rate">—</div>
+                        <div class="stat-label">Open Rate</div>
                     </div>
-                    <div class="card" style="text-align:center;padding:20px;">
-                        <div style="font-size:32px;font-weight:bold;color:#9b59b6;" id="track-response-rate">-</div>
-                        <div class="text-sm text-muted">Response Rate</div>
+                    <div class="stat-panel">
+                        <div class="stat-value success" id="track-response-rate">—</div>
+                        <div class="stat-label">Response Rate</div>
                     </div>
                 </div>
 
                 <div class="grid-2">
-                    <!-- Recent Opens - Actionable! -->
-                    <div class="card">
-                        <div class="card-header">📬 Recent Opens</div>
-                        <p class="text-sm text-muted mb-2">Coaches who recently opened your email - good time to follow up!</p>
-                        <div id="track-recent-opens" style="max-height:300px;overflow-y:auto;font-size:13px;">
-                            <div class="text-muted text-sm">Loading...</div>
+                    <!-- Recent Opens -->
+                    <div class="card" style="border-left:3px solid var(--cyan);">
+                        <div class="card-header">Recent Opens</div>
+                        <p class="text-sm text-muted mb-4">Coaches who opened your email - prime follow-up targets</p>
+                        <div id="track-recent-opens" style="max-height:320px;overflow-y:auto;">
+                            <div class="loading-state">
+                                <div class="spinner"></div>
+                                <span>Loading...</span>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Recent Responses -->
-                    <div class="card">
-                        <div class="card-header">💬 Recent Responses</div>
-                        <div id="track-recent-responses" style="max-height:300px;overflow-y:auto;font-size:13px;">
-                            <div class="text-muted text-sm">Loading...</div>
+                    <div class="card" style="border-left:3px solid var(--success);">
+                        <div class="card-header">Recent Responses</div>
+                        <div id="track-recent-responses" style="max-height:320px;overflow-y:auto;">
+                            <div class="loading-state">
+                                <div class="spinner"></div>
+                                <span>Loading...</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1610,8 +2405,8 @@ HTML_TEMPLATE = '''
                 <span class="modal-title">Settings</span>
                 <button class="modal-close" onclick="closeSettings()">&times;</button>
             </div>
-            
-            <div class="card-header">Athlete Profile</div>
+
+            <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:16px;">Athlete Profile</div>
             <div class="grid-2 mb-4">
                 <div class="form-group"><label>Name</label><input type="text" id="s-name"></div>
                 <div class="form-group"><label>Grad Year</label><input type="text" id="s-year" value="2026"></div>
@@ -1620,75 +2415,75 @@ HTML_TEMPLATE = '''
                 <div class="form-group"><label>Height</label><input type="text" id="s-height" placeholder="6'3&quot;"></div>
                 <div class="form-group"><label>Weight</label><input type="text" id="s-weight" placeholder="295"></div>
                 <div class="form-group"><label>GPA</label><input type="text" id="s-gpa"></div>
-                <div class="form-group"><label>Hudl Link</label><input type="text" id="s-hudl"></div>
+                <div class="form-group"><label>Hudl / Film Link</label><input type="text" id="s-hudl"></div>
                 <div class="form-group"><label>Phone</label><input type="text" id="s-phone"></div>
                 <div class="form-group"><label>Email</label><input type="email" id="s-email"></div>
             </div>
-            
-            <!-- Railway Banner (hidden by default, shown when on Railway) -->
-            <div id="railway-banner" style="display:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:16px;border-radius:8px;margin-bottom:16px;">
-                <div style="display:flex;align-items:center;gap:12px;">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+
+            <!-- Railway Banner -->
+            <div id="railway-banner" style="display:none;background:var(--bg-tertiary);border:1px solid var(--accent);border-radius:8px;padding:16px;margin-bottom:20px;">
+                <div style="display:flex;align-items:center;gap:14px;">
+                    <div style="width:36px;height:36px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:white;">RW</div>
                     <div>
-                        <div style="font-weight:600;color:white;">Running on Railway</div>
-                        <div style="font-size:13px;color:rgba(255,255,255,0.8);">Credentials are securely managed via environment variables</div>
+                        <div style="font-weight:600;color:var(--accent);">Running on Railway</div>
+                        <div style="font-size:12px;color:var(--text-secondary);">Credentials managed via environment variables</div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Credentials Section (hidden when on Railway) -->
+
+            <!-- Credentials Section -->
             <div id="credentials-section">
-                <div class="card-header">Email Settings</div>
+                <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:24px 0 16px;">Email Settings</div>
                 <div class="grid-2 mb-4">
                     <div class="form-group"><label>Gmail Address</label><input type="email" id="s-gmail"></div>
                     <div class="form-group"><label>App Password</label><input type="password" id="s-gmail-pass"></div>
                 </div>
-                
-                <div class="card-header">Google Sheets Connection</div>
-                <div id="sheets-status" class="mb-4" style="padding:10px;background:var(--bg3);border-radius:6px;">
+
+                <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:24px 0 16px;">Google Sheets</div>
+                <div id="sheets-status" class="mb-4" style="padding:12px 16px;background:var(--bg-tertiary);border:1px solid var(--border);font-family:monospace;font-size:12px;">
                     <span id="sheets-connection-text">Checking...</span>
                 </div>
                 <div class="form-group">
                     <label>Spreadsheet Name or ID</label>
                     <input type="text" id="s-sheet" value="bardeen" placeholder="bardeen or spreadsheet ID">
-                    <p class="text-sm text-muted">Enter the name (e.g. "bardeen") or the ID from the URL</p>
+                    <p class="text-sm text-muted mt-2">Enter the spreadsheet name or ID from URL</p>
                 </div>
                 <div class="form-group">
-                    <label>credentials.json</label>
-                    <p class="text-sm text-muted mb-4">
-                        To connect Google Sheets:<br>
-                        1. Go to <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a><br>
-                        2. Create a project → Enable Google Sheets API<br>
-                        3. Create Service Account → Download JSON key<br>
-                        4. Share your spreadsheet with the service account email<br>
-                        5. Place credentials.json in the app folder
+                    <label>Credentials JSON</label>
+                    <p class="text-sm text-muted mb-4" style="line-height:1.6;">
+                        1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--cyan);">Google Cloud Console</a><br>
+                        2. Create project → Enable Sheets API<br>
+                        3. Create Service Account → Download JSON<br>
+                        4. Share spreadsheet with service account email
                     </p>
-                    <input type="file" id="credentials-file" accept=".json">
-                    <button class="btn btn-sm btn-outline mt-4" onclick="uploadCredentials()">Upload Credentials</button>
+                    <input type="file" id="credentials-file" accept=".json" style="padding:10px;">
+                    <button class="btn btn-secondary btn-sm mt-2" onclick="uploadCredentials()">Upload Credentials</button>
                 </div>
-                <button class="btn btn-outline mb-4" onclick="testSheetConnection()">Test Connection</button>
+                <button class="btn btn-secondary mb-4" onclick="testSheetConnection()">Test Connection</button>
             </div>
-            
-            <div class="card-header">Response Tracking</div>
+
+            <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:24px 0 16px;">Response Tracking</div>
             <div class="grid-2 mb-4">
-                <div class="form-group"><label>Gmail for checking replies</label><input type="email" id="s-inbox-email" placeholder="Same as above or different"></div>
-                <div class="form-group"><label>Gmail App Password</label><input type="password" id="s-inbox-pass" placeholder="For IMAP access"></div>
+                <div class="form-group"><label>Gmail for Replies</label><input type="email" id="s-inbox-email" placeholder="Same or different Gmail"></div>
+                <div class="form-group"><label>App Password</label><input type="password" id="s-inbox-pass" placeholder="For IMAP access"></div>
             </div>
-            <button class="btn btn-outline mb-4" onclick="testInboxConnection()">Test Inbox Connection</button>
-            
-            <button class="btn" onclick="saveSettings()">Save Settings</button>
+            <button class="btn btn-secondary mb-4" onclick="testInboxConnection()">Test Inbox</button>
+
+            <div style="border-top:1px solid var(--border);padding-top:20px;margin-top:20px;">
+                <button class="btn btn-primary" onclick="saveSettings()">SAVE SETTINGS</button>
+            </div>
         </div>
     </div>
-    
+
     <!-- Create Template Modal -->
     <div class="modal-overlay" id="template-modal">
         <div class="modal">
             <div class="modal-header">
-                <span class="modal-title">Create Template</span>
+                <span class="modal-title">Email Template</span>
                 <button class="modal-close" onclick="closeTemplateModal()">&times;</button>
             </div>
             <div class="form-group">
-                <label>Type</label>
+                <label>Template Type</label>
                 <select id="new-tpl-type">
                     <option value="rc">Recruiting Coordinator</option>
                     <option value="ol">O-Line Coach</option>
@@ -1696,14 +2491,16 @@ HTML_TEMPLATE = '''
                     <option value="dm">Twitter DM</option>
                 </select>
             </div>
-            <div class="form-group"><label>Name</label><input type="text" id="new-tpl-name" placeholder="My Template"></div>
-            <div class="form-group" id="tpl-subject-group"><label>Subject</label><input type="text" id="new-tpl-subject" placeholder="{grad_year} {position} - {athlete_name}"></div>
+            <div class="form-group"><label>Template Name</label><input type="text" id="new-tpl-name" placeholder="My Template"></div>
+            <div class="form-group" id="tpl-subject-group"><label>Subject Line</label><input type="text" id="new-tpl-subject" placeholder="{grad_year} {position} - {athlete_name}"></div>
             <div class="form-group"><label>Body</label><textarea id="new-tpl-body" rows="10" placeholder="Coach {coach_name},..."></textarea></div>
-            <p class="text-sm text-muted mb-4">Variables: {coach_name}, {school}, {athlete_name}, {position}, {grad_year}, {height}, {weight}, {gpa}, {hudl_link}, {phone}, {email}</p>
-            <button class="btn" id="tpl-save-btn" onclick="createTemplate()">Save Template</button>
+            <div style="background:var(--bg-tertiary);border:1px solid var(--border);padding:12px;margin-bottom:20px;font-family:monospace;font-size:11px;color:var(--text-dim);">
+                <strong style="color:var(--volt);">Variables:</strong> {coach_name}, {school}, {athlete_name}, {position}, {grad_year}, {height}, {weight}, {gpa}, {hudl_link}, {phone}, {email}
+            </div>
+            <button class="btn btn-primary" id="tpl-save-btn" onclick="createTemplate()">SAVE TEMPLATE</button>
         </div>
     </div>
-    
+
     <div id="toast" class="toast" style="display:none"></div>
 
     <script>
@@ -1791,7 +2588,7 @@ HTML_TEMPLATE = '''
                 } else {
                     el.innerHTML = `
                         <div class="empty-state" style="padding:24px;">
-                            <div class="empty-state-icon">👁️</div>
+                            <div class="empty-state-icon" style="font-size:32px;color:var(--cyan);">—</div>
                             <div class="empty-state-title">No opens yet</div>
                             <div class="empty-state-text">When coaches open your emails, you'll see it here in real-time.</div>
                         </div>
@@ -1809,7 +2606,7 @@ HTML_TEMPLATE = '''
                         const displayHour = hour % 12 || 12;
                         return displayHour + ' ' + ampm;
                     }).join(' & ');
-                    bestTimeEl.innerHTML = `<span style="color:var(--success);">✓</span> Best send times: <strong>${times}</strong>`;
+                    bestTimeEl.innerHTML = `Best send times: <strong style="color:var(--volt);">${times}</strong>`;
                 } else {
                     bestTimeEl.innerHTML = 'Send more emails to discover best times';
                 }
@@ -1845,7 +2642,7 @@ HTML_TEMPLATE = '''
 
                 if (pauseData.is_paused) {
                     // Show paused state
-                    document.getElementById('tomorrow-count').textContent = '⏸️';
+                    document.getElementById('tomorrow-count').textContent = 'PAUSED';
                     document.getElementById('tomorrow-count').style.fontSize = '28px';
                     document.getElementById('optimal-time').textContent = 'PAUSED';
                     document.getElementById('tomorrow-breakdown').textContent = `Until ${pauseData.paused_until}`;
@@ -1966,7 +2763,7 @@ HTML_TEMPLATE = '''
                 } else {
                     el.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-state-icon">📬</div>
+                            <div class="empty-state-icon" style="font-size:32px;color:var(--cyan);">—</div>
                             <div class="empty-state-title">No responses yet</div>
                             <div class="empty-state-text">Click "Check Inbox" to scan for coach replies.</div>
                         </div>
@@ -2223,7 +3020,7 @@ HTML_TEMPLATE = '''
                 } else {
                     tbody.innerHTML = `<tr><td colspan="5">
                         <div class="empty-state">
-                            <div class="empty-state-icon">🔍</div>
+                            <div class="empty-state-icon" style="font-size:32px;color:var(--cyan);">—</div>
                             <div class="empty-state-title">No schools found</div>
                             <div class="empty-state-text">Try a different search term or adjust your filters.</div>
                         </div>
@@ -2289,29 +3086,29 @@ HTML_TEMPLATE = '''
 
                 if (pauseData.is_paused) {
                     if (footer) footer.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
-                    if (statusEl) statusEl.innerHTML = `⏸️ Paused until ${pauseData.paused_until}`;
+                    if (statusEl) statusEl.innerHTML = `PAUSED until ${pauseData.paused_until}`;
                     if (resumeBtn) resumeBtn.style.display = '';
                     // Home page - smaller indicator
                     if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #e74c3c, #c0392b)';
-                    if (homeIcon) homeIcon.textContent = '⏸️';
+                    if (homeIcon) homeIcon.textContent = 'II';
                     if (homeStatusText) homeStatusText.textContent = `Paused until ${pauseData.paused_until}`;
                     if (homeResumeBtn) homeResumeBtn.style.display = '';
                 } else if (holidayData.holiday_mode) {
                     if (footer) footer.style.background = 'linear-gradient(135deg, #27ae60 0%, #1e8449 100%)';
-                    if (statusEl) statusEl.innerHTML = '🎄 Holiday mode active';
+                    if (statusEl) statusEl.innerHTML = 'HOLIDAY MODE ACTIVE';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     // Home page
                     if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #f39c12, #e67e22)';
-                    if (homeIcon) homeIcon.textContent = '🎄';
+                    if (homeIcon) homeIcon.textContent = 'H';
                     if (homeStatusText) homeStatusText.textContent = 'Holiday Mode';
                     if (homeResumeBtn) homeResumeBtn.style.display = 'none';
                 } else {
                     if (footer) footer.style.background = 'var(--bg3)';
-                    if (statusEl) statusEl.innerHTML = '✅ Auto-send active';
+                    if (statusEl) statusEl.innerHTML = 'AUTO-SEND ACTIVE';
                     if (resumeBtn) resumeBtn.style.display = 'none';
                     // Home page
                     if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #27ae60, #1e8449)';
-                    if (homeIcon) homeIcon.textContent = '✅';
+                    if (homeIcon) homeIcon.textContent = 'ON';
                     if (homeStatusText) homeStatusText.textContent = 'Emails active';
                     if (homeResumeBtn) homeResumeBtn.style.display = 'none';
                 }
@@ -2327,7 +3124,7 @@ HTML_TEMPLATE = '''
                 });
                 const data = await res.json();
                 if (data.success) {
-                    showToast(enabled ? '🎄 Holiday mode ON - no follow-ups' : 'Holiday mode OFF', 'success');
+                    showToast(enabled ? 'Holiday mode ON - no follow-ups' : 'Holiday mode OFF', 'success');
                     loadEmailModeStatus();
                 }
             } catch(e) { showToast('Error', 'error'); }
@@ -2349,7 +3146,7 @@ HTML_TEMPLATE = '''
                 });
                 const data = await res.json();
                 if (data.success) {
-                    showToast(`⏸️ Emails paused until ${date}`, 'success');
+                    showToast(`Emails paused until ${date}`, 'success');
                     loadEmailModeStatus();
                 } else {
                     showToast(data.error || 'Error setting pause', 'error');
@@ -2362,7 +3159,7 @@ HTML_TEMPLATE = '''
                 const res = await fetch('/api/email/pause', { method: 'DELETE' });
                 const data = await res.json();
                 if (data.success) {
-                    showToast('▶️ Emails resumed!', 'success');
+                    showToast('Emails resumed!', 'success');
                     document.getElementById('pause-until-date').value = '';
                     loadEmailModeStatus();
                 }
@@ -2510,7 +3307,7 @@ HTML_TEMPLATE = '''
                 });
                 const data = await res.json();
                 if (data.success) {
-                    document.getElementById('email-log').innerHTML = `✓ Sent: ${data.sent || 0}, Errors: ${data.errors || 0}`;
+                    document.getElementById('email-log').innerHTML = `Sent: ${data.sent || 0}, Errors: ${data.errors || 0}`;
                 } else {
                     document.getElementById('email-log').innerHTML = `Error: ${data.error || 'Unknown error'}`;
                 }
@@ -2553,14 +3350,14 @@ HTML_TEMPLATE = '''
                                 <div class="char-count" id="char-count-0">0/500</div>
                                 <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
                                     <button class="btn btn-primary" onclick="quickDM(0)" style="padding:16px;font-size:16px;font-weight:bold;">
-                                        📋 Copy + Open Twitter
+                                        COPY + OPEN TWITTER
                                     </button>
                                     <div style="display:flex;gap:10px;">
                                         <button class="btn btn-success" onclick="markDMSentMobile(0)" style="flex:1;padding:14px;">
-                                            ✓ Sent
+                                            SENT
                                         </button>
                                         <button class="btn btn-outline" onclick="skipDM()" style="flex:1;padding:14px;">
-                                            Skip →
+                                            SKIP
                                         </button>
                                     </div>
                                 </div>
@@ -2582,8 +3379,8 @@ HTML_TEMPLATE = '''
                                 <textarea class="dm-textarea" id="dm-text-${i}" oninput="updateCharCount(${i})">${getDMText(c)}</textarea>
                                 <div class="char-count" id="char-count-${i}">0/500</div>
                                 <div class="dm-actions">
-                                    <button class="btn btn-sm" onclick="copyAndOpen(${i})">📋 Copy & Open Twitter</button>
-                                    <button class="btn btn-sm btn-success" onclick="markDMSent(${i})">✓ Mark Sent</button>
+                                    <button class="btn btn-sm" onclick="copyAndOpen(${i})">COPY & OPEN</button>
+                                    <button class="btn btn-sm btn-success" onclick="markDMSent(${i})">MARK SENT</button>
                                 </div>
                             </div>
                         `).join('');
@@ -2624,7 +3421,7 @@ HTML_TEMPLATE = '''
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ email: coach.email, school: coach.school })
                 });
-                showToast('Marked ✓ Loading next...', 'success');
+                showToast('Marked sent - loading next...', 'success');
                 // Auto-advance to next coach
                 loadDMQueue();
             } catch(e) { showToast('Error', 'error'); }
@@ -2776,12 +3573,17 @@ HTML_TEMPLATE = '''
                 if (notifyToggle) notifyToggle.checked = (settings.notifications || {}).enabled || false;
                 
                 // Update header with athlete info
-                document.getElementById('header-name').textContent = a.name || 'Coach Outreach';
-                document.getElementById('header-info').textContent = `${a.graduation_year || '2026'} ${a.positions || 'OL'}`;
+                document.getElementById('header-name').textContent = (a.name || 'ATHLETE').toUpperCase();
+                const headerYear = document.getElementById('header-year');
+                const headerPos = document.getElementById('header-position');
+                const headerSize = document.getElementById('header-size');
+                if (headerYear) headerYear.textContent = a.graduation_year || '2026';
+                if (headerPos) headerPos.textContent = a.positions || 'OL';
+                if (headerSize) headerSize.textContent = `${a.height || "6'0"}/${a.weight || '200'}`;
                 
                 // Update connection status
                 const connected = e.email_address && e.app_password;
-                document.getElementById('connection-status').textContent = connected ? '✓ Ready' : 'Setup needed';
+                document.getElementById('connection-status').textContent = connected ? 'ONLINE' : 'SETUP';
             } catch(e) { console.error(e); }
         }
         
@@ -2972,12 +3774,12 @@ HTML_TEMPLATE = '''
                         'not_interested': 'Not Interested'
                     };
                     document.getElementById('response-result').innerHTML = 
-                        '<span style="color:var(--success)">✓ Marked ' + school + ' as: ' + labels[type] + '</span>';
+                        '<span style="color:var(--success)">Marked ' + school + ' as: ' + labels[type] + '</span>';
                     document.getElementById('response-school').value = '';
                     showToast('Response recorded!', 'success');
                 } else {
                     document.getElementById('response-result').innerHTML = 
-                        '<span style="color:var(--err)">✗ ' + (data.error || 'School not found') + '</span>';
+                        '<span style="color:var(--err)">Error: ' + (data.error || 'School not found') + '</span>';
                 }
             } catch(e) {
                 showToast('Failed to record response', 'error');
@@ -3437,7 +4239,7 @@ HTML_TEMPLATE = '''
                                 <strong>${c.coach_name}</strong><br>
                                 <span class="text-sm text-muted">${c.school} - @${c.twitter}</span>
                             </div>
-                            <span class="text-sm ${i === dmCurrentIndex ? 'text-success' : 'text-muted'}">${i === dmCurrentIndex ? '→ Current' : ''}</span>
+                            <span class="text-sm ${i === dmCurrentIndex ? 'text-success' : 'text-muted'}">${i === dmCurrentIndex ? 'CURRENT' : ''}</span>
                         </div>
                     `).join('');
                 }
@@ -3526,7 +4328,7 @@ HTML_TEMPLATE = '''
                     
                     // Copy to clipboard BEFORE opening popup
                     await copyToClipboard(data.message);
-                    showToast('✓ Message copied! Opening Twitter...', 'success');
+                    showToast('Message copied! Opening Twitter...', 'success');
 
                     // Now open Twitter in a popup window (positioned to the right)
                     setTimeout(() => {
@@ -3607,7 +4409,7 @@ HTML_TEMPLATE = '''
                 });
                 
                 if (status === 'messaged') {
-                    showToast('Marked as messaged ✓', 'success');
+                    showToast('Marked as messaged', 'success');
                 } else if (status === 'followed') {
                     showToast('Marked as followed only', 'success');
                 }
@@ -3635,7 +4437,7 @@ HTML_TEMPLATE = '''
                 twitterPopup.close();
             }
 
-            document.getElementById('current-coach-info').innerHTML = '<p class="text-success">✓ Session ended.</p>';
+            document.getElementById('current-coach-info').innerHTML = '<p class="text-success">Session ended.</p>';
             document.getElementById('dm-message-preview').style.display = 'none';
             document.getElementById('btn-start-dm').style.display = '';
             document.getElementById('btn-end-dm').style.display = 'none';
@@ -3677,7 +4479,7 @@ HTML_TEMPLATE = '''
             }
             try {
                 await navigator.clipboard.writeText(msgText);
-                showToast('✓ Message re-copied!', 'success');
+                showToast('Message re-copied!', 'success');
             } catch(e) {
                 const textarea = document.createElement('textarea');
                 textarea.value = msgText;
@@ -3687,7 +4489,7 @@ HTML_TEMPLATE = '''
                 textarea.select();
                 document.execCommand('copy');
                 document.body.removeChild(textarea);
-                showToast('✓ Message re-copied!', 'success');
+                showToast('Message re-copied!', 'success');
             }
         }
         
@@ -3823,12 +4625,12 @@ HTML_TEMPLATE = '''
                 const data = await res.json();
                 const el = document.getElementById('connection-status');
                 if (data.connected) {
-                    el.innerHTML = '<span style="color:var(--success)">✓ Sheet Connected</span>';
+                    el.textContent = 'ONLINE';
                 } else {
-                    el.innerHTML = '<span style="color:var(--err)">✗ Sheet: ' + (data.error || 'Not connected').substring(0, 30) + '</span>';
+                    el.textContent = 'OFFLINE';
                 }
             } catch(e) {
-                document.getElementById('connection-status').textContent = '✗ Sheet error';
+                document.getElementById('connection-status').textContent = 'ERROR';
             }
         }
         
@@ -3838,7 +4640,7 @@ HTML_TEMPLATE = '''
                 const res = await fetch('/api/email/check-responses', { method: 'POST' });
                 const data = await res.json();
                 if (data.success && data.new_count > 0) {
-                    showToast(`📬 ${data.new_count} coach(es) replied!`, 'success');
+                    showToast(`${data.new_count} coach(es) replied!`, 'success');
                     loadDashboard();
                 }
             } catch(e) { /* silent fail */ }
@@ -3870,10 +4672,10 @@ HTML_TEMPLATE = '''
             document.getElementById('stat-sent').textContent = data.emails_sent || 0;
             document.getElementById('stat-responses').textContent = data.responses || 0;
             document.getElementById('stat-rate').textContent = (data.response_rate || 0) + '%';
-            document.getElementById('connection-status').innerHTML = '<span style="color:var(--success)">✓ Connected</span>';
+            document.getElementById('connection-status').textContent = 'ONLINE';
         }).catch(e => {
             console.error('API test failed:', e);
-            document.getElementById('connection-status').innerHTML = '<span style="color:var(--err)">API Error: ' + e.message + '</span>';
+            document.getElementById('connection-status').textContent = 'ERROR';
         });
 
         loadSettings().catch(e => console.error('loadSettings failed:', e));
@@ -5411,6 +6213,19 @@ def api_check_responses():
             
             logger.info(f"Found {len(coach_emails)} coaches we've emailed, checking inbox...")
             
+            # Auto-reply patterns to filter out
+            auto_reply_patterns = [
+                'out of office', 'out-of-office', 'automatic reply', 'auto-reply', 'autoreply',
+                'delivery status', 'delivery failed', 'undeliverable', 'returned mail',
+                'mail delivery', 'failure notice', 'delayed:', 'could not be delivered',
+                'away from', 'on vacation', 'currently out', 'be back', 'return on',
+                'no longer at', 'no longer with', 'mailer-daemon', 'postmaster'
+            ]
+
+            def is_auto_reply(subject, snippet=''):
+                text = (subject + ' ' + snippet).lower()
+                return any(pattern in text for pattern in auto_reply_patterns)
+
             # Search inbox for replies from these coaches
             responses = []
             service = get_gmail_service()
@@ -5421,34 +6236,36 @@ def api_check_responses():
                         query = f"from:{coach['email']}"
                         results = service.users().messages().list(userId='me', q=query, maxResults=5).execute()
                         messages = results.get('messages', [])
-                        
+
                         if messages:
                             # Get the most recent message
                             msg = service.users().messages().get(userId='me', id=messages[0]['id'], format='metadata', metadataHeaders=['Subject', 'Date']).execute()
                             headers_dict = {h['name']: h['value'] for h in msg.get('payload', {}).get('headers', [])}
-                            
+                            subject = headers_dict.get('Subject', 'No subject')
+                            snippet = msg.get('snippet', '')[:100]
+
+                            # Skip auto-replies
+                            if is_auto_reply(subject, snippet):
+                                continue
+
                             responses.append({
                                 'email': coach['email'],
                                 'school': coach['school'],
                                 'type': coach['type'],
                                 'row': coach['row'],
-                                'subject': headers_dict.get('Subject', 'No subject'),
+                                'subject': subject,
                                 'date': headers_dict.get('Date', ''),
-                                'snippet': msg.get('snippet', '')[:100]
+                                'snippet': snippet
                             })
                             logger.info(f"Found response from {coach['email']} at {coach['school']}")
-                            
-                            # Mark response in sheet
+
+                            # Mark response in sheet using consistent method
                             try:
-                                notes_col = rc_notes_col + 1 if coach['type'] == 'rc' else ol_notes_col + 1
-                                current_notes = sheet.cell(coach['row'], notes_col).value or ''
-                                if 'RESPONDED' not in current_notes.upper():
-                                    new_notes = f"RESPONDED {datetime.now().strftime('%m/%d')}; {current_notes}"
-                                    sheet.update_cell(coach['row'], notes_col, new_notes)
-                                    logger.info(f"Marked response in sheet for {coach['school']}")
+                                mark_coach_replied_in_sheet(sheet, coach['email'], coach['school'])
+                                logger.info(f"Marked response in sheet for {coach['school']}")
                             except Exception as e:
                                 logger.warning(f"Could not mark response in sheet: {e}")
-                                
+
                     except Exception as e:
                         logger.warning(f"Error checking {coach['email']}: {e}")
             
@@ -5775,53 +6592,108 @@ def mark_coach_replied_in_sheet(sheet, coach_email: str, school_name: str, senti
         ol_contacted_col = find_col(['ol contacted', 'oc contacted'])
         rc_notes_col = find_col(['rc notes'])
         ol_notes_col = find_col(['ol notes', 'oc notes'])
+        rc_responded_col = find_col(['rc responded'])
+        ol_responded_col = find_col(['ol responded', 'oc responded'])
 
-        coach_email_lower = coach_email.lower()
+        logger.info(f"mark_coach_replied columns: school={school_col}, rc_email={rc_email_col}, ol_email={ol_email_col}, rc_responded={rc_responded_col}, ol_responded={ol_responded_col}")
 
+        coach_email_lower = coach_email.lower().strip()
+        school_name_lower = school_name.lower().strip() if school_name else ''
+
+        def mark_row_replied(row_idx, contacted_col, notes_col, responded_col, coach_type, row_school):
+            """Helper to mark a row as replied."""
+            from datetime import datetime
+            now_str = datetime.now().strftime('%m/%d/%Y')
+            write_count = 0
+
+            # Write to the dedicated "responded" column if it exists
+            if responded_col >= 0:
+                try:
+                    sheet.update_cell(row_idx, responded_col + 1, f"Yes - {now_str}")
+                    write_count += 1
+                    logger.info(f"Wrote responded column (row {row_idx}, col {responded_col + 1}) for {row_school}")
+                except Exception as e:
+                    logger.error(f"FAILED to write responded column for {row_school}: {e}")
+
+            # Also mark the contacted column with REPLIED
+            if contacted_col >= 0:
+                try:
+                    current = sheet.cell(row_idx, contacted_col + 1).value or ''
+                    if 'REPLIED' not in current.upper():
+                        new_val = 'REPLIED' if not current else current + ', REPLIED'
+                        sheet.update_cell(row_idx, contacted_col + 1, new_val)
+                        write_count += 1
+                        logger.info(f"Wrote contacted column (row {row_idx}, col {contacted_col + 1}) = '{new_val}' for {row_school}")
+                except Exception as e:
+                    logger.error(f"FAILED to write contacted column for {row_school}: {e}")
+
+            if notes_col >= 0:
+                try:
+                    current = sheet.cell(row_idx, notes_col + 1).value or ''
+                    note = f"Response received {now_str} ({sentiment})"
+                    if 'response received' not in current.lower():
+                        new_val = note if not current else note + '; ' + current
+                        sheet.update_cell(row_idx, notes_col + 1, new_val)
+                        write_count += 1
+                        logger.info(f"Wrote notes column (row {row_idx}, col {notes_col + 1}) for {row_school}")
+                except Exception as e:
+                    logger.error(f"FAILED to write notes column for {row_school}: {e}")
+
+            logger.info(f"Marked {coach_type} at {row_school} as REPLIED ({sentiment}) - {write_count} columns updated")
+
+        # Pass 1: Try exact email match
         for row_idx, row in enumerate(all_data[1:], start=2):
             row_school = row[school_col].strip() if school_col >= 0 and school_col < len(row) else ''
 
             # Check RC email
             rc_email = row[rc_email_col].strip().lower() if rc_email_col >= 0 and rc_email_col < len(row) else ''
-            if rc_email == coach_email_lower:
-                # Update RC contacted and notes
-                if rc_contacted_col >= 0:
-                    current = row[rc_contacted_col] if rc_contacted_col < len(row) else ''
-                    if 'REPLIED' not in current.upper():
-                        new_val = 'REPLIED' if not current else current + ', REPLIED'
-                        sheet.update_cell(row_idx, rc_contacted_col + 1, new_val)
-                if rc_notes_col >= 0:
-                    from datetime import datetime
-                    current = row[rc_notes_col] if rc_notes_col < len(row) else ''
-                    note = f"Response received {datetime.now().strftime('%m/%d/%Y')} ({sentiment})"
-                    # Don't add duplicate
-                    if 'response received' not in current.lower():
-                        new_val = note if not current else note + '; ' + current
-                        sheet.update_cell(row_idx, rc_notes_col + 1, new_val)
-                logger.info(f"Marked RC at {row_school} as REPLIED ({sentiment})")
+            if rc_email and rc_email == coach_email_lower:
+                mark_row_replied(row_idx, rc_contacted_col, rc_notes_col, rc_responded_col, 'RC', row_school)
                 return
 
             # Check OL email
             ol_email = row[ol_email_col].strip().lower() if ol_email_col >= 0 and ol_email_col < len(row) else ''
-            if ol_email == coach_email_lower:
-                # Update OL contacted and notes
-                if ol_contacted_col >= 0:
-                    current = row[ol_contacted_col] if ol_contacted_col < len(row) else ''
-                    if 'REPLIED' not in current.upper():
-                        new_val = 'REPLIED' if not current else current + ', REPLIED'
-                        sheet.update_cell(row_idx, ol_contacted_col + 1, new_val)
-                if ol_notes_col >= 0:
-                    from datetime import datetime
-                    current = row[ol_notes_col] if ol_notes_col < len(row) else ''
-                    note = f"Response received {datetime.now().strftime('%m/%d/%Y')} ({sentiment})"
-                    # Don't add duplicate
-                    if 'response received' not in current.lower():
-                        new_val = note if not current else note + '; ' + current
-                        sheet.update_cell(row_idx, ol_notes_col + 1, new_val)
-                logger.info(f"Marked OL at {row_school} as REPLIED ({sentiment})")
+            if ol_email and ol_email == coach_email_lower:
+                mark_row_replied(row_idx, ol_contacted_col, ol_notes_col, ol_responded_col, 'OL', row_school)
                 return
+
+        # Pass 2: Try fuzzy email match (handles hidden chars, encoding issues)
+        for row_idx, row in enumerate(all_data[1:], start=2):
+            row_school = row[school_col].strip() if school_col >= 0 and school_col < len(row) else ''
+
+            rc_email = row[rc_email_col].strip().lower() if rc_email_col >= 0 and rc_email_col < len(row) else ''
+            if rc_email and (coach_email_lower in rc_email or rc_email in coach_email_lower):
+                logger.info(f"Fuzzy email match: '{coach_email_lower}' ~ '{rc_email}' at {row_school}")
+                mark_row_replied(row_idx, rc_contacted_col, rc_notes_col, rc_responded_col, 'RC', row_school)
+                return
+
+            ol_email = row[ol_email_col].strip().lower() if ol_email_col >= 0 and ol_email_col < len(row) else ''
+            if ol_email and (coach_email_lower in ol_email or ol_email in coach_email_lower):
+                logger.info(f"Fuzzy email match: '{coach_email_lower}' ~ '{ol_email}' at {row_school}")
+                mark_row_replied(row_idx, ol_contacted_col, ol_notes_col, ol_responded_col, 'OL', row_school)
+                return
+
+        # Pass 3: Match by school name as last resort
+        if school_name_lower:
+            for row_idx, row in enumerate(all_data[1:], start=2):
+                row_school = row[school_col].strip() if school_col >= 0 and school_col < len(row) else ''
+                if row_school.lower() == school_name_lower:
+                    # Mark whichever coach column has an email
+                    rc_email = row[rc_email_col].strip() if rc_email_col >= 0 and rc_email_col < len(row) else ''
+                    ol_email = row[ol_email_col].strip() if ol_email_col >= 0 and ol_email_col < len(row) else ''
+                    if rc_email and '@' in rc_email:
+                        logger.info(f"School-name match for {school_name} (email: {coach_email} not found, marking RC)")
+                        mark_row_replied(row_idx, rc_contacted_col, rc_notes_col, rc_responded_col, 'RC', row_school)
+                    if ol_email and '@' in ol_email:
+                        logger.info(f"School-name match for {school_name} (email: {coach_email} not found, marking OL)")
+                        mark_row_replied(row_idx, ol_contacted_col, ol_notes_col, ol_responded_col, 'OL', row_school)
+                    return
+
+        logger.warning(f"Could not find {coach_email} ({school_name}) in sheet to mark as replied")
     except Exception as e:
         logger.error(f"Error marking coach replied: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 
 @app.route('/api/email/settings', methods=['GET', 'POST'])
@@ -6674,10 +7546,12 @@ def api_email_send():
         rc_email_col = find_col(['rc email'])
         rc_contacted_col = find_col(['rc contacted'])
         rc_notes_col = find_col(['rc notes'])
+        rc_responded_col = find_col(['rc responded'])
         ol_name_col = find_col(['oline coach', 'oline'])
         ol_email_col = find_col(['oc email'])
         ol_contacted_col = find_col(['ol contacted'])
         ol_notes_col = find_col(['ol notes'])
+        ol_responded_col = find_col(['ol responded', 'oc responded'])
         division_col = find_col(['division', 'div'])
 
         logger.info(f"Columns: school={school_col}, rc_email={rc_email_col}, ol_email={ol_email_col}, division={division_col}")
@@ -6721,12 +7595,15 @@ def api_email_send():
                 except:
                     return None
         
-        def get_email_stage(contacted_str, notes_str):
+        def get_email_stage(contacted_str, notes_str, responded_str=''):
             """Determine what stage the coach is at: 'new', 'intro_sent', 'followup1_sent', 'followup2_sent', 'replied'"""
             contacted = contacted_str.lower() if contacted_str else ''
             notes = notes_str.lower() if notes_str else ''
-            
+            responded = responded_str.lower().strip() if responded_str else ''
+
             # Check if coach has responded - skip them!
+            if responded and responded not in ['', 'no', 'n', 'false']:
+                return 'replied'
             if 'replied' in contacted or 'replied' in notes or 'responded' in notes or 'response' in notes:
                 return 'replied'
             if 'followup 2' in notes or 'follow-up 2' in notes or 'f2' in notes:
@@ -6774,10 +7651,11 @@ def api_email_send():
                 rc_email = row[rc_email_col].strip()
                 rc_contacted = row[rc_contacted_col].strip() if rc_contacted_col >= 0 and rc_contacted_col < len(row) else ''
                 rc_notes = row[rc_notes_col].strip() if rc_notes_col >= 0 and rc_notes_col < len(row) else ''
+                rc_responded = row[rc_responded_col].strip() if rc_responded_col >= 0 and rc_responded_col < len(row) else ''
                 rc_name = row[rc_name_col] if rc_name_col >= 0 and rc_name_col < len(row) else 'Coach'
-                
+
                 if rc_email and '@' in rc_email and is_valid_coach_name(rc_name):
-                    stage = get_email_stage(rc_contacted, rc_notes)
+                    stage = get_email_stage(rc_contacted, rc_notes, rc_responded)
                     days = days_since_contact(rc_contacted)
 
                     # Determine what email to send
@@ -6816,10 +7694,11 @@ def api_email_send():
                 ol_email = row[ol_email_col].strip()
                 ol_contacted = row[ol_contacted_col].strip() if ol_contacted_col >= 0 and ol_contacted_col < len(row) else ''
                 ol_notes = row[ol_notes_col].strip() if ol_notes_col >= 0 and ol_notes_col < len(row) else ''
+                ol_responded = row[ol_responded_col].strip() if ol_responded_col >= 0 and ol_responded_col < len(row) else ''
                 ol_name = row[ol_name_col] if ol_name_col >= 0 and ol_name_col < len(row) else 'Coach'
-                
+
                 if ol_email and '@' in ol_email and is_valid_coach_name(ol_name):
-                    stage = get_email_stage(ol_contacted, ol_notes)
+                    stage = get_email_stage(ol_contacted, ol_notes, ol_responded)
                     days = days_since_contact(ol_contacted)
 
                     should_send = False
@@ -7060,27 +7939,37 @@ def api_email_send():
                         except Exception as e:
                             logger.warning(f"Failed to mark AI email sent in cloud: {e}")
                     
-                    # Update sheet
+                    # Update sheet (re-read fresh values to avoid overwriting response markings)
                     if coach.get('contacted_col'):
                         try:
-                            sheet.update_cell(coach['row_idx'], coach['contacted_col'], today.strftime('%m/%d/%Y'))
-                        except: pass
-                    
+                            fresh_contacted = sheet.cell(coach['row_idx'], coach['contacted_col']).value or ''
+                            if 'REPLIED' not in fresh_contacted.upper():
+                                sheet.update_cell(coach['row_idx'], coach['contacted_col'], today.strftime('%m/%d/%Y'))
+                            else:
+                                logger.info(f"Skipping contacted update for {coach.get('school', '?')} - already marked REPLIED")
+                        except Exception as e:
+                            logger.warning(f"Failed to update contacted for {coach.get('school', '?')}: {e}")
+
                     if coach.get('notes_col'):
                         try:
-                            current_notes = coach.get('current_notes', '')
-                            if email_type == 'followup_1':
-                                new_note = f"Follow-up 1 sent {today.strftime('%m/%d')}"
-                            elif email_type == 'followup_2':
-                                new_note = f"Follow-up 2 sent {today.strftime('%m/%d')}"
+                            current_notes = sheet.cell(coach['row_idx'], coach['notes_col']).value or ''
+                            # Don't overwrite response markings
+                            if 'responded' in current_notes.lower() or 'response received' in current_notes.lower():
+                                logger.info(f"Skipping notes update for {coach.get('school', '?')} - has response marking")
                             else:
-                                new_note = f"Intro sent {today.strftime('%m/%d')}"
-                            
-                            # Don't add duplicate notes
-                            if new_note.lower() not in current_notes.lower():
-                                updated_notes = f"{new_note}; {current_notes}" if current_notes else new_note
-                                sheet.update_cell(coach['row_idx'], coach['notes_col'], updated_notes)
-                        except: pass
+                                if email_type == 'followup_1':
+                                    new_note = f"Follow-up 1 sent {today.strftime('%m/%d')}"
+                                elif email_type == 'followup_2':
+                                    new_note = f"Follow-up 2 sent {today.strftime('%m/%d')}"
+                                else:
+                                    new_note = f"Intro sent {today.strftime('%m/%d')}"
+
+                                # Don't add duplicate notes
+                                if new_note.lower() not in current_notes.lower():
+                                    updated_notes = f"{new_note}; {current_notes}" if current_notes else new_note
+                                    sheet.update_cell(coach['row_idx'], coach['notes_col'], updated_notes)
+                        except Exception as e:
+                            logger.warning(f"Failed to update notes for {coach.get('school', '?')}: {e}")
                 else:
                     errors += 1
                 
@@ -8237,24 +9126,52 @@ def check_responses_background():
             ol_email_col = find_col(['oc email', 'ol email'])
             rc_contacted_col = find_col(['rc contacted'])
             ol_contacted_col = find_col(['ol contacted', 'oc contacted'])
+            rc_notes_col = find_col(['rc notes'])
+            ol_notes_col = find_col(['ol notes', 'oc notes'])
             school_col = find_col(['school'])
-            
+            url_col = find_col(['url'])
+
             # Get coaches we've contacted
+            # Also collect school domains for domain-based response detection
             coach_emails = []
+            school_domains = {}  # domain -> school name
             for row in rows:
                 school = row[school_col] if school_col >= 0 and school_col < len(row) else ''
-                
+
+                # Extract school domain from URL column
+                if url_col >= 0 and url_col < len(row) and row[url_col].strip():
+                    try:
+                        from urllib.parse import urlparse
+                        domain = urlparse(row[url_col].strip()).netloc
+                        if not domain:
+                            domain = row[url_col].strip().replace('http://', '').replace('https://', '').split('/')[0]
+                        if domain and school:
+                            school_domains[domain] = school
+                    except:
+                        pass
+
                 if rc_email_col >= 0 and rc_email_col < len(row):
                     rc_email = row[rc_email_col].strip()
                     rc_contacted = row[rc_contacted_col].strip() if rc_contacted_col >= 0 and rc_contacted_col < len(row) else ''
-                    if rc_email and '@' in rc_email and rc_contacted:
+                    rc_notes = row[rc_notes_col].strip() if rc_notes_col >= 0 and rc_notes_col < len(row) else ''
+                    was_contacted = bool(rc_contacted) or 'sent' in rc_notes.lower() or 'intro' in rc_notes.lower()
+                    if rc_email and '@' in rc_email and was_contacted:
                         coach_emails.append({'email': rc_email, 'school': school})
-                
+                        # Also track the email domain for this school
+                        email_domain = rc_email.split('@')[1] if '@' in rc_email else ''
+                        if email_domain and school:
+                            school_domains[email_domain] = school
+
                 if ol_email_col >= 0 and ol_email_col < len(row):
                     ol_email = row[ol_email_col].strip()
                     ol_contacted = row[ol_contacted_col].strip() if ol_contacted_col >= 0 and ol_contacted_col < len(row) else ''
-                    if ol_email and '@' in ol_email and ol_contacted:
+                    ol_notes = row[ol_notes_col].strip() if ol_notes_col >= 0 and ol_notes_col < len(row) else ''
+                    was_contacted = bool(ol_contacted) or 'sent' in ol_notes.lower() or 'intro' in ol_notes.lower()
+                    if ol_email and '@' in ol_email and was_contacted:
                         coach_emails.append({'email': ol_email, 'school': school})
+                        email_domain = ol_email.split('@')[1] if '@' in ol_email else ''
+                        if email_domain and school:
+                            school_domains[email_domain] = school
             
             # Auto-reply patterns to filter out
             auto_reply_patterns = [
@@ -8271,8 +9188,11 @@ def check_responses_background():
 
             # Check Gmail for responses
             responses = []
+            matched_schools = set()  # Track schools already matched by direct email
+            matched_emails = set()  # Track coach emails already found
             service = get_gmail_service()
             if service:
+                # Pass 1: Direct email match (existing behavior)
                 for coach in coach_emails:
                     try:
                         query = f"from:{coach['email']} newer_than:90d"
@@ -8280,7 +9200,7 @@ def check_responses_background():
                         messages = results.get('messages', [])
 
                         if messages:
-                            msg = service.users().messages().get(userId='me', id=messages[0]['id'], format='metadata', metadataHeaders=['Subject', 'Date']).execute()
+                            msg = service.users().messages().get(userId='me', id=messages[0]['id'], format='metadata', metadataHeaders=['Subject', 'Date', 'From']).execute()
                             headers_dict = {h['name']: h['value'] for h in msg.get('payload', {}).get('headers', [])}
                             subject = headers_dict.get('Subject', '')
                             snippet = msg.get('snippet', '')[:150]
@@ -8296,14 +9216,73 @@ def check_responses_background():
                                 'date': headers_dict.get('Date', ''),
                                 'snippet': snippet
                             })
+                            matched_schools.add(coach['school'].lower())
+                            matched_emails.add(coach['email'].lower())
 
                             # CRITICAL: Mark coach as replied in sheet so they don't get more emails
                             try:
                                 mark_coach_replied_in_sheet(sheet, coach['email'], coach['school'])
                             except Exception as mark_err:
                                 logger.error(f"Failed to mark {coach['school']} as replied: {mark_err}")
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Error checking {coach.get('email', '?')}: {e}")
+
+                # Pass 2: Domain-based search to catch replies from other staff at the same school
+                # (e.g., admin assistant, different coach, forwarded replies)
+                checked_domains = set()
+                for domain, school in school_domains.items():
+                    if school.lower() in matched_schools:
+                        continue  # Already found a response for this school
+                    if domain in checked_domains:
+                        continue
+                    checked_domains.add(domain)
+                    try:
+                        # Search for any email from this school's domain sent to us
+                        query = f"from:@{domain} to:me newer_than:30d"
+                        results = service.users().messages().list(userId='me', q=query, maxResults=3).execute()
+                        messages = results.get('messages', [])
+
+                        for msg_item in messages:
+                            msg = service.users().messages().get(userId='me', id=msg_item['id'], format='metadata', metadataHeaders=['Subject', 'Date', 'From']).execute()
+                            headers_dict = {h['name']: h['value'] for h in msg.get('payload', {}).get('headers', [])}
+                            subject = headers_dict.get('Subject', '')
+                            snippet = msg.get('snippet', '')[:150]
+                            from_header = headers_dict.get('From', '')
+
+                            # Skip auto-replies
+                            if is_auto_reply(subject, snippet):
+                                continue
+
+                            # Extract the actual email from the From header
+                            import re as _re
+                            from_match = _re.search(r'<([^>]+)>', from_header)
+                            from_email = from_match.group(1) if from_match else from_header.strip()
+
+                            # Skip if we already matched this email directly
+                            if from_email.lower() in matched_emails:
+                                continue
+
+                            responses.append({
+                                'email': from_email,
+                                'school': school,
+                                'subject': subject or 'No subject',
+                                'date': headers_dict.get('Date', ''),
+                                'snippet': snippet,
+                                'domain_match': True  # Flag that this was a domain-based match
+                            })
+                            matched_schools.add(school.lower())
+                            logger.info(f"Domain-match response from {from_email} for {school}")
+
+                            # Mark the school's coaches as replied
+                            for coach in coach_emails:
+                                if coach['school'].lower() == school.lower():
+                                    try:
+                                        mark_coach_replied_in_sheet(sheet, coach['email'], coach['school'])
+                                    except Exception as mark_err:
+                                        logger.error(f"Failed to mark {coach['school']} as replied: {mark_err}")
+                            break  # One match per school is enough
+                    except Exception as e:
+                        logger.warning(f"Domain search error for {domain}: {e}")
 
             # Track which schools we already knew about
             old_schools = {r.get('school', '').lower() for r in cached_responses}
@@ -8502,9 +9481,11 @@ def api_tomorrow_preview():
         rc_email_col = find_col(['rc email'])
         rc_contacted_col = find_col(['rc contacted'])
         rc_notes_col = find_col(['rc notes'])
+        rc_responded_col = find_col(['rc responded'])
         ol_email_col = find_col(['oc email'])
         ol_contacted_col = find_col(['ol contacted'])
         ol_notes_col = find_col(['ol notes'])
+        ol_responded_col = find_col(['ol responded', 'oc responded'])
 
         from datetime import date
         today = date.today()
@@ -8520,9 +9501,12 @@ def api_tomorrow_preview():
                 except:
                     return None
 
-        def get_email_stage(contacted_str, notes_str):
+        def get_email_stage(contacted_str, notes_str, responded_str=''):
             contacted = contacted_str.lower() if contacted_str else ''
             notes = notes_str.lower() if notes_str else ''
+            responded = responded_str.lower().strip() if responded_str else ''
+            if responded and responded not in ['', 'no', 'n', 'false']:
+                return 'replied'
             if 'replied' in contacted or 'replied' in notes or 'responded' in notes:
                 return 'replied'
             if 'followup 2' in notes or 'follow-up 2' in notes or 'f2' in notes:
@@ -8547,17 +9531,18 @@ def api_tomorrow_preview():
             if not school:
                 continue
 
-            for email_col, contacted_col, notes_col, coach_type in [
-                (rc_email_col, rc_contacted_col, rc_notes_col, 'RC'),
-                (ol_email_col, ol_contacted_col, ol_notes_col, 'OL')
+            for email_col, contacted_col, notes_col, responded_col, coach_type in [
+                (rc_email_col, rc_contacted_col, rc_notes_col, rc_responded_col, 'RC'),
+                (ol_email_col, ol_contacted_col, ol_notes_col, ol_responded_col, 'OL')
             ]:
                 if email_col >= 0 and email_col < len(row):
                     email = row[email_col].strip() if email_col < len(row) else ''
                     contacted = row[contacted_col].strip() if contacted_col >= 0 and contacted_col < len(row) else ''
                     notes = row[notes_col].strip() if notes_col >= 0 and notes_col < len(row) else ''
+                    responded = row[responded_col].strip() if responded_col >= 0 and responded_col < len(row) else ''
 
                     if email and '@' in email:
-                        stage = get_email_stage(contacted, notes)
+                        stage = get_email_stage(contacted, notes, responded)
                         days = days_since_contact(contacted)
 
                         email_type = None
