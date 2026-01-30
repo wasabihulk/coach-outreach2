@@ -1105,6 +1105,30 @@ HTML_TEMPLATE = '''
         kbd { background: var(--bg3); border: 1px solid var(--border); border-radius: 3px; padding: 2px 6px; font-family: monospace; font-size: 11px; }
 
         /* ============================================
+           GLOBAL OVERFLOW PREVENTION
+           ============================================ */
+        html, body { overflow-x: hidden; width: 100%; }
+        .app { overflow-x: hidden; width: 100%; }
+        main { overflow-x: hidden; }
+        img, video, iframe, embed, object { max-width: 100%; height: auto; }
+        pre, code { overflow-x: auto; max-width: 100%; word-break: break-all; }
+        * { min-width: 0; }
+
+        /* Fix all inline grid/flex containers to prevent overflow */
+        [style*="display:flex"], [style*="display: flex"] { flex-wrap: wrap; }
+        [style*="display:grid"], [style*="display: grid"] { overflow: hidden; }
+        [style*="grid-template-columns"] { overflow: hidden; }
+
+        /* ============================================
+           TABLET RESPONSIVE (1024px and below)
+           ============================================ */
+        @media (max-width: 1024px) {
+            .grid-2 { grid-template-columns: 1fr; gap: 12px; }
+            .perf-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+            .stats { grid-template-columns: repeat(3, 1fr) !important; gap: 10px; }
+        }
+
+        /* ============================================
            MOBILE RESPONSIVE STYLES
            ============================================ */
         @media (max-width: 768px) {
@@ -1162,7 +1186,7 @@ HTML_TEMPLATE = '''
             main { padding: 12px; }
 
             .stats {
-                grid-template-columns: repeat(2, 1fr);
+                grid-template-columns: repeat(2, 1fr) !important;
                 gap: 8px;
                 margin-bottom: 16px;
             }
@@ -1177,9 +1201,10 @@ HTML_TEMPLATE = '''
                 padding: 14px;
                 margin-bottom: 12px;
                 border-radius: 8px;
+                overflow: hidden;
             }
             .card:hover { transform: none; }
-            .card-header { font-size: 11px; margin-bottom: 10px; letter-spacing: 1px; }
+            .card-header { font-size: 11px; margin-bottom: 10px; letter-spacing: 1px; flex-wrap: wrap; }
 
             .btn {
                 padding: 12px 16px;
@@ -1195,18 +1220,21 @@ HTML_TEMPLATE = '''
 
             input, select, textarea {
                 padding: 12px;
-                font-size: 16px;
+                font-size: 16px; /* prevents iOS zoom */
             }
 
             .grid-2 { grid-template-columns: 1fr; gap: 10px; }
 
+            .modal-overlay { align-items: flex-end; }
             .modal {
                 width: 100%;
-                height: 100%;
+                height: 95vh;
                 max-width: 100%;
-                max-height: 100%;
-                border-radius: 0;
+                max-height: 95vh;
+                border-radius: 16px 16px 0 0;
                 padding: 16px;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
             }
 
             .toast {
@@ -1222,19 +1250,23 @@ HTML_TEMPLATE = '''
             .dm-textarea { min-height: 100px; font-size: 16px; }
             .dm-actions { flex-direction: column; gap: 8px; }
 
-            .response-item { padding: 10px 0; gap: 10px; }
+            .response-item { padding: 10px 0; gap: 10px; flex-wrap: wrap; }
             .response-avatar { width: 32px; height: 32px; font-size: 13px; flex-shrink: 0; }
+            .response-content { min-width: 0; overflow: hidden; }
+            .response-snippet { word-break: break-word; }
 
             .command-panel { flex-direction: column; padding: 16px; gap: 12px; }
             .command-number { font-size: 28px; }
-            .command-actions { width: 100%; justify-content: space-between; }
+            .command-display { flex-wrap: wrap; }
+            .command-actions { width: 100%; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
 
             .perf-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
             .perf-value { font-size: 18px; }
 
-            table { display: block; }
+            /* Table card layout on mobile */
+            table { display: block; width: 100%; }
             thead { display: none; }
-            tbody { display: block; }
+            tbody { display: block; width: 100%; }
             tr {
                 display: block;
                 padding: 12px;
@@ -1249,20 +1281,84 @@ HTML_TEMPLATE = '''
                 padding: 4px 0;
                 border: none;
                 font-size: 13px;
+                word-break: break-word;
             }
-            td:before { content: attr(data-label); font-weight: 500; color: var(--muted); margin-right: 8px; }
+            td:before { content: attr(data-label); font-weight: 500; color: var(--muted); margin-right: 8px; flex-shrink: 0; }
+
+            /* Fix email page inline stat grids */
+            .stats[style*="grid-template-columns:repeat(4"] {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+
+            /* Fix queue status bar */
+            #email-pause-footer { flex-direction: column; align-items: stretch; }
+            #email-pause-footer > div { width: 100%; }
+            #email-pause-footer input[type="date"] { flex: 1; }
+
+            /* Fix all inline flex containers on mobile */
+            [style*="display:flex;gap:12px"], [style*="display:flex;gap:10px"],
+            [style*="display:flex; gap:12px"], [style*="display:flex; gap:10px"] {
+                flex-wrap: wrap !important;
+            }
+
+            /* Fix scraper tools grid */
+            .form-group { margin-bottom: 12px; }
+
+            /* Template item responsive */
+            .template-item { flex-wrap: wrap; gap: 8px; }
+            .template-info { min-width: 0; }
+            .template-name { word-break: break-word; }
+
+            /* Settings modal grid fix */
+            .modal .grid-2 { grid-template-columns: 1fr; }
 
             .hide-mobile { display: none !important; }
         }
 
+        /* ============================================
+           SMALL PHONE (380px and below)
+           ============================================ */
         @media (max-width: 380px) {
             .athlete-name { font-size: 14px; max-width: 50vw; }
             .tab { padding: 10px 6px; font-size: 12px; }
+            .stats { grid-template-columns: repeat(2, 1fr) !important; }
             .stat-value { font-size: 18px; }
             .stat-label { font-size: 9px; }
             main { padding: 8px; }
             .card { padding: 12px; }
             .btn { padding: 10px 12px; font-size: 13px; }
+            .perf-grid { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+            .perf-value { font-size: 16px; }
+            .perf-label { font-size: 9px; }
+            .command-number { font-size: 24px; }
+            .command-time { font-size: 16px; }
+        }
+
+        /* ============================================
+           LANDSCAPE PHONE
+           ============================================ */
+        @media (max-height: 500px) and (orientation: landscape) {
+            header { padding: 6px 14px; }
+            nav .tab { padding: 8px 12px; }
+            main { padding: 8px 12px; }
+            .stats { grid-template-columns: repeat(3, 1fr) !important; gap: 6px; margin-bottom: 10px; }
+            .stat { padding: 8px 6px; }
+            .stat-value { font-size: 20px; }
+            .stat-label { font-size: 9px; }
+            .card { padding: 12px; margin-bottom: 8px; }
+            .command-panel { padding: 12px; gap: 8px; flex-direction: row; }
+            .command-number { font-size: 24px; }
+            .grid-2 { grid-template-columns: 1fr 1fr; gap: 10px; }
+            .modal { max-height: 100vh; height: 100vh; border-radius: 0; }
+        }
+
+        /* ============================================
+           SAFE AREA (notch phones)
+           ============================================ */
+        @supports (padding: env(safe-area-inset-top)) {
+            header { padding-top: max(12px, env(safe-area-inset-top)); }
+            main { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+            .toast { bottom: max(8px, env(safe-area-inset-bottom)); }
         }
     </style>
 </head>
@@ -1419,7 +1515,7 @@ HTML_TEMPLATE = '''
                         <button class="btn btn-primary" onclick="searchSchools()">SEARCH</button>
                     </div>
 
-                    <div style="overflow-x:auto;">
+                    <div style="overflow-x:auto;max-width:100%;">
                         <table id="schools-table">
                             <thead>
                                 <tr><th>School</th><th>Division</th><th>State</th><th>Conference</th><th>Actions</th></tr>
@@ -1479,7 +1575,7 @@ HTML_TEMPLATE = '''
             <!-- EMAIL PAGE -->
             <div id="page-email" class="page">
                 <!-- Email Stats Row -->
-                <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+                <div class="stats" style="grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));margin-bottom:20px;">
                     <div class="stat">
                         <div class="stat-value highlight" id="email-ready">0</div>
                         <div class="stat-label">Ready to Send</div>
@@ -1499,7 +1595,7 @@ HTML_TEMPLATE = '''
                 </div>
 
                 <!-- Queue Summary Bar -->
-                <div style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+                <div style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;overflow:hidden;">
                     <div>
                         <div style="font-family:monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Queue Status</div>
                         <div class="text-sm" id="email-queue-summary" style="margin-top:4px;"><span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading queue...</div>
@@ -1521,7 +1617,7 @@ HTML_TEMPLATE = '''
 
                         <div id="tomorrow-preview" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:16px;">
                             <div style="font-weight:600;margin-bottom:12px;font-size:13px;color:var(--accent);">TOMORROW'S QUEUE</div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
+                            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:10px;font-size:12px;">
                                 <div style="display:flex;justify-content:space-between;"><span class="text-muted">Total ready:</span> <strong id="tomorrow-total">-</strong></div>
                                 <div style="display:flex;justify-content:space-between;"><span class="text-muted">AI personalized:</span> <strong id="tomorrow-ai" style="color:var(--success);">-</strong></div>
                                 <div style="display:flex;justify-content:space-between;"><span class="text-muted">Template fallback:</span> <strong id="tomorrow-template" style="color:var(--warn);">-</strong></div>
@@ -1574,8 +1670,8 @@ HTML_TEMPLATE = '''
                         AI Email Generator
                         <button class="btn btn-secondary btn-sm" onclick="loadAIEmailStatus()">Refresh</button>
                     </div>
-                    <div id="ai-email-status" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <div id="ai-email-status" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;overflow:hidden;">
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
                             <div><span class="text-muted">Schools in sheet:</span> <span id="ai-total-schools">-</span></div>
                             <div><span class="text-muted">With AI emails:</span> <span id="ai-with-emails" style="color:var(--success);">-</span></div>
                             <div><span class="text-muted">Needing AI:</span> <span id="ai-needing-emails" style="color:var(--warn);">-</span></div>
@@ -1600,8 +1696,8 @@ HTML_TEMPLATE = '''
                         <button class="btn btn-secondary btn-sm" onclick="loadCloudEmailStats()">Refresh</button>
                     </div>
                     <p class="text-sm text-muted mb-4">Sync AI emails to Google Sheets for Railway deployment.</p>
-                    <div id="cloud-email-stats" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <div id="cloud-email-stats" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;overflow:hidden;">
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
                             <div><span class="text-muted">Total in cloud:</span> <span id="cloud-total">-</span></div>
                             <div><span class="text-muted">Pending:</span> <span id="cloud-pending" style="color:var(--accent);">-</span></div>
                             <div><span class="text-muted">Sent:</span> <span id="cloud-sent" style="color:var(--success);">-</span></div>
@@ -1632,7 +1728,7 @@ HTML_TEMPLATE = '''
             <!-- DMS PAGE -->
             <div id="page-dms" class="page">
                 <!-- DM Stats -->
-                <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+                <div class="stats" style="grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));margin-bottom:20px;">
                     <div class="stat">
                         <div class="stat-value highlight" id="dm-queue">0</div>
                         <div class="stat-label">In Queue</div>
