@@ -925,10 +925,10 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RecruitSignal</title>
+    <title>RecruitSignal Pro</title>
     <!-- PWA Support -->
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#0f1419">
+    <meta name="theme-color" content="#050505">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="RecruitSignal">
@@ -936,1021 +936,385 @@ HTML_TEMPLATE = '''
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --bg-deep: #0a0f14;
-            --bg-primary: #0f1419;
-            --bg-secondary: #151c24;
-            --bg-tertiary: #1a2332;
-            --bg-elevated: #212d3b;
-            --border: #2a3544;
-            --border-bright: #3d4f63;
-            --text: #e8eaed;
-            --text-secondary: #9aa5b1;
-            --text-dim: #6b7785;
-            --accent: #3b82f6;
-            --accent-dim: #2563eb;
-            --accent-glow: rgba(59, 130, 246, 0.12);
-            --volt: #3b82f6;
-            --volt-dim: #2563eb;
-            --volt-glow: rgba(59, 130, 246, 0.12);
-            --cyan: #3b82f6;
-            --cyan-dim: #2563eb;
-            --success: #22c55e;
-            --warn: #f59e0b;
-            --err: #ef4444;
-            --gradient-volt: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-            --gradient-dark: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-deep) 100%);
+            --bg: #050505; --bg2: #111111; --bg3: #1a1a1a;
+            --border: #333; --text: #fff; --muted: #888888;
+            --accent: #00ff88; --accent-glow: rgba(0, 255, 136, 0.4); --success: #22c55e; --warn: #f59e0b; --err: #ef4444;
         }
+        body { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
+        /* Layout */
+        .app { display: flex; flex-direction: column; height: 100vh; }
+        header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; position: relative; }
+        .header-left { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+        .header-center { flex: 1; text-align: center; min-width: 200px; }
+        .header-center .logo { font-size: 20px; font-weight: 800; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-transform: uppercase; letter-spacing: -1px; }
+        .header-center .logo .highlight { color: var(--accent); }
+        .athlete-name { font-size: 16px; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(90deg, #fff, var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; white-space: nowrap; }
+        .header-actions { display: flex; gap: 12px; align-items: center; justify-content: flex-end; flex-shrink: 0; }
+        .gear-btn { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 8px; transition: color 0.3s; }
+        .gear-btn:hover { color: var(--text); }
 
-        /* === APP CONTAINER === */
-        .app {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            position: relative;
-        }
+        /* Tabs */
+        nav { background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; padding: 0 24px; }
+        .tab { padding: 14px 20px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; transition: all 0.2s; }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-        /* === HEADER - PROFESSIONAL STYLE === */
-        header {
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border);
-            padding: 0;
-            display: flex;
-            align-items: stretch;
-            position: relative;
-            z-index: 10;
-        }
-
-        .header-brand {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            padding: 14px 24px;
-            background: var(--bg-tertiary);
-            border-right: 1px solid var(--border);
-        }
-
-        .header-logo {
-            width: 36px;
-            height: 36px;
-            background: var(--accent);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Inter', sans-serif;
-            font-size: 16px;
-            font-weight: 700;
-            color: white;
-        }
-
-        .header-title {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .header-title h1 {
-            font-family: 'Inter', sans-serif;
-            font-size: 17px;
-            font-weight: 600;
-            color: var(--text);
-            line-height: 1;
-        }
-
-        .header-title h1 span {
-            color: var(--accent);
-        }
-
-        .header-subtitle {
-            font-size: 11px;
-            color: var(--text-dim);
-            margin-top: 3px;
-        }
-
-        .header-athlete {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            padding: 0 24px;
-            flex: 1;
-        }
-
-        .athlete-name {
-            font-family: 'Inter', sans-serif;
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text);
-        }
-
-        .athlete-stats {
-            display: flex;
-            gap: 12px;
-        }
-
-        .athlete-stat {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 6px 12px;
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-        }
-
-        .athlete-stat-value {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--accent);
-        }
-
-        .athlete-stat-label {
-            font-size: 10px;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .header-actions {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            padding: 0 20px;
-            margin-left: auto;
-        }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 14px;
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            font-size: 12px;
-            color: var(--text-secondary);
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            background: var(--success);
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
-            50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
-        }
-
-        .gear-btn {
-            width: 36px;
-            height: 36px;
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text-secondary);
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .gear-btn:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-            background: var(--accent-glow);
-        }
-
-        /* === NAVIGATION === */
-        nav {
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            padding: 0 24px;
-            gap: 2px;
-            position: relative;
-            z-index: 10;
-        }
-
-        .tab {
-            padding: 14px 20px;
-            cursor: pointer;
-            color: var(--text-dim);
-            font-size: 13px;
-            font-weight: 500;
-            border: none;
-            background: transparent;
-            position: relative;
-            transition: all 0.2s ease;
-        }
-
-        .tab::before {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--accent);
-            transform: scaleX(0);
-            transition: transform 0.2s ease;
-        }
-
-        .tab:hover {
-            color: var(--text);
-        }
-
-        .tab.active {
-            color: var(--accent);
-        }
-
-        .tab.active::before {
-            transform: scaleX(1);
-        }
-
-        /* === MAIN CONTENT === */
-        main {
-            flex: 1;
-            overflow-y: auto;
-            padding: 24px;
-            position: relative;
-            z-index: 1;
-        }
-
-        .page { display: none; animation: fadeSlideIn 0.4s ease-out; }
+        /* Main content */
+        main { flex: 1; overflow-y: auto; padding: 24px; }
+        .page { display: none; }
         .page.active { display: block; }
 
-        @keyframes fadeSlideIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        /* Cards */
+        .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; transition: transform 0.3s, border-color 0.3s; }
+        .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+        .card-header { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
-        /* === CARDS === */
-        .card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 16px;
-            position: relative;
-        }
-
-        .card-header {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        /* === STATS GRID === */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(6, 1fr);
-            gap: 12px;
-            margin-bottom: 24px;
-        }
-
-        .stat-panel {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 18px 16px;
-            text-align: center;
-            position: relative;
-            transition: all 0.2s ease;
-        }
-
-        .stat-panel:hover {
-            border-color: var(--border-bright);
-        }
-
-        .stat-value {
-            font-size: 32px;
-            font-weight: 700;
-            color: var(--text);
-            line-height: 1;
-        }
-
+        /* Stats grid */
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; text-align: center; transition: transform 0.3s, border-color 0.3s; }
+        .stat:hover { transform: translateY(-2px); border-color: var(--accent); }
+        .stat-value { font-size: 32px; font-weight: 700; color: var(--accent); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+        /* Color variants for stat values */
         .stat-value.highlight { color: var(--accent); }
         .stat-value.cyan { color: var(--accent); }
         .stat-value.success { color: var(--success); }
 
-        .stat-label {
-            font-size: 11px;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-top: 8px;
-        }
+        /* Buttons */
+        .btn { background: var(--accent); color: #000; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; transition: all 0.3s ease; box-shadow: 0 0 15px var(--accent-glow); }
+        .btn:hover { background: transparent; color: var(--accent); box-shadow: 0 0 25px var(--accent-glow); border: 1px solid var(--accent); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: var(--accent); color: #000; }
+        .btn-outline, .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text); box-shadow: none; }
+        .btn-outline:hover, .btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: transparent; box-shadow: none; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; }
+        .btn-success { background: var(--success); color: #000; box-shadow: none; }
+        .btn-warn { background: var(--warn); color: #000; box-shadow: none; }
 
-        /* === COMMAND PANEL (Auto-Send) === */
-        .command-panel {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 20px 24px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 20px;
-        }
+        /* Inputs */
+        input, select, textarea { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 6px; width: 100%; font-size: 14px; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+        label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+        .form-group { margin-bottom: 16px; }
 
-        .command-info h3 {
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
-        }
+        /* Table */
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); }
+        th { color: var(--muted); font-size: 12px; text-transform: uppercase; font-weight: 500; }
+        tr:hover { background: var(--bg3); }
 
-        .command-display {
-            display: flex;
-            align-items: baseline;
-            gap: 12px;
-        }
-
-        .command-number {
-            font-size: 36px;
-            font-weight: 700;
-            color: var(--accent);
-            line-height: 1;
-        }
-
-        .command-unit {
-            font-size: 14px;
-            color: var(--text-secondary);
-        }
-
-        .command-time {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--accent);
-            padding: 6px 12px;
-            background: var(--accent-glow);
-            border: 1px solid var(--accent-dim);
-            border-radius: 6px;
-        }
-
-        .command-breakdown {
-            font-size: 12px;
-            color: var(--text-dim);
-            margin-top: 8px;
-        }
-
-        .command-actions {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-        }
-
-        /* === TOGGLE SWITCH === */
-        .toggle-switch {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        .toggle-track {
-            width: 44px;
-            height: 24px;
-            background: var(--bg-deep);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            position: relative;
-            transition: all 0.2s;
-        }
-
-        .toggle-track::before {
-            content: '';
-            position: absolute;
-            top: 3px;
-            left: 3px;
-            width: 16px;
-            height: 16px;
-            background: var(--text-dim);
-            border-radius: 50%;
-            transition: all 0.2s;
-        }
-
-        .toggle-switch input { display: none; }
-
-        .toggle-switch input:checked + .toggle-track {
-            background: var(--accent);
-            border-color: var(--accent);
-        }
-
-        .toggle-switch input:checked + .toggle-track::before {
-            transform: translateX(20px);
-            background: white;
-        }
-
-        /* === BUTTONS === */
-        .btn {
-            font-family: 'Inter', sans-serif;
-            font-size: 13px;
-            font-weight: 500;
-            padding: 10px 18px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            position: relative;
-        }
-
-        .btn-primary {
-            background: var(--accent);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: var(--accent-dim);
-        }
-
-        .btn-secondary {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--text);
-        }
-
-        .btn-secondary:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-            background: var(--accent-glow);
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-
-        .btn-success:hover {
-            background: #16a34a;
-        }
-
-        .btn-sm {
-            padding: 8px 14px;
-            font-size: 12px;
-        }
-
-        .btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
-        /* === GRID LAYOUTS === */
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-
-        .grid-3 {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-        }
-
-        /* === RESPONSE ITEMS === */
-        .response-item {
-            display: flex;
-            gap: 14px;
-            padding: 14px;
-            border-bottom: 1px solid var(--border);
-            transition: background 0.2s;
-        }
-
-        .response-item:hover {
-            background: var(--bg-tertiary);
-        }
-
-        .response-avatar {
-            width: 40px;
-            height: 40px;
-            background: var(--accent);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-            font-weight: 600;
-            color: white;
-        }
-
-        .response-content { flex: 1; }
-
-        .response-school {
-            font-weight: 600;
-            font-size: 14px;
-            color: var(--text);
-        }
-
-        .response-snippet {
-            font-size: 13px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-            line-height: 1.4;
-        }
-
-        .response-time {
-            font-size: 11px;
-            color: var(--text-dim);
-        }
-
-        /* === PERFORMANCE GRID === */
-        .perf-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .perf-stat {
-            text-align: center;
-            padding: 18px 16px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-        }
-
-        .perf-value {
-            font-size: 28px;
-            font-weight: 700;
-            line-height: 1;
-        }
-
-        .perf-label {
-            font-size: 11px;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-top: 8px;
-        }
-
-        /* === INPUTS === */
-        input, select, textarea {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-primary);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text);
-            padding: 10px 14px;
-            font-size: 14px;
-            width: 100%;
-            transition: all 0.2s;
-        }
-
-        input:focus, select:focus, textarea:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-glow);
-        }
-
-        label {
-            display: block;
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            margin-bottom: 6px;
-        }
-
-        .form-group { margin-bottom: 18px; }
-
-        /* === TABLES === */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            text-align: left;
-            padding: 12px;
-            border-bottom: 1px solid var(--border);
-            background: var(--bg-tertiary);
-        }
-
-        td {
-            padding: 12px;
-            border-bottom: 1px solid var(--border);
-            font-size: 13px;
-        }
-
-        tr:hover td {
-            background: var(--bg-tertiary);
-        }
-
-        /* === MODAL === */
-        .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(10, 15, 20, 0.85);
-            backdrop-filter: blur(8px);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1000; }
         .modal-overlay.active { display: flex; }
+        .modal { background: var(--bg2); border-radius: 12px; padding: 24px; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; border: 1px solid var(--border); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 18px; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .modal-close { background: none; border: none; color: var(--muted); font-size: 24px; cursor: pointer; transition: color 0.3s; }
+        .modal-close:hover { color: var(--text); }
 
-        .modal {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
-            width: 90%;
-            max-width: 600px;
-            max-height: 90vh;
-            overflow-y: auto;
-            position: relative;
-            animation: modalIn 0.2s ease-out;
-        }
+        /* Toast */
+        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg2); border: 1px solid var(--border); padding: 12px 20px; border-radius: 8px; z-index: 2000; animation: slideIn 0.3s; }
+        .toast.success { border-color: var(--accent); }
+        .toast.error { border-color: var(--err); }
+        @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } }
 
-        @keyframes modalIn {
-            from { opacity: 0; transform: scale(0.98) translateY(10px); }
-            to { opacity: 1; transform: scale(1) translateY(0); }
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .modal-title {
-            font-size: 18px;
-            font-weight: 600;
-        }
-
-        .modal-close {
-            width: 32px;
-            height: 32px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text-secondary);
-            font-size: 18px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-        }
-
-        .modal-close:hover {
-            border-color: var(--err);
-            color: var(--err);
-        }
-
-        /* === TOAST === */
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 14px 20px;
-            z-index: 2000;
-            animation: toastIn 0.2s ease-out;
-            font-size: 13px;
-            max-width: 360px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        }
-
-        .toast.success { border-left: 3px solid var(--success); }
-        .toast.error { border-left: 3px solid var(--err); }
-        .toast.info { border-left: 3px solid var(--accent); }
-
-        @keyframes toastIn {
-            from { transform: translateX(100px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-
-        /* === SPINNER === */
-        .spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 2px solid var(--border);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .loading-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 40px;
-            color: var(--text-dim);
-            gap: 12px;
-        }
-
-        /* === EMPTY STATES === */
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: var(--text-dim);
-        }
-
-        .empty-state-icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-            opacity: 0.4;
-        }
-
-        .empty-state-title {
-            font-size: 15px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-        }
-
-        .empty-state-text {
-            font-size: 13px;
-            line-height: 1.5;
-            max-width: 280px;
-            margin: 0 auto;
-        }
-
-        /* === TEMPLATE ITEMS === */
-        .template-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 14px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            margin-bottom: 10px;
-            background: var(--bg-tertiary);
-            transition: all 0.2s;
-        }
-
-        .template-item:hover {
-            border-color: var(--border-bright);
-        }
-
+        /* Template toggle */
+        .template-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; }
         .template-info { flex: 1; }
-        .template-name { font-weight: 600; font-size: 14px; }
-        .template-type { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
-
+        .template-name { font-weight: 500; }
+        .template-type { font-size: 12px; color: var(--muted); }
         .toggle { position: relative; width: 44px; height: 24px; }
         .toggle input { opacity: 0; width: 0; height: 0; }
-        .toggle-slider {
-            position: absolute;
-            inset: 0;
-            background: var(--bg-deep);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        .toggle-slider:before {
-            content: '';
-            position: absolute;
-            height: 18px;
-            width: 18px;
-            left: 2px;
-            bottom: 2px;
-            background: var(--text-dim);
-            border-radius: 50%;
-            transition: 0.2s;
-        }
-        .toggle input:checked + .toggle-slider {
-            background: var(--accent);
-            border-color: var(--accent);
-        }
-        .toggle input:checked + .toggle-slider:before {
-            transform: translateX(20px);
-            background: white;
-        }
+        .toggle-slider { position: absolute; inset: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 24px; cursor: pointer; transition: 0.2s; }
+        .toggle-slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 2px; bottom: 2px; background: var(--muted); border-radius: 50%; transition: 0.2s; }
+        .toggle input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
+        .toggle input:checked + .toggle-slider:before { transform: translateX(20px); background: white; }
 
-        /* === DM CARD === */
-        .dm-card {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 18px;
-            margin-bottom: 14px;
-        }
+        /* Toggle switch (auto-send) */
+        .toggle-switch { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); cursor: pointer; }
+        .toggle-switch input { width: auto; }
+        .toggle-track { position: relative; width: 44px; height: 24px; background: var(--bg); border: 1px solid var(--border); border-radius: 24px; cursor: pointer; transition: 0.2s; flex-shrink: 0; }
+        .toggle-track:before { content: ''; position: absolute; height: 18px; width: 18px; left: 2px; bottom: 2px; background: var(--muted); border-radius: 50%; transition: 0.2s; }
+        .toggle-switch input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
+        .toggle-switch input:checked + .toggle-track:before { transform: translateX(20px); background: white; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
 
-        .dm-header { display: flex; justify-content: space-between; margin-bottom: 14px; }
-        .dm-school { font-weight: 600; font-size: 15px; }
-        .dm-coach { color: var(--text-secondary); font-size: 13px; }
-        .dm-textarea { min-height: 90px; resize: vertical; margin-bottom: 10px; }
-        .char-count { text-align: right; font-size: 11px; color: var(--text-dim); }
+        /* DM Card */
+        .dm-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+        .dm-header { display: flex; justify-content: space-between; margin-bottom: 12px; }
+        .dm-school { font-weight: 600; }
+        .dm-coach { color: var(--muted); font-size: 14px; }
+        .dm-textarea { min-height: 80px; resize: vertical; margin-bottom: 8px; }
+        .char-count { text-align: right; font-size: 12px; color: var(--muted); }
         .char-count.over { color: var(--err); }
-        .dm-actions { display: flex; gap: 10px; margin-top: 14px; }
+        .dm-actions { display: flex; gap: 8px; margin-top: 12px; }
 
-        /* === LEAD ITEMS === */
-        .lead-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            border-bottom: 1px solid var(--border);
-        }
+        /* Response list */
+        .response-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+        .response-avatar { width: 40px; height: 40px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+        .response-content { flex: 1; }
+        .response-school { font-weight: 500; }
+        .response-snippet { font-size: 13px; color: var(--muted); margin-top: 4px; }
+        .response-time { font-size: 12px; color: var(--muted); }
 
-        .lead-school { font-weight: 600; font-size: 14px; }
-        .lead-coach { font-size: 12px; color: var(--text-dim); }
-        .lead-badge {
-            background: var(--warn);
-            color: white;
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-        }
+        /* Hot leads */
+        .lead-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--border); }
+        .lead-school { font-weight: 500; }
+        .lead-coach { font-size: 13px; color: var(--muted); }
+        .lead-badge { background: var(--warn); color: #000; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
 
-        /* === KEYBOARD SHORTCUTS === */
-        kbd {
-            font-family: monospace;
-            font-size: 11px;
-            background: var(--bg-deep);
-            border: 1px solid var(--border);
-            padding: 3px 7px;
-            border-radius: 4px;
-        }
+        /* Command panel (auto-send) */
+        .command-panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+        .command-info h3 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .command-display { display: flex; align-items: baseline; gap: 8px; }
+        .command-number { font-size: 36px; font-weight: 700; color: var(--accent); }
+        .command-unit { font-size: 14px; color: var(--muted); }
+        .command-time { font-size: 18px; font-weight: 600; color: var(--accent); }
+        .command-breakdown { font-size: 12px; color: var(--muted); margin-top: 6px; }
+        .command-actions { display: flex; align-items: center; gap: 16px; }
 
-        /* === UTILITY CLASSES === */
+        /* Perf grid */
+        .perf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+        .perf-stat { text-align: center; padding: 12px; background: var(--bg3); border-radius: 8px; }
+        .perf-value { font-size: 24px; font-weight: 700; color: var(--accent); }
+        .perf-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+        /* Loading state */
+        .loading-state { display: flex; align-items: center; gap: 12px; padding: 20px; color: var(--muted); }
+        .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Utility */
         .flex { display: flex; }
         .gap-2 { gap: 8px; }
         .gap-4 { gap: 16px; }
         .mt-2 { margin-top: 8px; }
         .mt-4 { margin-top: 16px; }
-        .mb-2 { margin-bottom: 8px; }
         .mb-4 { margin-bottom: 16px; }
-        .p-2 { padding: 8px; }
         .text-center { text-align: center; }
-        .text-muted { color: var(--text-dim); }
-        .text-sm { font-size: 12px; }
-        .text-success { color: var(--success); }
-        .text-warning { color: var(--warn); }
-        .text-danger { color: var(--err); }
+        .text-muted { color: var(--muted); }
+        .text-sm { font-size: 13px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
-        /* === MOBILE RESPONSIVE === */
-        @media (max-width: 1024px) {
-            .header-athlete { display: none; }
-            .athlete-stats { display: none; }
-            .stats-grid { grid-template-columns: repeat(3, 1fr); }
-        }
+        /* kbd */
+        kbd { background: var(--bg3); border: 1px solid var(--border); border-radius: 3px; padding: 2px 6px; font-family: monospace; font-size: 11px; }
 
+        /* ============================================
+           MOBILE RESPONSIVE STYLES
+           ============================================ */
         @media (max-width: 768px) {
-            header { flex-wrap: wrap; }
-            .header-brand {
+            header {
+                flex-direction: column;
+                padding: 10px 14px;
+                gap: 4px;
+                align-items: stretch;
+            }
+            .header-left {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
                 width: 100%;
-                clip-path: none;
-                padding: 12px 16px;
+                order: 1;
+            }
+            .header-center {
+                display: none;
             }
             .header-actions {
-                width: 100%;
-                justify-content: space-between;
-                padding: 10px 16px;
-                border-top: 1px solid var(--border);
+                position: absolute;
+                right: 14px;
+                top: 10px;
+                order: 2;
             }
+            .athlete-name {
+                font-size: 16px;
+                max-width: 60vw;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            #header-info {
+                font-size: 12px;
+                margin-left: 8px;
+                white-space: nowrap;
+            }
+            #connection-status { display: none; }
+
             nav {
-                padding: 0 12px;
+                padding: 0;
                 overflow-x: auto;
                 -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
             }
             nav::-webkit-scrollbar { display: none; }
             .tab {
-                padding: 12px 16px;
-                font-size: 11px;
+                flex: 1;
+                padding: 12px 8px;
+                font-size: 13px;
                 white-space: nowrap;
+                text-align: center;
+                min-width: 0;
             }
-            main { padding: 16px; }
-            .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-            .stat-panel { padding: 14px 10px; }
-            .stat-value { font-size: 32px; }
-            .stat-label { font-size: 9px; }
-            .grid-2 { grid-template-columns: 1fr; }
-            .command-panel { flex-direction: column; align-items: flex-start; }
-            .command-actions { width: 100%; flex-wrap: wrap; }
-            .card { padding: 16px; }
-            .btn { width: 100%; margin-bottom: 8px; }
-            .btn-sm { width: auto; }
+
+            main { padding: 12px; }
+
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+                margin-bottom: 16px;
+            }
+            .stat {
+                padding: 12px 8px;
+                border-radius: 8px;
+            }
+            .stat-value { font-size: 22px; }
+            .stat-label { font-size: 10px; letter-spacing: 0.5px; }
+
+            .card {
+                padding: 14px;
+                margin-bottom: 12px;
+                border-radius: 8px;
+            }
+            .card:hover { transform: none; }
+            .card-header { font-size: 11px; margin-bottom: 10px; letter-spacing: 1px; }
+
+            .btn {
+                padding: 12px 16px;
+                font-size: 14px;
+                width: 100%;
+                text-align: center;
+            }
+            .btn-sm {
+                padding: 10px 14px;
+                font-size: 13px;
+                width: auto;
+            }
+
+            input, select, textarea {
+                padding: 12px;
+                font-size: 16px;
+            }
+
+            .grid-2 { grid-template-columns: 1fr; gap: 10px; }
+
+            .modal {
+                width: 100%;
+                height: 100%;
+                max-width: 100%;
+                max-height: 100%;
+                border-radius: 0;
+                padding: 16px;
+            }
+
+            .toast {
+                left: 8px;
+                right: 8px;
+                bottom: 8px;
+                text-align: center;
+                font-size: 13px;
+            }
+
+            .dm-card { padding: 12px; }
+            .dm-header { flex-direction: column; gap: 4px; }
+            .dm-textarea { min-height: 100px; font-size: 16px; }
+            .dm-actions { flex-direction: column; gap: 8px; }
+
+            .response-item { padding: 10px 0; gap: 10px; }
+            .response-avatar { width: 32px; height: 32px; font-size: 13px; flex-shrink: 0; }
+
+            .command-panel { flex-direction: column; padding: 16px; gap: 12px; }
+            .command-number { font-size: 28px; }
+            .command-actions { width: 100%; justify-content: space-between; }
+
             .perf-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-            .perf-stat { padding: 14px 10px; }
-            .perf-value { font-size: 28px; }
-            .modal { width: 95%; padding: 20px; }
+            .perf-value { font-size: 18px; }
+
+            table { display: block; }
+            thead { display: none; }
+            tbody { display: block; }
+            tr {
+                display: block;
+                padding: 12px;
+                margin-bottom: 8px;
+                background: var(--bg3);
+                border-radius: 8px;
+                border: 1px solid var(--border);
+            }
+            td {
+                display: flex;
+                justify-content: space-between;
+                padding: 4px 0;
+                border: none;
+                font-size: 13px;
+            }
+            td:before { content: attr(data-label); font-weight: 500; color: var(--muted); margin-right: 8px; }
+
+            .hide-mobile { display: none !important; }
         }
 
-        @media (max-width: 480px) {
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
-            .header-logo { width: 36px; height: 36px; font-size: 20px; }
-            .header-title h1 { font-size: 18px; }
-            .command-number { font-size: 36px; }
+        @media (max-width: 380px) {
+            .athlete-name { font-size: 14px; max-width: 50vw; }
+            .tab { padding: 10px 6px; font-size: 12px; }
+            .stat-value { font-size: 18px; }
+            .stat-label { font-size: 9px; }
+            main { padding: 8px; }
+            .card { padding: 12px; }
+            .btn { padding: 10px 12px; font-size: 13px; }
         }
     </style>
 </head>
 <body>
     <div class="app">
         <header>
-            <div class="header-brand">
-                <div class="header-logo">RS</div>
-                <div class="header-title">
-                    <h1>Recruit<span>Signal</span></h1>
-                    <div class="header-subtitle">Recruiting Platform</div>
-                </div>
-            </div>
-
-            <div class="header-athlete">
+            <div class="header-left">
                 <span class="athlete-name" id="header-name">Keelan Underwood</span>
-                <div class="athlete-stats">
-                    <div class="athlete-stat">
-                        <span class="athlete-stat-value" id="header-year">2026</span>
-                        <span class="athlete-stat-label">Class</span>
-                    </div>
-                    <div class="athlete-stat">
-                        <span class="athlete-stat-value" id="header-position">OL</span>
-                        <span class="athlete-stat-label">Pos</span>
-                    </div>
-                    <div class="athlete-stat">
-                        <span class="athlete-stat-value" id="header-size">6'3/295</span>
-                        <span class="athlete-stat-label">Size</span>
-                    </div>
-                </div>
+                <span class="text-muted text-sm" id="header-info">2026 OL</span>
             </div>
-
+            <div class="header-center">
+                <div class="logo">Recruit<span class="highlight">Signal</span></div>
+            </div>
             <div class="header-actions">
-                <div class="status-indicator">
-                    <span class="status-dot"></span>
-                    <span id="connection-status">Connecting</span>
-                </div>
+                <span id="connection-status" class="text-sm text-muted">Connecting...</span>
                 <button class="gear-btn" onclick="openSettings()">&#9881;</button>
             </div>
         </header>
 
         <nav>
-            <div class="tab active" data-page="home">Dashboard</div>
-            <div class="tab" data-page="find">Find Schools</div>
+            <div class="tab active" data-page="home">Home</div>
+            <div class="tab" data-page="find">Find</div>
             <div class="tab" data-page="email">Email</div>
-            <div class="tab" data-page="dms">Messages</div>
-            <div class="tab" data-page="track">Analytics</div>
+            <div class="tab" data-page="dms">DMs</div>
         </nav>
 
         <main>
             <!-- HOME PAGE -->
             <div id="page-home" class="page active">
                 <!-- Stats Grid - Scoreboard Style -->
-                <div class="stats-grid">
-                    <div class="stat-panel">
+                <div class="stats">
+                    <div class="stat">
                         <div class="stat-value highlight" id="stat-sent">0</div>
                         <div class="stat-label">Emails Sent</div>
                     </div>
-                    <div class="stat-panel">
+                    <div class="stat">
                         <div class="stat-value cyan" id="stat-responses">0</div>
                         <div class="stat-label">Responses</div>
                     </div>
-                    <div class="stat-panel">
+                    <div class="stat">
                         <div class="stat-value" id="stat-rate">0%</div>
                         <div class="stat-label">Response Rate</div>
                     </div>
-                    <div class="stat-panel">
+                    <div class="stat">
                         <div class="stat-value" id="stat-opens">0%</div>
                         <div class="stat-label">Open Rate</div>
                     </div>
-                    <div class="stat-panel">
+                    <div class="stat">
                         <div class="stat-value" id="stat-followups">0</div>
                         <div class="stat-label">Follow-ups Due</div>
                     </div>
-                    <div class="stat-panel" style="cursor:pointer;" onclick="window.open(hudlUrl, '_blank')" title="View Film">
+                    <div class="stat" style="cursor:pointer;" onclick="window.open(hudlUrl, '_blank')" title="View Film">
                         <div class="stat-value success" id="stat-hudl-views"><span class="spinner" style="width:24px;height:24px;"></span></div>
                         <div class="stat-label">Film Views</div>
                     </div>
@@ -1963,7 +1327,7 @@ HTML_TEMPLATE = '''
                         <div class="command-display">
                             <span class="command-number" id="tomorrow-count">—</span>
                             <span class="command-unit">coaches</span>
-                            <span style="color:var(--text-dim);margin:0 8px;">@</span>
+                            <span style="color:var(--muted);margin:0 8px;">@</span>
                             <span class="command-time" id="optimal-time">--:--</span>
                         </div>
                         <div class="command-breakdown" id="tomorrow-breakdown"></div>
@@ -2017,7 +1381,7 @@ HTML_TEMPLATE = '''
                                     <div class="perf-label">Tracked</div>
                                 </div>
                                 <div class="perf-stat">
-                                    <div class="perf-value" style="color:var(--cyan);" id="perf-opened">—</div>
+                                    <div class="perf-value" style="color:var(--accent);" id="perf-opened">—</div>
                                     <div class="perf-label">Opened</div>
                                 </div>
                                 <div class="perf-stat">
@@ -2025,7 +1389,7 @@ HTML_TEMPLATE = '''
                                     <div class="perf-label">Replied</div>
                                 </div>
                             </div>
-                            <div class="text-sm" id="perf-best-time" style="color:var(--text-dim);text-align:center;padding:12px;background:var(--bg-tertiary);border:1px solid var(--border);">
+                            <div class="text-sm" id="perf-best-time" style="color:var(--muted);text-align:center;padding:12px;background:var(--bg3);border:1px solid var(--border);">
                                 <span class="spinner" style="width:14px;height:14px;border-width:2px;vertical-align:middle;margin-right:8px;"></span>
                                 Analyzing best send times...
                             </div>
@@ -2108,36 +1472,36 @@ HTML_TEMPLATE = '''
                         </div>
                     </div>
 
-                    <div id="scraper-log" class="mt-4" style="max-height:200px;overflow:auto;font-family:monospace;font-size:11px;background:var(--bg-deep);border:1px solid var(--border);padding:12px;"></div>
+                    <div id="scraper-log" class="mt-4" style="max-height:200px;overflow:auto;font-family:monospace;font-size:11px;background:var(--bg);border:1px solid var(--border);padding:12px;"></div>
                 </div>
             </div>
             
             <!-- EMAIL PAGE -->
             <div id="page-email" class="page">
                 <!-- Email Stats Row -->
-                <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
-                    <div class="stat-panel">
+                <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+                    <div class="stat">
                         <div class="stat-value highlight" id="email-ready">0</div>
                         <div class="stat-label">Ready to Send</div>
                     </div>
-                    <div class="stat-panel">
+                    <div class="stat">
                         <div class="stat-value cyan" id="email-today">0</div>
                         <div class="stat-label">Sent Today</div>
                     </div>
-                    <div class="stat-panel">
+                    <div class="stat">
                         <div class="stat-value" id="email-followups">0</div>
                         <div class="stat-label">Follow-ups Due</div>
                     </div>
-                    <div class="stat-panel">
+                    <div class="stat">
                         <div class="stat-value success" id="email-responded">0</div>
                         <div class="stat-label">Responded</div>
                     </div>
                 </div>
 
                 <!-- Queue Summary Bar -->
-                <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-left:3px solid var(--cyan);padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+                <div style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
                     <div>
-                        <div style="font-family:monospace;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Queue Status</div>
+                        <div style="font-family:monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Queue Status</div>
                         <div class="text-sm" id="email-queue-summary" style="margin-top:4px;"><span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading queue...</div>
                     </div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -2150,13 +1514,13 @@ HTML_TEMPLATE = '''
                 <div class="grid-2">
                     <div class="card">
                         <div class="card-header">Send Emails</div>
-                        <div id="auto-send-info" class="mb-4" style="background:var(--bg-tertiary);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:12px;">
-                            <div style="display:flex;justify-content:space-between;"><span style="color:var(--text-dim);">Last auto-send:</span> <span id="last-auto-send">Never</span></div>
-                            <div style="display:flex;justify-content:space-between;margin-top:6px;"><span style="color:var(--text-dim);">Next scheduled:</span> <span id="next-auto-send">Not scheduled</span></div>
+                        <div id="auto-send-info" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:12px;">
+                            <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Last auto-send:</span> <span id="last-auto-send">Never</span></div>
+                            <div style="display:flex;justify-content:space-between;margin-top:6px;"><span style="color:var(--muted);">Next scheduled:</span> <span id="next-auto-send">Not scheduled</span></div>
                         </div>
 
-                        <div id="tomorrow-preview" class="mb-4" style="background:var(--bg-tertiary);border:1px solid var(--border);border-left:3px solid var(--volt);padding:16px;">
-                            <div style="font-weight:600;margin-bottom:12px;font-size:13px;color:var(--volt);">TOMORROW'S QUEUE</div>
+                        <div id="tomorrow-preview" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:16px;">
+                            <div style="font-weight:600;margin-bottom:12px;font-size:13px;color:var(--accent);">TOMORROW'S QUEUE</div>
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;">
                                 <div style="display:flex;justify-content:space-between;"><span class="text-muted">Total ready:</span> <strong id="tomorrow-total">-</strong></div>
                                 <div style="display:flex;justify-content:space-between;"><span class="text-muted">AI personalized:</span> <strong id="tomorrow-ai" style="color:var(--success);">-</strong></div>
@@ -2210,7 +1574,7 @@ HTML_TEMPLATE = '''
                         AI Email Generator
                         <button class="btn btn-secondary btn-sm" onclick="loadAIEmailStatus()">Refresh</button>
                     </div>
-                    <div id="ai-email-status" class="mb-4" style="background:var(--bg-tertiary);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;">
+                    <div id="ai-email-status" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;">
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                             <div><span class="text-muted">Schools in sheet:</span> <span id="ai-total-schools">-</span></div>
                             <div><span class="text-muted">With AI emails:</span> <span id="ai-with-emails" style="color:var(--success);">-</span></div>
@@ -2236,10 +1600,10 @@ HTML_TEMPLATE = '''
                         <button class="btn btn-secondary btn-sm" onclick="loadCloudEmailStats()">Refresh</button>
                     </div>
                     <p class="text-sm text-muted mb-4">Sync AI emails to Google Sheets for Railway deployment.</p>
-                    <div id="cloud-email-stats" class="mb-4" style="background:var(--bg-tertiary);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;">
+                    <div id="cloud-email-stats" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;">
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                             <div><span class="text-muted">Total in cloud:</span> <span id="cloud-total">-</span></div>
-                            <div><span class="text-muted">Pending:</span> <span id="cloud-pending" style="color:var(--cyan);">-</span></div>
+                            <div><span class="text-muted">Pending:</span> <span id="cloud-pending" style="color:var(--accent);">-</span></div>
                             <div><span class="text-muted">Sent:</span> <span id="cloud-sent" style="color:var(--success);">-</span></div>
                             <div><span class="text-muted">Open rate:</span> <span id="cloud-open-rate">-</span></div>
                             <div><span class="text-muted">Response rate:</span> <span id="cloud-response-rate">-</span></div>
@@ -2255,8 +1619,8 @@ HTML_TEMPLATE = '''
                 </div>
 
                 <!-- Pause Controls Footer -->
-                <div id="email-pause-footer" style="margin-top:20px;padding:14px 18px;background:var(--bg-tertiary);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-                    <span id="email-mode-status" style="font-family:monospace;font-size:12px;color:var(--text-dim);">Auto-send active</span>
+                <div id="email-pause-footer" style="margin-top:20px;padding:14px 18px;background:var(--bg3);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+                    <span id="email-mode-status" style="font-family:monospace;font-size:12px;color:var(--muted);">Auto-send active</span>
                     <div style="display:flex;gap:10px;align-items:center;">
                         <input type="date" id="pause-until-date" style="padding:8px 12px;font-size:12px;">
                         <button class="btn btn-secondary btn-sm" onclick="setPauseDate()">Pause</button>
@@ -2268,40 +1632,40 @@ HTML_TEMPLATE = '''
             <!-- DMS PAGE -->
             <div id="page-dms" class="page">
                 <!-- DM Stats -->
-                <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
-                    <div class="stat-panel">
+                <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+                    <div class="stat">
                         <div class="stat-value highlight" id="dm-queue">0</div>
                         <div class="stat-label">In Queue</div>
                     </div>
-                    <div class="stat-panel">
+                    <div class="stat">
                         <div class="stat-value cyan" id="dm-sent">0</div>
                         <div class="stat-label">DMs Sent</div>
                     </div>
-                    <div class="stat-panel">
+                    <div class="stat">
                         <div class="stat-value success" id="dm-replied">0</div>
                         <div class="stat-label">Replied</div>
                     </div>
-                    <div class="stat-panel">
-                        <div class="stat-value" style="color:var(--text-dim);" id="dm-no-handle">0</div>
+                    <div class="stat">
+                        <div class="stat-value" style="color:var(--muted);" id="dm-no-handle">0</div>
                         <div class="stat-label">No Twitter</div>
                     </div>
                 </div>
 
                 <!-- Current Coach Card -->
-                <div class="card mb-4" id="current-dm-card" style="border-left:3px solid var(--cyan);">
+                <div class="card mb-4" id="current-dm-card" style="border-left:3px solid var(--accent);">
                     <div class="card-header">Active Session</div>
                     <div id="current-coach-info" style="padding:20px 0;">
                         <p class="text-muted">Click "Start DM Session" to begin outreach</p>
                     </div>
-                    <div id="dm-message-preview" style="background:var(--bg-tertiary);border:1px solid var(--border);padding:16px;margin-bottom:16px;display:none;">
+                    <div id="dm-message-preview" style="background:var(--bg3);border:1px solid var(--border);padding:16px;margin-bottom:16px;display:none;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                            <div style="font-family:monospace;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">Message (copied)</div>
+                            <div style="font-family:monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Message (copied)</div>
                             <button class="btn btn-secondary btn-sm" onclick="reCopyMessage()">Re-copy</button>
                         </div>
                         <div id="dm-message-text" style="white-space:pre-wrap;font-size:13px;line-height:1.5;"></div>
                     </div>
-                    <div id="keyboard-shortcuts" style="background:var(--bg-deep);border:1px solid var(--border);padding:12px 16px;margin-bottom:16px;display:none;">
-                        <div style="font-size:12px;"><strong style="color:var(--volt);">SHORTCUTS:</strong> <kbd>M</kbd> Messaged <kbd>F</kbd> Followed <kbd>S</kbd> Skip <kbd>W</kbd> Wrong <kbd>C</kbd> Re-copy</div>
+                    <div id="keyboard-shortcuts" style="background:var(--bg);border:1px solid var(--border);padding:12px 16px;margin-bottom:16px;display:none;">
+                        <div style="font-size:12px;"><strong style="color:var(--accent);">SHORTCUTS:</strong> <kbd>M</kbd> Messaged <kbd>F</kbd> Followed <kbd>S</kbd> Skip <kbd>W</kbd> Wrong <kbd>C</kbd> Re-copy</div>
                     </div>
                     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
                         <button class="btn btn-primary" id="btn-start-dm" onclick="startDMSession()">START SESSION</button>
@@ -2309,12 +1673,12 @@ HTML_TEMPLATE = '''
                         <button class="btn btn-success" id="btn-followed-messaged" onclick="markDM('messaged')" style="display:none;">MESSAGED (M)</button>
                         <button class="btn btn-secondary" id="btn-followed-only" onclick="markDM('followed')" style="display:none;">FOLLOWED (F)</button>
                         <button class="btn btn-secondary" id="btn-skip" onclick="markDM('skipped')" style="display:none;">SKIP (S)</button>
-                        <button class="btn" id="btn-wrong-twitter" onclick="markWrongTwitter()" style="display:none;background:var(--err);color:var(--bg-deep);">WRONG (W)</button>
-                        <label id="auto-advance-label" style="display:none;margin-left:12px;font-size:12px;cursor:pointer;color:var(--text-secondary);">
+                        <button class="btn" id="btn-wrong-twitter" onclick="markWrongTwitter()" style="display:none;background:var(--err);color:var(--bg);">WRONG (W)</button>
+                        <label id="auto-advance-label" style="display:none;margin-left:12px;font-size:12px;cursor:pointer;color:var(--muted);">
                             <input type="checkbox" id="auto-advance-toggle" style="margin-right:6px;"> Auto-advance (8s)
                         </label>
                     </div>
-                    <div id="dm-progress" class="mt-4" style="display:none;font-family:monospace;font-size:12px;color:var(--text-dim);"></div>
+                    <div id="dm-progress" class="mt-4" style="display:none;font-family:monospace;font-size:12px;color:var(--muted);"></div>
                 </div>
 
                 <div class="grid-2">
@@ -2349,52 +1713,6 @@ HTML_TEMPLATE = '''
             </div>
             
             <!-- TRACK PAGE -->
-            <div id="page-track" class="page">
-                <!-- Track Stats Grid -->
-                <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px;">
-                    <div class="stat-panel">
-                        <div class="stat-value highlight" id="track-total-sent">—</div>
-                        <div class="stat-label">Total Sent</div>
-                    </div>
-                    <div class="stat-panel">
-                        <div class="stat-value cyan" id="track-opened">—</div>
-                        <div class="stat-label">Opened</div>
-                    </div>
-                    <div class="stat-panel">
-                        <div class="stat-value" id="track-open-rate">—</div>
-                        <div class="stat-label">Open Rate</div>
-                    </div>
-                    <div class="stat-panel">
-                        <div class="stat-value success" id="track-response-rate">—</div>
-                        <div class="stat-label">Response Rate</div>
-                    </div>
-                </div>
-
-                <div class="grid-2">
-                    <!-- Recent Opens -->
-                    <div class="card" style="border-left:3px solid var(--cyan);">
-                        <div class="card-header">Recent Opens</div>
-                        <p class="text-sm text-muted mb-4">Coaches who opened your email - prime follow-up targets</p>
-                        <div id="track-recent-opens" style="max-height:320px;overflow-y:auto;">
-                            <div class="loading-state">
-                                <div class="spinner"></div>
-                                <span>Loading...</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Recent Responses -->
-                    <div class="card" style="border-left:3px solid var(--success);">
-                        <div class="card-header">Recent Responses</div>
-                        <div id="track-recent-responses" style="max-height:320px;overflow-y:auto;">
-                            <div class="loading-state">
-                                <div class="spinner"></div>
-                                <span>Loading...</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </main>
     </div>
     
@@ -2421,12 +1739,12 @@ HTML_TEMPLATE = '''
             </div>
 
             <!-- Railway Banner -->
-            <div id="railway-banner" style="display:none;background:var(--bg-tertiary);border:1px solid var(--accent);border-radius:8px;padding:16px;margin-bottom:20px;">
+            <div id="railway-banner" style="display:none;background:var(--bg3);border:1px solid var(--accent);border-radius:8px;padding:16px;margin-bottom:20px;">
                 <div style="display:flex;align-items:center;gap:14px;">
                     <div style="width:36px;height:36px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:white;">RW</div>
                     <div>
                         <div style="font-weight:600;color:var(--accent);">Running on Railway</div>
-                        <div style="font-size:12px;color:var(--text-secondary);">Credentials managed via environment variables</div>
+                        <div style="font-size:12px;color:var(--muted);">Credentials managed via environment variables</div>
                     </div>
                 </div>
             </div>
@@ -2440,7 +1758,7 @@ HTML_TEMPLATE = '''
                 </div>
 
                 <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:24px 0 16px;">Google Sheets</div>
-                <div id="sheets-status" class="mb-4" style="padding:12px 16px;background:var(--bg-tertiary);border:1px solid var(--border);font-family:monospace;font-size:12px;">
+                <div id="sheets-status" class="mb-4" style="padding:12px 16px;background:var(--bg3);border:1px solid var(--border);font-family:monospace;font-size:12px;">
                     <span id="sheets-connection-text">Checking...</span>
                 </div>
                 <div class="form-group">
@@ -2451,7 +1769,7 @@ HTML_TEMPLATE = '''
                 <div class="form-group">
                     <label>Credentials JSON</label>
                     <p class="text-sm text-muted mb-4" style="line-height:1.6;">
-                        1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--cyan);">Google Cloud Console</a><br>
+                        1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent);">Google Cloud Console</a><br>
                         2. Create project → Enable Sheets API<br>
                         3. Create Service Account → Download JSON<br>
                         4. Share spreadsheet with service account email
@@ -2494,8 +1812,8 @@ HTML_TEMPLATE = '''
             <div class="form-group"><label>Template Name</label><input type="text" id="new-tpl-name" placeholder="My Template"></div>
             <div class="form-group" id="tpl-subject-group"><label>Subject Line</label><input type="text" id="new-tpl-subject" placeholder="{grad_year} {position} - {athlete_name}"></div>
             <div class="form-group"><label>Body</label><textarea id="new-tpl-body" rows="10" placeholder="Coach {coach_name},..."></textarea></div>
-            <div style="background:var(--bg-tertiary);border:1px solid var(--border);padding:12px;margin-bottom:20px;font-family:monospace;font-size:11px;color:var(--text-dim);">
-                <strong style="color:var(--volt);">Variables:</strong> {coach_name}, {school}, {athlete_name}, {position}, {grad_year}, {height}, {weight}, {gpa}, {hudl_link}, {phone}, {email}
+            <div style="background:var(--bg3);border:1px solid var(--border);padding:12px;margin-bottom:20px;font-family:monospace;font-size:11px;color:var(--muted);">
+                <strong style="color:var(--accent);">Variables:</strong> {coach_name}, {school}, {athlete_name}, {position}, {grad_year}, {height}, {weight}, {gpa}, {hudl_link}, {phone}, {email}
             </div>
             <button class="btn btn-primary" id="tpl-save-btn" onclick="createTemplate()">SAVE TEMPLATE</button>
         </div>
@@ -2588,7 +1906,7 @@ HTML_TEMPLATE = '''
                 } else {
                     el.innerHTML = `
                         <div class="empty-state" style="padding:24px;">
-                            <div class="empty-state-icon" style="font-size:32px;color:var(--cyan);">—</div>
+                            <div class="empty-state-icon" style="font-size:32px;color:var(--accent);">—</div>
                             <div class="empty-state-title">No opens yet</div>
                             <div class="empty-state-text">When coaches open your emails, you'll see it here in real-time.</div>
                         </div>
@@ -2606,7 +1924,7 @@ HTML_TEMPLATE = '''
                         const displayHour = hour % 12 || 12;
                         return displayHour + ' ' + ampm;
                     }).join(' & ');
-                    bestTimeEl.innerHTML = `Best send times: <strong style="color:var(--volt);">${times}</strong>`;
+                    bestTimeEl.innerHTML = `Best send times: <strong style="color:var(--accent);">${times}</strong>`;
                 } else {
                     bestTimeEl.innerHTML = 'Send more emails to discover best times';
                 }
@@ -2763,7 +2081,7 @@ HTML_TEMPLATE = '''
                 } else {
                     el.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-state-icon" style="font-size:32px;color:var(--cyan);">—</div>
+                            <div class="empty-state-icon" style="font-size:32px;color:var(--accent);">—</div>
                             <div class="empty-state-title">No responses yet</div>
                             <div class="empty-state-text">Click "Check Inbox" to scan for coach replies.</div>
                         </div>
@@ -3020,7 +2338,7 @@ HTML_TEMPLATE = '''
                 } else {
                     tbody.innerHTML = `<tr><td colspan="5">
                         <div class="empty-state">
-                            <div class="empty-state-icon" style="font-size:32px;color:var(--cyan);">—</div>
+                            <div class="empty-state-icon" style="font-size:32px;color:var(--accent);">—</div>
                             <div class="empty-state-title">No schools found</div>
                             <div class="empty-state-text">Try a different search term or adjust your filters.</div>
                         </div>
@@ -3497,14 +2815,18 @@ HTML_TEMPLATE = '''
                 const totalSent = trackData.total_sent || statsData.emails_sent || 0;
                 const totalOpened = trackData.total_opened || 0;
 
-                document.getElementById('track-total-sent').textContent = totalSent;
-                document.getElementById('track-opened').textContent = totalOpened;
-                document.getElementById('track-open-rate').textContent = (trackData.open_rate || 0) + '%';
-                document.getElementById('track-response-rate').textContent = (statsData.response_rate || 0) + '%';
+                const tts = document.getElementById('track-total-sent');
+                if (tts) tts.textContent = totalSent;
+                const to = document.getElementById('track-opened');
+                if (to) to.textContent = totalOpened;
+                const tor = document.getElementById('track-open-rate');
+                if (tor) tor.textContent = (trackData.open_rate || 0) + '%';
+                const trr = document.getElementById('track-response-rate');
+                if (trr) trr.textContent = (statsData.response_rate || 0) + '%';
 
                 // Recent opens
                 const opensEl = document.getElementById('track-recent-opens');
-                if (trackData.recent_opens && trackData.recent_opens.length) {
+                if (opensEl && trackData.recent_opens && trackData.recent_opens.length) {
                     opensEl.innerHTML = trackData.recent_opens.slice(0, 10).map(o => `
                         <div style="padding:8px 0;border-bottom:1px solid var(--border);">
                             <div style="font-weight:500;">${o.school || 'Unknown'}</div>
@@ -3514,7 +2836,7 @@ HTML_TEMPLATE = '''
                             </div>
                         </div>
                     `).join('');
-                } else {
+                } else if (opensEl) {
                     opensEl.innerHTML = '<div class="text-muted">No opens tracked yet</div>';
                 }
 
@@ -3522,7 +2844,7 @@ HTML_TEMPLATE = '''
                 const responsesEl = document.getElementById('track-recent-responses');
                 const responsesRes = await fetch('/api/responses/recent');
                 const responsesData = await responsesRes.json();
-                if (responsesData.responses && responsesData.responses.length) {
+                if (responsesEl && responsesData.responses && responsesData.responses.length) {
                     responsesEl.innerHTML = responsesData.responses.slice(0, 10).map(r => `
                         <div style="padding:8px 0;border-bottom:1px solid var(--border);">
                             <div style="font-weight:500;">${r.school || 'Unknown'}</div>
@@ -3532,7 +2854,7 @@ HTML_TEMPLATE = '''
                             </div>
                         </div>
                     `).join('');
-                } else {
+                } else if (responsesEl) {
                     responsesEl.innerHTML = '<div class="text-muted">No responses yet</div>';
                 }
 
@@ -3574,12 +2896,8 @@ HTML_TEMPLATE = '''
                 
                 // Update header with athlete info
                 document.getElementById('header-name').textContent = (a.name || 'ATHLETE').toUpperCase();
-                const headerYear = document.getElementById('header-year');
-                const headerPos = document.getElementById('header-position');
-                const headerSize = document.getElementById('header-size');
-                if (headerYear) headerYear.textContent = a.graduation_year || '2026';
-                if (headerPos) headerPos.textContent = a.positions || 'OL';
-                if (headerSize) headerSize.textContent = `${a.height || "6'0"}/${a.weight || '200'}`;
+                const headerInfo = document.getElementById('header-info');
+                if (headerInfo) headerInfo.textContent = `${a.graduation_year || '2026'} ${a.positions || 'OL'}`;
                 
                 // Update connection status
                 const connected = e.email_address && e.app_password;
