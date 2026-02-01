@@ -30,3 +30,6 @@ schedule>=1.2.0  # For email scheduling
 
 # Clipboard (for Twitter DM helper)
 pyperclip>=1.8.0
+
+# Database (Supabase)
+supabase>=2.0.0
