@@ -1,133 +1,227 @@
-# Coach Outreach System - Project Context
+# RecruitSignal - Project Context
 
 ## Overview
-Automated recruiting outreach platform for **Keelan Underwood**, 2026 OL from Florida (6'3", 295 lbs, The Benjamin School).
-Sends personalized AI-generated emails to college football coaches.
+Multi-tenant recruiting outreach platform. Originally built for **Keelan Underwood** (2026 OL, 6'3" 295 lbs, The Benjamin School, FL). Now supports multiple athletes with separate accounts, school selections, and Gmail credentials.
+
+Sends personalized AI-generated emails to college football coaches via Gmail API.
 
 ## Architecture
+
+### Database: Supabase (PostgreSQL)
+- **ALL data lives in Supabase** — Google Sheets was fully removed (Jan 2026)
+- Tables: `athletes`, `schools`, `coaches`, `outreach_tracking`, `email_templates`, `athlete_credentials`, `athlete_schools`, `settings`
+- Supabase URL: `https://sdugzlvnlfejiwmrrysf.supabase.co`
+
+### Cloud (Railway)
+- **Flask app** (`app.py`) — main web app, ~8500 lines
+- Serves the full single-page app (HTML/CSS/JS inline in Python template)
+- Gmail API for sending emails
+- Auto-send scheduler runs in background thread
+- Open/click tracking via pixel + redirect
 
 ### Local (MacBook)
 - **Ollama** generates personalized AI emails (llama3.2:3b model)
 - **LaunchAgent** triggers on wake/login: `com.coachoutreach.daily.plist`
-- **Scripts:**
-  - `run_daily_emails.sh` - Main trigger script
-  - `daily_generate.py` - Generates ~33 AI emails/day (API limit)
-  - `daily_send.py` - Verifies cloud sync
-
-### Cloud (Railway)
-- **Flask app** (`app.py`) - Handles sending via Gmail API
-- **Google Sheets** (`bardeen`) - Stores coaches, AI emails, settings
-- **Auto-send scheduler** - Sends at optimal times based on open tracking
+- Scripts: `run_daily_emails.sh`, `daily_generate.py`, `daily_send.py`
 
 ### Data Flow
 ```
 MacBook wakes
   → daily_generate.py (Ollama creates AI emails)
-  → Syncs to Google Sheets (ai_emails sheet)
-  → Railway reads from Sheets
-  → Railway sends at optimal time via Gmail API
-  → Marks sent, tracks opens
+  → Saves to Supabase (ai_emails in outreach_tracking or local cache)
+  → Railway auto-send scheduler picks up emails
+  → Sends at optimal time via Gmail API (per-athlete credentials)
+  → Tracks opens via pixel, stores in Supabase
 ```
+
+## Multi-Tenant System (added Feb 2026)
+
+### How It Works
+- **Keelan is admin** (`is_admin = true` on athletes table)
+- Admin creates athlete accounts via the Admin tab
+- Each athlete logs in with email/password (Flask sessions)
+- Each athlete selects which schools they want to email (from shared school database)
+- Each athlete can choose coach preference per school: `position_coach`, `rc` (recruiting coordinator), or `both`
+- Gmail credentials are stored **encrypted** (Fernet) in Supabase per athlete
+- Scraper tools only visible to admin
+- Schools and coaches are shared; everything else is per-athlete
+
+### Auth System
+- Simple password auth (werkzeug hash), NOT Supabase Auth
+- Flask sessions with 30-day lifetime
+- `@login_required` decorator for authenticated routes
+- `@admin_required` decorator for admin-only routes
+- `@app.before_request` sets `g.athlete_id`, `g.is_admin`, `g.athlete_name`
+- `get_athlete_gmail_service()` builds Gmail API service from encrypted DB credentials
+- Falls back to global Railway env vars if no per-athlete credentials
+
+### Database Tables for Multi-Tenant
+```sql
+-- Auth columns on athletes table
+athletes.password_hash TEXT
+athletes.is_admin BOOLEAN DEFAULT false
+athletes.is_active BOOLEAN DEFAULT true
+
+-- Per-athlete encrypted Gmail credentials
+athlete_credentials (athlete_id, gmail_client_id, gmail_client_secret, gmail_refresh_token, gmail_email)
+
+-- Per-athlete school selection (junction table)
+athlete_schools (athlete_id, school_id, coach_preference)
+```
+
+### Admin Features
+- View all athletes with stats (emails sent, schools selected, Gmail status)
+- Create new athlete accounts with profile fields
+- Set/edit Gmail credentials per athlete (stored encrypted)
+- Missing coach data alerts (schools where position coach or RC email is missing)
+
+### Keelan's Login
+- Email: `underwoodkeelan@gmail.com`
+- Password: `Keelan2026!`
+- Athlete ID: `ff757c0f-0bb0-46cc-8699-21531b0d4a95`
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `app.py` | Main Flask app (Railway deployment) |
-| `daily_generate.py` | AI email generation with Ollama |
+| `app.py` | Main Flask app — routes, templates, JS, all in one (~8500 lines) |
+| `db/supabase_client.py` | Supabase database client — all DB operations |
+| `daily_generate.py` | AI email generation with Ollama (local) |
 | `daily_send.py` | Verifies cloud sync status |
 | `run_daily_emails.sh` | LaunchAgent trigger script |
-| `sheets/cloud_emails.py` | Cloud storage for AI emails |
-| `scheduler/email_scheduler.py` | Email scheduling logic |
 | `enterprise/email_generator.py` | AI email generation engine |
+| `scripts/setup_multitenant.py` | Setup script for password + credential migration |
+| `supabase_migration_multitenant.sql` | SQL migration for multi-tenant tables |
+| `supabase_migration_v3.sql` | SQL migration for coach tracking columns |
 
-## Data Locations
+## Key Methods in `db/supabase_client.py`
 
-| Path | Contents |
-|------|----------|
-| `~/.coach_outreach/settings.json` | Local settings |
-| `~/.coach_outreach/pregenerated_emails.json` | AI emails cache |
-| `~/.coach_outreach/credentials.json` | Google service account |
-| `~/.coach_outreach/daily.log` | Daily execution log |
-| Google Sheets `bardeen` → `ai_emails` | Cloud AI emails |
-| Google Sheets `bardeen` → `Settings` | Cloud settings |
-| Google Sheets `bardeen` → `Sheet1` | Coach list |
+### Auth
+- `authenticate_athlete(email, password)` — login verification
+- `set_athlete_password(athlete_id, password)` — set/change password
+- `create_athlete_account(name, email, password, **profile)` — create new athlete
 
-## Settings
+### Credentials (encrypted)
+- `save_athlete_credentials(athlete_id, client_id, secret, refresh_token, email, encryption_key)`
+- `get_athlete_credentials(athlete_id, encryption_key)` — decrypt and return
+- `has_athlete_credentials(athlete_id)` — check if configured
 
-### Local (`~/.coach_outreach/settings.json`)
-- `email.auto_send` / `email.auto_send_enabled` - Enable auto-send
-- `email.paused_until` - Pause date (null to disable)
-- `email.auto_send_count` - Max emails per day (default 25)
-- `email.days_between_emails` - Gap between emails to same coach
+### School Selection
+- `add_athlete_school(athlete_id, school_id, coach_preference)`
+- `remove_athlete_school(athlete_id, school_id)`
+- `get_athlete_schools(athlete_id)` — with school details joined
+- `get_coaches_for_athlete_schools(athlete_id, limit, days_between)` — email queue filtered by athlete's schools + preference
 
-### Cloud (Google Sheets → Settings)
-- `auto_send_enabled` - Railway checks this
-- `paused_until` - Railway checks this for pause
+### Admin
+- `get_all_athletes()` — list all
+- `get_athlete_stats_summary(athlete_id)` — sent/replied/schools/gmail/profile stats
+- `get_missing_coaches_for_athlete(athlete_id)` — alerts for missing data
+
+### Core (existing)
+- `search_schools(query, division, state, conference, limit)`
+- `get_coaches_to_email(limit, days_between)` — legacy, still works
+- `record_email_sent(coach_id, school_name, ...)`
+- `save_settings(settings)` / `get_settings()`
+
+## API Routes (key ones)
+
+### Auth
+- `GET/POST /login` — login page + handler
+- `POST /logout` — clear session
+- `GET /api/auth/status` — check login state
+
+### Admin (requires `@admin_required`)
+- `GET /api/admin/athletes` — list with stats
+- `POST /api/admin/athletes/create` — create account
+- `POST /api/admin/athletes/<id>/credentials` — save encrypted Gmail creds
+- `GET /api/admin/missing-coaches` — missing data alerts
+
+### Athlete Schools
+- `GET /api/athlete/schools` — my selected schools
+- `POST /api/athlete/schools/add` — add school with coach preference
+- `POST /api/athlete/schools/remove` — remove school
+
+### Email
+- `POST /api/email/send` — send emails (uses athlete's schools + Gmail)
+- `GET /api/tracking/stats` — open/click tracking stats
+- `POST /api/schools/search` — search Supabase schools (returns IDs)
 
 ## Railway Environment Variables
 ```
-GMAIL_CLIENT_ID
+SUPABASE_URL=https://sdugzlvnlfejiwmrrysf.supabase.co
+SUPABASE_SERVICE_KEY=eyJhbG... (service role key)
+GMAIL_CLIENT_ID          (Keelan's — fallback if no per-athlete creds)
 GMAIL_CLIENT_SECRET
 GMAIL_REFRESH_TOKEN
-GOOGLE_CREDENTIALS (service account JSON, one line)
-EMAIL_ADDRESS
-TZ_OFFSET (-5 for EST)
+EMAIL_ADDRESS=underwoodkeelan@gmail.com
+TZ_OFFSET=-5
+FLASK_SECRET_KEY=recruitsignal-secret-2026    (session cookies)
+CREDENTIALS_ENCRYPTION_KEY=w8_n1ShcJUagxSp8a3NAfzlVCxLp0rtS8tQOqS8pFJ8=   (Fernet key for Gmail cred encryption)
 ```
 
-## Email Sending Logic (app.py /api/email/send)
-1. Check for AI-generated email from cloud/local first
-2. If no AI email → fall back to templates
-3. Send via Gmail API
-4. Mark AI email as sent in cloud storage
-5. Update contacted date in Sheet1
-
-## Common Issues & Fixes
-
-### Emails not sending
-1. Check `paused_until` in both local settings and cloud Settings sheet
-2. Verify `auto_send_enabled: true` in cloud Settings
-3. Check Railway logs for errors
-4. Verify Gmail API credentials on Railway
-
-### AI emails not being used
-- Fixed in app.py: `/api/email/send` now checks `get_ai_email_for_school()` first
-- AI emails stored in `ai_emails` Google Sheet
-
-### Settings mismatch
-- Code expects `auto_send_enabled`, settings may have `auto_send`
-- Need both fields set to true
-
-## Deploy Changes to Railway
+## Deploy Changes
 ```bash
 cd ~/coach-outreach-project
 git add -A
 git commit -m "description"
-git push  # or: railway up
+git push
+# Railway auto-deploys from GitHub
 ```
 
-## Test Commands
-```bash
-# Generate AI emails
-./venv/bin/python3 daily_generate.py
+## Common Issues & Fixes
 
-# Check cloud sync status
-./venv/bin/python3 daily_send.py
+### Login not working
+1. Check `FLASK_SECRET_KEY` is set in Railway env vars
+2. Check password was set via `scripts/setup_multitenant.py`
+3. Check `is_active = true` for the athlete in Supabase
 
-# Check cloud stats
-./venv/bin/python3 -c "
-from sheets.cloud_emails import get_cloud_storage
-s = get_cloud_storage()
-s.connect()
-print(s.get_stats())
-"
+### Gmail credentials not working for athlete
+1. Check `CREDENTIALS_ENCRYPTION_KEY` is set in Railway
+2. Verify credentials were saved via admin panel
+3. Falls back to global Railway Gmail env vars if no per-athlete creds
 
-# Run full daily flow
-./run_daily_emails.sh
+### Emails not sending
+1. Check `paused_until` in Supabase settings table
+2. Check auto_send_enabled in settings
+3. Check Railway logs for errors
+4. Verify Gmail API credentials (per-athlete or global)
+
+### School search returns no results
+- Search now uses Supabase, not local data file
+- Schools must exist in Supabase `schools` table
+- Run scraper to populate if empty
+
+### Adding a new athlete (full flow)
+1. Login as admin (Keelan)
+2. Go to Admin tab → + NEW ATHLETE
+3. Fill in profile + password
+4. After creating, click CREDS to add their Gmail OAuth credentials
+5. Athlete logs in, goes to Find, searches schools, clicks "+ My List"
+6. Emails will only go to coaches at their selected schools
+
+## Migration History
+1. **v1-v2**: Google Sheets for everything
+2. **v3** (Jan 2026): Migrated to Supabase — all data in PostgreSQL, removed all Google Sheets code
+3. **v4** (Feb 2026): Multi-tenant — login system, admin panel, per-athlete schools, encrypted Gmail credentials
+
+## Project Structure
 ```
-
-## Current Status (as of 2026-01-15)
-- 343 AI emails pending in cloud
-- 0 sent (needs Railway deploy with fixes)
-- Local generation working
-- Cloud sync working
+coach-outreach-project/
+├── app.py                          # Main Flask app (everything)
+├── db/
+│   └── supabase_client.py          # All database operations
+├── enterprise/
+│   └── email_generator.py          # AI email generation
+├── scripts/
+│   └── setup_multitenant.py        # Multi-tenant setup script
+├── data/
+│   └── schools.py                  # Local school database (legacy, search now uses Supabase)
+├── daily_generate.py               # Local AI email generation
+├── daily_send.py                   # Cloud sync verification
+├── run_daily_emails.sh             # LaunchAgent trigger
+├── requirements.txt                # Python dependencies
+├── supabase_migration_v3.sql       # Coach tracking migration
+├── supabase_migration_multitenant.sql  # Multi-tenant migration
+├── Procfile                        # Railway deployment
+└── CLAUDE.md                       # This file
+```

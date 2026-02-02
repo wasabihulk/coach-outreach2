@@ -626,9 +626,12 @@ class SupabaseDB:
         if not athlete.get('password_hash'):
             return None
         if check_password_hash(athlete['password_hash'], password):
-            self.client.table('athletes').update({
-                'last_login': datetime.now(timezone.utc).isoformat()
-            }).eq('id', athlete['id']).execute()
+            try:
+                self.client.table('athletes').update({
+                    'last_login': datetime.now(timezone.utc).isoformat()
+                }).eq('id', athlete['id']).execute()
+            except Exception:
+                pass  # last_login column may not exist yet
             return athlete
         return None
 

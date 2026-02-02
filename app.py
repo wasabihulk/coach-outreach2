@@ -4349,7 +4349,11 @@ def login_page():
     if not _supabase_db:
         return jsonify({'success': False, 'error': 'Database not available'}), 500
 
-    athlete = _supabase_db.authenticate_athlete(email, password)
+    try:
+        athlete = _supabase_db.authenticate_athlete(email, password)
+    except Exception as e:
+        logger.error(f"Auth error: {e}")
+        return jsonify({'success': False, 'error': 'Server error during login'}), 500
     if not athlete:
         return jsonify({'success': False, 'error': 'Invalid email or password'}), 401
 
