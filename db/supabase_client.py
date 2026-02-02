@@ -604,3 +604,270 @@ class SupabaseDB:
             fields['athlete_id'] = self._athlete_id
             return self.client.table('settings').insert(fields).execute()
 
+    # ==========================================
+    # CONTEXT SWITCHING (multi-tenant)
+    # ==========================================
+
+    def set_context_athlete(self, athlete_id):
+        """Switch DB context to a specific athlete for this request."""
+        self._athlete_id = athlete_id
+
+    # ==========================================
+    # AUTHENTICATION
+    # ==========================================
+
+    def authenticate_athlete(self, email, password):
+        """Verify email/password. Returns athlete row if valid, None otherwise."""
+        from werkzeug.security import check_password_hash
+        result = self.client.table('athletes').select('*').eq('email', email).eq('is_active', True).limit(1).execute()
+        if not result.data:
+            return None
+        athlete = result.data[0]
+        if not athlete.get('password_hash'):
+            return None
+        if check_password_hash(athlete['password_hash'], password):
+            self.client.table('athletes').update({
+                'last_login': datetime.now(timezone.utc).isoformat()
+            }).eq('id', athlete['id']).execute()
+            return athlete
+        return None
+
+    def set_athlete_password(self, athlete_id, password):
+        """Set/update athlete password (hashed)."""
+        from werkzeug.security import generate_password_hash
+        return self.client.table('athletes').update({
+            'password_hash': generate_password_hash(password)
+        }).eq('id', athlete_id).execute()
+
+    def create_athlete_account(self, name, email, password, **profile):
+        """Create new athlete with hashed password. Returns athlete row or None if email exists."""
+        from werkzeug.security import generate_password_hash
+        # Check for duplicate email
+        existing = self.client.table('athletes').select('id').eq('email', email).limit(1).execute()
+        if existing.data:
+            return None
+        data = {
+            'name': name,
+            'email': email,
+            'password_hash': generate_password_hash(password),
+            'is_active': True,
+            **profile
+        }
+        result = self.client.table('athletes').insert(data).execute()
+        return result.data[0] if result.data else None
+
+    # ==========================================
+    # ATHLETE CREDENTIALS (encrypted Gmail)
+    # ==========================================
+
+    def save_athlete_credentials(self, athlete_id, gmail_client_id, gmail_client_secret,
+                                  gmail_refresh_token, gmail_email, encryption_key):
+        """Save encrypted Gmail credentials for an athlete."""
+        from cryptography.fernet import Fernet
+        cipher = Fernet(encryption_key.encode() if isinstance(encryption_key, str) else encryption_key)
+
+        data = {
+            'athlete_id': athlete_id,
+            'gmail_client_id': cipher.encrypt(gmail_client_id.encode()).decode(),
+            'gmail_client_secret': cipher.encrypt(gmail_client_secret.encode()).decode(),
+            'gmail_refresh_token': cipher.encrypt(gmail_refresh_token.encode()).decode(),
+            'gmail_email': cipher.encrypt(gmail_email.encode()).decode(),
+        }
+
+        existing = self.client.table('athlete_credentials').select('id').eq('athlete_id', athlete_id).limit(1).execute()
+        if existing.data:
+            return self.client.table('athlete_credentials').update(data).eq('athlete_id', athlete_id).execute()
+        return self.client.table('athlete_credentials').insert(data).execute()
+
+    def get_athlete_credentials(self, athlete_id, encryption_key):
+        """Get decrypted Gmail credentials for an athlete."""
+        from cryptography.fernet import Fernet
+        cipher = Fernet(encryption_key.encode() if isinstance(encryption_key, str) else encryption_key)
+
+        result = self.client.table('athlete_credentials').select('*').eq('athlete_id', athlete_id).limit(1).execute()
+        if not result.data:
+            return None
+
+        creds = result.data[0]
+        try:
+            return {
+                'gmail_client_id': cipher.decrypt(creds['gmail_client_id'].encode()).decode(),
+                'gmail_client_secret': cipher.decrypt(creds['gmail_client_secret'].encode()).decode(),
+                'gmail_refresh_token': cipher.decrypt(creds['gmail_refresh_token'].encode()).decode(),
+                'gmail_email': cipher.decrypt(creds['gmail_email'].encode()).decode(),
+            }
+        except Exception as e:
+            logger.error(f"Failed to decrypt credentials for athlete {athlete_id}: {e}")
+            return None
+
+    def has_athlete_credentials(self, athlete_id):
+        """Check if athlete has Gmail credentials configured."""
+        result = self.client.table('athlete_credentials').select('id').eq('athlete_id', athlete_id).limit(1).execute()
+        return bool(result.data)
+
+    # ==========================================
+    # ATHLETE-SCHOOL SELECTION
+    # ==========================================
+
+    def add_athlete_school(self, athlete_id, school_id, coach_preference='both'):
+        """Add school to athlete's selected list."""
+        data = {
+            'athlete_id': athlete_id,
+            'school_id': school_id,
+            'coach_preference': coach_preference,
+        }
+        return self.client.table('athlete_schools').upsert(data, on_conflict='athlete_id,school_id').execute()
+
+    def remove_athlete_school(self, athlete_id, school_id):
+        """Remove school from athlete's list."""
+        return self.client.table('athlete_schools').delete().eq('athlete_id', athlete_id).eq('school_id', school_id).execute()
+
+    def get_athlete_schools(self, athlete_id):
+        """Get all schools selected by an athlete with school details."""
+        return (self.client.table('athlete_schools')
+                .select('*, schools(id, name, division, conference, state, staff_url)')
+                .eq('athlete_id', athlete_id)
+                .order('added_at', desc=True)
+                .execute()).data
+
+    def get_coaches_for_athlete_schools(self, athlete_id, limit=25, days_between=7):
+        """Get coaches due for outreach from athlete's selected schools.
+        Filters by coach_preference and outreach history."""
+        athlete_schools = self.get_athlete_schools(athlete_id)
+        if not athlete_schools:
+            return []
+
+        results = []
+        for as_row in athlete_schools:
+            school_info = as_row.get('schools', {})
+            school_id = as_row.get('school_id')
+            preference = as_row.get('coach_preference', 'both')
+
+            coaches = self.client.table('coaches').select('*').eq('school_id', school_id).execute().data
+
+            for coach in coaches:
+                role = (coach.get('role') or '').lower()
+                # Filter by preference
+                if preference == 'position_coach' and role != 'ol':
+                    continue
+                if preference == 'rc' and role != 'rc':
+                    continue
+                if preference == 'both' and role not in ('rc', 'ol'):
+                    continue
+
+                if not coach.get('email'):
+                    continue
+
+                # Check outreach history
+                outreach = (self.client.table('outreach')
+                           .select('email_type, sent_at, replied, status')
+                           .eq('athlete_id', athlete_id)
+                           .eq('coach_email', coach['email'])
+                           .order('sent_at', desc=True)
+                           .limit(5)
+                           .execute().data)
+
+                stage = self._compute_email_stage(outreach)
+                if stage == 'done':
+                    continue
+
+                # Check timing
+                if outreach and stage != 'new':
+                    latest = outreach[0]
+                    if latest.get('replied'):
+                        continue
+                    sent_at = latest.get('sent_at')
+                    if sent_at:
+                        try:
+                            from datetime import timedelta
+                            sent_dt = datetime.fromisoformat(sent_at.replace('Z', '+00:00'))
+                            if (datetime.now(timezone.utc) - sent_dt).days < days_between:
+                                continue
+                        except (ValueError, TypeError):
+                            pass
+
+                results.append({
+                    'coach_id': coach['id'],
+                    'coach_name': coach.get('name', ''),
+                    'coach_email': coach['email'],
+                    'coach_role': coach.get('role', ''),
+                    'school_name': school_info.get('name', ''),
+                    'school_id': school_id,
+                    'twitter': coach.get('twitter', ''),
+                    'email_stage': stage,
+                    'division': school_info.get('division'),
+                    'conference': school_info.get('conference'),
+                })
+
+                if len(results) >= limit:
+                    break
+            if len(results) >= limit:
+                break
+
+        return results
+
+    # ==========================================
+    # ADMIN FUNCTIONS
+    # ==========================================
+
+    def get_all_athletes(self):
+        """Get all athletes (admin)."""
+        return self.client.table('athletes').select('*').order('created_at', desc=True).execute().data
+
+    def get_athlete_by_id(self, athlete_id):
+        """Get single athlete by ID."""
+        result = self.client.table('athletes').select('*').eq('id', athlete_id).limit(1).execute()
+        return result.data[0] if result.data else None
+
+    def get_athlete_stats_summary(self, athlete_id):
+        """Get stats summary for an athlete (admin dashboard)."""
+        stats = {}
+        stats['sent'] = (self.client.table('outreach').select('id', count='exact')
+                        .eq('athlete_id', athlete_id).eq('status', 'sent')
+                        .execute()).count or 0
+        stats['replied'] = (self.client.table('outreach').select('id', count='exact')
+                           .eq('athlete_id', athlete_id).eq('replied', True)
+                           .execute()).count or 0
+        stats['schools_selected'] = (self.client.table('athlete_schools').select('id', count='exact')
+                                    .eq('athlete_id', athlete_id)
+                                    .execute()).count or 0
+        stats['gmail_connected'] = self.has_athlete_credentials(athlete_id)
+
+        athlete = self.get_athlete_by_id(athlete_id)
+        if athlete:
+            profile_fields = ['name', 'email', 'phone', 'grad_year', 'height', 'weight', 'positions', 'gpa', 'school', 'state', 'highlight_link']
+            completed = sum(1 for f in profile_fields if athlete.get(f))
+            stats['profile_complete'] = completed >= 8
+        else:
+            stats['profile_complete'] = False
+
+        return stats
+
+    def get_missing_coaches_for_athlete(self, athlete_id):
+        """Get schools where athlete needs coaches that don't exist yet."""
+        athlete_schools = self.get_athlete_schools(athlete_id)
+        alerts = []
+
+        for as_row in athlete_schools:
+            school_info = as_row.get('schools', {})
+            school_id = as_row.get('school_id')
+            preference = as_row.get('coach_preference', 'both')
+
+            coaches = self.client.table('coaches').select('role, email').eq('school_id', school_id).execute().data
+            roles_with_email = [c['role'] for c in coaches if c.get('email')]
+
+            missing = []
+            if preference in ('position_coach', 'both') and 'ol' not in roles_with_email:
+                missing.append('Position Coach (OL)')
+            if preference in ('rc', 'both') and 'rc' not in roles_with_email:
+                missing.append('Recruiting Coordinator')
+
+            if missing:
+                alerts.append({
+                    'school_name': school_info.get('name', ''),
+                    'school_id': school_id,
+                    'missing_roles': missing,
+                })
+
+        return alerts
+

@@ -47,7 +47,8 @@ try:
 except ImportError:
     pass  # dotenv not installed, will use environment variables directly
 
-from flask import Flask, render_template_string, jsonify, request, Response, stream_with_context, make_response
+from flask import Flask, render_template_string, jsonify, request, Response, stream_with_context, make_response, session, redirect, url_for, g
+from functools import wraps
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -250,7 +251,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(24).hex()
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(24).hex())
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+
+# Encryption key for per-athlete Gmail credentials stored in Supabase
+CREDENTIALS_ENCRYPTION_KEY = os.environ.get('CREDENTIALS_ENCRYPTION_KEY', '')
 
 # Register enterprise blueprint
 try:
@@ -265,11 +272,11 @@ _supabase_db = None
 try:
     if get_db:
         _supabase_db = get_db()
-        # Initialize athlete from env vars
-        athlete_name = os.environ.get('ATHLETE_NAME', 'Keelan Underwood')
-        athlete_email = os.environ.get('ATHLETE_EMAIL', os.environ.get('EMAIL_ADDRESS', ''))
-        if athlete_email:
-            _supabase_db.get_or_create_athlete(athlete_name, athlete_email)
+        # For backwards compat / auto-send scheduler, set default athlete from env
+        _default_athlete_email = os.environ.get('ATHLETE_EMAIL', os.environ.get('EMAIL_ADDRESS', ''))
+        _default_athlete_name = os.environ.get('ATHLETE_NAME', 'Keelan Underwood')
+        if _default_athlete_email:
+            _supabase_db.get_or_create_athlete(_default_athlete_name, _default_athlete_email)
         SUPABASE_AVAILABLE = True
         logger.info("Supabase database connected")
 
@@ -322,6 +329,67 @@ try:
 except Exception as e:
     logger.warning(f"Supabase not available, using legacy tracking: {e}")
     SUPABASE_AVAILABLE = False
+
+# ============================================================================
+# AUTHENTICATION
+# ============================================================================
+
+def login_required(f):
+    """Require user to be logged in."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'athlete_id' not in session:
+            if request.is_json or request.path.startswith('/api/'):
+                return jsonify({'success': False, 'error': 'Login required'}), 401
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    """Require admin access."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'athlete_id' not in session:
+            return jsonify({'success': False, 'error': 'Login required'}), 401
+        if not session.get('is_admin'):
+            return jsonify({'success': False, 'error': 'Admin access required'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+@app.before_request
+def load_athlete_context():
+    """Set per-request athlete context from session."""
+    # Skip auth for login page, static, and health check
+    if request.path in ('/login', '/health', '/api/track/open') or request.path.startswith('/api/track/'):
+        return
+    g.athlete_id = session.get('athlete_id')
+    g.is_admin = session.get('is_admin', False)
+    g.athlete_name = session.get('athlete_name', '')
+    if g.athlete_id and _supabase_db:
+        _supabase_db.set_context_athlete(g.athlete_id)
+
+def get_athlete_gmail_service(athlete_id=None):
+    """Get Gmail API service for a specific athlete using their encrypted credentials."""
+    aid = athlete_id or getattr(g, 'athlete_id', None)
+    if not aid or not _supabase_db or not CREDENTIALS_ENCRYPTION_KEY:
+        return None
+    creds_data = _supabase_db.get_athlete_credentials(aid, CREDENTIALS_ENCRYPTION_KEY)
+    if not creds_data:
+        return None
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        creds = Credentials(
+            token=None,
+            refresh_token=creds_data['gmail_refresh_token'],
+            client_id=creds_data['gmail_client_id'],
+            client_secret=creds_data['gmail_client_secret'],
+            token_uri="https://oauth2.googleapis.com/token"
+        )
+        return build('gmail', 'v1', credentials=creds)
+    except Exception as e:
+        logger.error(f"Gmail API error for athlete {aid}: {e}")
+        return None
 
 event_queue = queue.Queue()
 active_task = None
@@ -447,17 +515,24 @@ def add_log(msg: str, level: str = 'info'):
 # ============================================================================
 
 def get_gmail_service():
-    """Get authenticated Gmail API service."""
+    """Get authenticated Gmail API service. Tries per-athlete credentials first, then global env vars."""
+    # Try per-athlete credentials first
+    athlete_service = get_athlete_gmail_service()
+    if athlete_service:
+        logger.info("Using per-athlete Gmail credentials")
+        return athlete_service
+
+    # Fall back to global env vars
     if not has_gmail_api():
         logger.error("Gmail API credentials not set")
         return None
-    
+
     try:
         from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
-        
+
         logger.info(f"Creating Gmail credentials with client_id: {ENV_GMAIL_CLIENT_ID[:20]}...")
-        
+
         creds = Credentials(
             token=None,
             refresh_token=ENV_GMAIL_REFRESH_TOKEN,
@@ -465,7 +540,7 @@ def get_gmail_service():
             client_secret=ENV_GMAIL_CLIENT_SECRET,
             token_uri="https://oauth2.googleapis.com/token"
         )
-        
+
         service = build('gmail', 'v1', credentials=creds)
         logger.info("Gmail service created successfully")
         return service
@@ -744,6 +819,62 @@ def get_sheet():
 def is_railway_deployment():
     """Check if we're running on Railway."""
     return bool(ENV_EMAIL_ADDRESS and ENV_APP_PASSWORD)
+
+# ============================================================================
+# LOGIN PAGE TEMPLATE
+# ============================================================================
+
+LOGIN_TEMPLATE = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - RecruitSignal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        :root{--bg:#050505;--bg2:#111;--border:#333;--text:#fff;--muted:#888;--accent:#00ff88;--glow:rgba(0,255,136,0.4)}
+        body{font-family:'Space Grotesk',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
+        .login-box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:40px;width:90%;max-width:400px}
+        .logo{font-size:28px;font-weight:800;text-align:center;margin-bottom:8px;text-transform:uppercase;letter-spacing:-1px}
+        .logo .hl{color:var(--accent)}
+        .sub{text-align:center;color:var(--muted);font-size:14px;margin-bottom:32px}
+        .fg{margin-bottom:20px}
+        label{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
+        input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:12px;border-radius:6px;width:100%;font-size:14px;font-family:inherit}
+        input:focus{outline:none;border-color:var(--accent)}
+        .btn{background:var(--accent);color:#000;border:none;padding:14px;border-radius:6px;cursor:pointer;font-size:15px;font-weight:600;width:100%;box-shadow:0 0 15px var(--glow);font-family:inherit}
+        .btn:hover{box-shadow:0 0 25px var(--glow)}
+        .btn:disabled{opacity:.5;cursor:not-allowed}
+        .err{background:rgba(239,68,68,.1);border:1px solid #ef4444;color:#ef4444;padding:12px;border-radius:6px;margin-bottom:20px;font-size:13px;display:none}
+        .err.show{display:block}
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <div class="logo">Recruit<span class="hl">Signal</span></div>
+        <div class="sub">Pro Athlete Platform</div>
+        <div id="err" class="err"></div>
+        <form onsubmit="doLogin(event)">
+            <div class="fg"><label>Email</label><input type="email" id="email" required autocomplete="email"></div>
+            <div class="fg"><label>Password</label><input type="password" id="pw" required autocomplete="current-password"></div>
+            <button type="submit" class="btn" id="btn">LOG IN</button>
+        </form>
+    </div>
+    <script>
+    async function doLogin(e){
+        e.preventDefault();
+        const btn=document.getElementById('btn'),err=document.getElementById('err');
+        btn.disabled=true;btn.textContent='Logging in...';err.classList.remove('show');
+        try{
+            const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('pw').value})});
+            const d=await r.json();
+            if(d.success){window.location.href='/'}else{err.textContent=d.error||'Login failed';err.classList.add('show');btn.disabled=false;btn.textContent='LOG IN'}
+        }catch(x){err.textContent='Connection error';err.classList.add('show');btn.disabled=false;btn.textContent='LOG IN'}
+    }
+    </script>
+</body>
+</html>'''
 
 # ============================================================================
 # HTML TEMPLATE - ENTERPRISE UI
@@ -1197,7 +1328,7 @@ HTML_TEMPLATE = '''
     <div class="app">
         <header>
             <div class="header-left">
-                <span class="athlete-name" id="header-name">Keelan Underwood</span>
+                <span class="athlete-name" id="header-name">{{ athlete_name }}</span>
                 <span class="text-muted text-sm" id="header-info">2026 OL</span>
             </div>
             <div class="header-center">
@@ -1206,6 +1337,7 @@ HTML_TEMPLATE = '''
             <div class="header-actions">
                 <span id="connection-status" class="text-sm text-muted">Connecting...</span>
                 <button class="gear-btn" onclick="openSettings()">&#9881;</button>
+                <button class="gear-btn" onclick="doLogout()" title="Logout" style="font-size:14px;">Logout</button>
             </div>
         </header>
 
@@ -1214,6 +1346,7 @@ HTML_TEMPLATE = '''
             <div class="tab" data-page="find">Find</div>
             <div class="tab" data-page="email">Email</div>
             <div class="tab" data-page="dms">DMs</div>
+            {% if is_admin %}<div class="tab" data-page="admin">Admin</div>{% endif %}
         </nav>
 
         <main>
@@ -1359,6 +1492,12 @@ HTML_TEMPLATE = '''
                 </div>
 
                 <div class="card">
+                    <div class="card-header">My Selected Schools</div>
+                    <div id="my-schools-list" style="padding:12px;">Loading...</div>
+                </div>
+
+                {% if is_admin %}
+                <div class="card">
                     <div class="card-header">Scraper Tools</div>
                     <p class="text-sm text-muted mb-4">Extract coach names, emails, and Twitter handles from your Google Sheet schools</p>
 
@@ -1401,8 +1540,9 @@ HTML_TEMPLATE = '''
 
                     <div id="scraper-log" class="mt-4" style="max-height:200px;overflow:auto;font-family:monospace;font-size:11px;background:var(--bg);border:1px solid var(--border);padding:12px;"></div>
                 </div>
+                {% endif %}
             </div>
-            
+
             <!-- EMAIL PAGE -->
             <div id="page-email" class="page">
                 <!-- Email Stats Row -->
@@ -1639,10 +1779,84 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
             
-            <!-- TRACK PAGE -->
+            <!-- ADMIN PAGE (admin only) -->
+            {% if is_admin %}
+            <div id="page-admin" class="page">
+                <div class="card">
+                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                        Athletes
+                        <button class="btn btn-primary btn-sm" onclick="showCreateAthlete()">+ NEW ATHLETE</button>
+                    </div>
+                    <div id="athletes-list" style="padding:12px;">Loading...</div>
+                </div>
+                <div class="card">
+                    <div class="card-header">Missing Coach Data Alerts</div>
+                    <div id="missing-coaches" style="padding:12px;">Loading...</div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if is_admin %}
+            <!-- Create Athlete Modal -->
+            <div class="modal-overlay" id="create-athlete-modal">
+                <div class="modal">
+                    <div class="modal-header">
+                        <span class="modal-title">Create Athlete Account</span>
+                        <button class="modal-close" onclick="closeModal('create-athlete-modal')">&times;</button>
+                    </div>
+                    <form onsubmit="createAthlete(event)" style="padding:20px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                            <div><label style="font-size:12px;color:var(--muted);">Name *</label><input id="ca-name" required style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Email *</label><input id="ca-email" type="email" required style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Password *</label><input id="ca-pw" type="password" required minlength="8" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Phone</label><input id="ca-phone" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Grad Year</label><input id="ca-year" placeholder="2026" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Position</label><input id="ca-pos" placeholder="OL" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Height</label><input id="ca-ht" placeholder="6'3" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Weight</label><input id="ca-wt" placeholder="295" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">GPA</label><input id="ca-gpa" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">High School</label><input id="ca-school" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">State</label><input id="ca-state" placeholder="FL" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Hudl/Highlight Link</label><input id="ca-hudl" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                        </div>
+                        <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:16px;">
+                            <div style="font-weight:600;color:var(--accent);margin-bottom:12px;">Gmail Credentials (optional - add later)</div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                <div><label style="font-size:12px;color:var(--muted);">Gmail Email</label><input id="ca-gmail" type="email" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                                <div><label style="font-size:12px;color:var(--muted);">Client ID</label><input id="ca-cid" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                                <div><label style="font-size:12px;color:var(--muted);">Client Secret</label><input id="ca-csec" type="password" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                                <div><label style="font-size:12px;color:var(--muted);">Refresh Token</label><input id="ca-rtok" type="password" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top:16px;width:100%;">CREATE ACCOUNT</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Edit Credentials Modal -->
+            <div class="modal-overlay" id="edit-creds-modal">
+                <div class="modal">
+                    <div class="modal-header">
+                        <span class="modal-title">Edit Gmail Credentials</span>
+                        <button class="modal-close" onclick="closeModal('edit-creds-modal')">&times;</button>
+                    </div>
+                    <form onsubmit="saveCreds(event)" style="padding:20px;">
+                        <input type="hidden" id="ec-aid">
+                        <div style="display:grid;gap:12px;">
+                            <div><label style="font-size:12px;color:var(--muted);">Gmail Email</label><input id="ec-gmail" type="email" required style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Client ID</label><input id="ec-cid" required style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Client Secret</label><input id="ec-csec" type="password" required style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Refresh Token</label><input id="ec-rtok" type="password" required style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top:16px;width:100%;">SAVE CREDENTIALS</button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
         </main>
     </div>
-    
+
     <!-- Settings Modal -->
     <div class="modal-overlay" id="settings-modal">
         <div class="modal">
@@ -1773,6 +1987,7 @@ HTML_TEMPLATE = '''
             if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); loadAIEmailStatus(); }
             if (page === 'dms') { loadDMQueue(); loadTemplates('dm'); }
             if (page === 'track') loadTrackStats();
+            if (page === 'admin') loadAdminPanel();
         }
         
         // Dashboard
@@ -2233,6 +2448,7 @@ HTML_TEMPLATE = '''
             const states = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
             const sel = document.getElementById('state-filter');
             sel.innerHTML = '<option value="">All States</option>' + states.map(s => `<option value="${s}">${s}</option>`).join('');
+            loadMySchools();
         }
         
         async function searchSchools() {
@@ -2257,8 +2473,8 @@ HTML_TEMPLATE = '''
                             <td>${s.state || '-'}</td>
                             <td>${s.conference || '-'}</td>
                             <td>
-                                <button class="btn btn-sm btn-outline" onclick="addToSheet('${s.name}')">Add</button>
-                                <button class="btn btn-sm" onclick="findCoaches('${s.name}')">Find Coaches</button>
+                                <button class="btn btn-sm btn-primary" onclick="addSchoolToMyList('${s.id}','${s.name.replace(/'/g, "\\'")}')">+ My List</button>
+                                <button class="btn btn-sm" onclick="findCoaches('${s.name.replace(/'/g, "\\'")}')">Find Coaches</button>
                             </td>
                         </tr>
                     `).join('');
@@ -3938,6 +4154,172 @@ HTML_TEMPLATE = '''
                 regs.forEach(r => r.unregister());
             });
         }
+
+        // ========== LOGOUT ==========
+        async function doLogout() {
+            await fetch('/logout', {method:'POST'});
+            window.location.href = '/login';
+        }
+
+        // ========== MODAL HELPERS ==========
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        function showCreateAthlete() { document.getElementById('create-athlete-modal').classList.add('active'); }
+
+        // ========== ADMIN PANEL ==========
+        async function loadAdminPanel() {
+            await Promise.all([loadAthletesList(), loadMissingCoaches()]);
+        }
+
+        async function loadAthletesList() {
+            try {
+                const res = await fetch('/api/admin/athletes');
+                const data = await res.json();
+                const el = document.getElementById('athletes-list');
+                if (!data.athletes || !data.athletes.length) {
+                    el.innerHTML = '<div class="empty-state"><div class="empty-state-title">No athletes yet</div></div>';
+                    return;
+                }
+                el.innerHTML = data.athletes.map(a => `
+                    <div style="padding:12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <strong style="color:var(--text);">${a.name}</strong>
+                            <span class="text-muted"> — ${a.email}</span>
+                            ${a.is_admin ? '<span style="color:var(--accent);font-size:11px;margin-left:8px;">ADMIN</span>' : ''}
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <span class="text-muted text-sm">${a.stats.emails_sent || 0} sent, ${a.stats.schools_selected || 0} schools</span>
+                            <span style="width:8px;height:8px;border-radius:50%;background:${a.stats.has_gmail ? 'var(--success)' : 'var(--danger)'};display:inline-block;" title="${a.stats.has_gmail ? 'Gmail configured' : 'No Gmail credentials'}"></span>
+                            <button class="btn btn-sm" onclick="editAthleteCredentials('${a.id}','${a.email}')" style="font-size:11px;">CREDS</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadMissingCoaches() {
+            try {
+                const res = await fetch('/api/admin/missing-coaches');
+                const data = await res.json();
+                const el = document.getElementById('missing-coaches');
+                if (!data.alerts || !data.alerts.length) {
+                    el.innerHTML = '<div style="padding:12px;color:var(--success);">All good — no missing coach data.</div>';
+                    return;
+                }
+                el.innerHTML = data.alerts.map(a => `
+                    <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+                        <strong>${a.school_name}</strong> <span class="text-muted">(${a.athlete_name})</span>
+                        — missing: ${a.missing.join(', ')}
+                    </div>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function createAthlete(e) {
+            e.preventDefault();
+            const body = {
+                name: document.getElementById('ca-name').value,
+                email: document.getElementById('ca-email').value,
+                password: document.getElementById('ca-pw').value,
+                phone: document.getElementById('ca-phone').value,
+                grad_year: document.getElementById('ca-year').value,
+                position: document.getElementById('ca-pos').value,
+                height: document.getElementById('ca-ht').value,
+                weight: document.getElementById('ca-wt').value,
+                gpa: document.getElementById('ca-gpa').value,
+                high_school: document.getElementById('ca-school').value,
+                state: document.getElementById('ca-state').value,
+                hudl_link: document.getElementById('ca-hudl').value,
+                gmail_email: document.getElementById('ca-gmail').value,
+                gmail_client_id: document.getElementById('ca-cid').value,
+                gmail_client_secret: document.getElementById('ca-csec').value,
+                gmail_refresh_token: document.getElementById('ca-rtok').value,
+            };
+            try {
+                const res = await fetch('/api/admin/athletes/create', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+                const data = await res.json();
+                if (data.success) {
+                    closeModal('create-athlete-modal');
+                    e.target.reset();
+                    loadAthletesList();
+                    alert('Athlete created!');
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown'));
+                }
+            } catch(err) { alert('Error: ' + err.message); }
+        }
+
+        function editAthleteCredentials(athleteId, email) {
+            document.getElementById('ec-aid').value = athleteId;
+            document.getElementById('ec-gmail').value = email;
+            document.getElementById('ec-cid').value = '';
+            document.getElementById('ec-csec').value = '';
+            document.getElementById('ec-rtok').value = '';
+            document.getElementById('edit-creds-modal').classList.add('active');
+        }
+
+        async function saveCreds(e) {
+            e.preventDefault();
+            const athleteId = document.getElementById('ec-aid').value;
+            const body = {
+                gmail_email: document.getElementById('ec-gmail').value,
+                gmail_client_id: document.getElementById('ec-cid').value,
+                gmail_client_secret: document.getElementById('ec-csec').value,
+                gmail_refresh_token: document.getElementById('ec-rtok').value,
+            };
+            try {
+                const res = await fetch(`/api/admin/athletes/${athleteId}/credentials`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+                const data = await res.json();
+                if (data.success) {
+                    closeModal('edit-creds-modal');
+                    loadAthletesList();
+                    alert('Credentials saved!');
+                } else {
+                    alert('Error: ' + (data.error || 'Unknown'));
+                }
+            } catch(err) { alert('Error: ' + err.message); }
+        }
+
+        // ========== SCHOOL SELECTION (MY SCHOOLS) ==========
+        async function loadMySchools() {
+            try {
+                const res = await fetch('/api/athlete/schools');
+                const data = await res.json();
+                const el = document.getElementById('my-schools-list');
+                if (!el) return;
+                if (!data.schools || !data.schools.length) {
+                    el.innerHTML = '<div class="empty-state"><div class="empty-state-title">No schools selected</div><div class="empty-state-text">Search above and add schools to your list.</div></div>';
+                    return;
+                }
+                el.innerHTML = data.schools.map(s => `
+                    <div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <strong>${s.school_name || s.name}</strong>
+                            <span class="text-muted text-sm"> — ${s.coach_preference || 'both'}</span>
+                        </div>
+                        <button class="btn btn-sm" onclick="removeMySchool('${s.school_id}')" style="font-size:11px;color:var(--danger);">REMOVE</button>
+                    </div>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function addSchoolToMyList(schoolId, schoolName) {
+            const pref = prompt('Coach preference for ' + schoolName + '?\\n\\n1) position_coach\\n2) rc (recruiting coordinator)\\n3) both (default)', 'both');
+            const preference = (pref === '1') ? 'position_coach' : (pref === '2') ? 'rc' : 'both';
+            try {
+                const res = await fetch('/api/athlete/schools/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({school_id: schoolId, coach_preference: preference})});
+                const data = await res.json();
+                if (data.success) { loadMySchools(); } else { alert(data.error || 'Error'); }
+            } catch(e) { alert(e.message); }
+        }
+
+        async function removeMySchool(schoolId) {
+            if (!confirm('Remove this school from your list?')) return;
+            try {
+                const res = await fetch('/api/athlete/schools/remove', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({school_id: schoolId})});
+                const data = await res.json();
+                if (data.success) { loadMySchools(); }
+            } catch(e) { console.error(e); }
+        }
     </script>
 </body>
 </html>
@@ -3948,9 +4330,66 @@ HTML_TEMPLATE = '''
 # API ROUTES
 # ============================================================================
 
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    """Login page and auth handler."""
+    if request.method == 'GET':
+        if 'athlete_id' in session:
+            return redirect('/')
+        return render_template_string(LOGIN_TEMPLATE)
+
+    # POST: authenticate
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    password = data.get('password', '')
+
+    if not email or not password:
+        return jsonify({'success': False, 'error': 'Email and password required'}), 400
+
+    if not _supabase_db:
+        return jsonify({'success': False, 'error': 'Database not available'}), 500
+
+    athlete = _supabase_db.authenticate_athlete(email, password)
+    if not athlete:
+        return jsonify({'success': False, 'error': 'Invalid email or password'}), 401
+
+    session.permanent = True
+    session['athlete_id'] = athlete['id']
+    session['is_admin'] = athlete.get('is_admin', False)
+    session['athlete_name'] = athlete.get('name', '')
+    session['athlete_email'] = athlete.get('email', '')
+    logger.info(f"Login: {email} (admin={athlete.get('is_admin')})")
+    return jsonify({'success': True, 'is_admin': athlete.get('is_admin', False)})
+
+
+@app.route('/logout', methods=['POST', 'GET'])
+def logout():
+    """Logout."""
+    session.clear()
+    if request.method == 'GET':
+        return redirect('/login')
+    return jsonify({'success': True})
+
+
+@app.route('/api/auth/status')
+def auth_status():
+    return jsonify({
+        'logged_in': 'athlete_id' in session,
+        'is_admin': session.get('is_admin', False),
+        'athlete_name': session.get('athlete_name', ''),
+    })
+
+
 @app.route('/')
+@login_required
 def index():
-    response = make_response(render_template_string(HTML_TEMPLATE))
+    is_admin = session.get('is_admin', False)
+    athlete_name = session.get('athlete_name', 'Athlete')
+    response = make_response(render_template_string(
+        HTML_TEMPLATE,
+        is_admin=is_admin,
+        athlete_name=athlete_name,
+    ))
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
@@ -4411,43 +4850,30 @@ def api_schools():
 @app.route('/api/schools/search', methods=['POST'])
 def api_schools_search():
     try:
-        from data.schools import get_school_database, NaturalLanguageFilter
-        
         data = request.get_json()
         query = data.get('query', '')
-        
-        db = get_school_database()
-        
-        # Parse natural language query
-        filters = NaturalLanguageFilter.parse(query)
-        
-        # Also check for school name matches
-        query_lower = query.lower()
-        
-        # Apply filters
-        if filters:
-            results = db.filter(**filters)
-        else:
-            results = db.schools
-        
-        # Also filter by name if no structured filters matched
-        if not filters:
-            results = [s for s in results if query_lower in s.name.lower() or 
-                      query_lower in s.conference.lower() or
-                      query_lower in s.state.lower()]
-        
+        division = data.get('division', '')
+        state = data.get('state', '')
+
+        results = _supabase_db.search_schools(
+            query=query or None,
+            division=division or None,
+            state=state or None,
+            limit=50
+        )
+
         schools = [
             {
-                'name': s.name,
-                'state': s.state,
-                'division': s.division,
-                'conference': s.conference,
-                'public': s.public,
+                'id': s.get('id', ''),
+                'name': s.get('name', ''),
+                'state': s.get('state', ''),
+                'division': s.get('division', ''),
+                'conference': s.get('conference', ''),
             }
-            for s in results
+            for s in (results or [])
         ]
-        
-        return jsonify({'schools': schools, 'query': query, 'filters_applied': filters})
+
+        return jsonify({'schools': schools, 'query': query})
     except Exception as e:
         logger.error(f"Search error: {e}")
         return jsonify({'schools': [], 'error': str(e)})
@@ -7944,6 +8370,154 @@ def api_notifications_test():
     )
     
     return jsonify({'success': success, 'error': None if success else 'Failed to send notification'})
+
+
+# ============================================================================
+# ADMIN API ROUTES
+# ============================================================================
+
+@app.route('/api/admin/athletes')
+@admin_required
+def api_admin_athletes():
+    """List all athletes with stats (admin only)."""
+    try:
+        athletes = _supabase_db.get_all_athletes()
+        result = []
+        for a in athletes:
+            stats = _supabase_db.get_athlete_stats_summary(a['id'])
+            result.append({
+                'id': a['id'],
+                'name': a.get('name', ''),
+                'email': a.get('email', ''),
+                'is_admin': a.get('is_admin', False),
+                'is_active': a.get('is_active', True),
+                'stats': stats,
+            })
+        return jsonify({'athletes': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/athletes/create', methods=['POST'])
+@admin_required
+def api_admin_create_athlete():
+    """Create new athlete account (admin only)."""
+    try:
+        data = request.json
+        name = data.get('name', '').strip()
+        email = data.get('email', '').strip()
+        password = data.get('password', '')
+        if not name or not email or not password:
+            return jsonify({'error': 'Name, email, and password required'}), 400
+        if len(password) < 8:
+            return jsonify({'error': 'Password must be at least 8 characters'}), 400
+
+        profile = {}
+        for field in ['phone', 'grad_year', 'position', 'height', 'weight', 'gpa', 'high_school', 'state', 'hudl_link']:
+            val = data.get(field, '').strip()
+            if val:
+                profile[field] = val
+
+        athlete = _supabase_db.create_athlete_account(name, email, password, **profile)
+        if not athlete:
+            return jsonify({'error': 'Failed to create account (email may already exist)'}), 400
+
+        # Save Gmail credentials if provided
+        gmail_email = data.get('gmail_email', '').strip()
+        gmail_cid = data.get('gmail_client_id', '').strip()
+        gmail_csec = data.get('gmail_client_secret', '').strip()
+        gmail_rtok = data.get('gmail_refresh_token', '').strip()
+        if gmail_email and gmail_cid and gmail_csec and gmail_rtok and CREDENTIALS_ENCRYPTION_KEY:
+            _supabase_db.save_athlete_credentials(athlete['id'], gmail_cid, gmail_csec, gmail_rtok, gmail_email, CREDENTIALS_ENCRYPTION_KEY)
+
+        return jsonify({'success': True, 'athlete_id': athlete['id']})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/athletes/<athlete_id>/credentials', methods=['POST'])
+@admin_required
+def api_admin_athlete_credentials(athlete_id):
+    """Save athlete Gmail credentials (admin only)."""
+    try:
+        data = request.json
+        if not CREDENTIALS_ENCRYPTION_KEY:
+            return jsonify({'error': 'Encryption key not configured'}), 500
+
+        _supabase_db.save_athlete_credentials(
+            athlete_id,
+            data.get('gmail_client_id', ''),
+            data.get('gmail_client_secret', ''),
+            data.get('gmail_refresh_token', ''),
+            data.get('gmail_email', ''),
+            CREDENTIALS_ENCRYPTION_KEY
+        )
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/missing-coaches')
+@admin_required
+def api_admin_missing_coaches():
+    """Get missing coach data alerts across all athletes (admin only)."""
+    try:
+        athletes = _supabase_db.get_all_athletes()
+        alerts = []
+        for a in athletes:
+            missing = _supabase_db.get_missing_coaches_for_athlete(a['id'])
+            for m in missing:
+                m['athlete_name'] = a.get('name', 'Unknown')
+            alerts.extend(missing)
+        return jsonify({'alerts': alerts})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# ATHLETE SCHOOL SELECTION API
+# ============================================================================
+
+@app.route('/api/athlete/schools')
+@login_required
+def api_athlete_schools():
+    """Get logged-in athlete's selected schools."""
+    try:
+        schools = _supabase_db.get_athlete_schools(g.athlete_id)
+        return jsonify({'schools': schools})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/athlete/schools/add', methods=['POST'])
+@login_required
+def api_athlete_schools_add():
+    """Add a school to athlete's list."""
+    try:
+        data = request.json
+        school_id = data.get('school_id')
+        coach_preference = data.get('coach_preference', 'both')
+        if not school_id:
+            return jsonify({'error': 'school_id required'}), 400
+        result = _supabase_db.add_athlete_school(g.athlete_id, school_id, coach_preference)
+        return jsonify({'success': bool(result)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/athlete/schools/remove', methods=['POST'])
+@login_required
+def api_athlete_schools_remove():
+    """Remove a school from athlete's list."""
+    try:
+        data = request.json
+        school_id = data.get('school_id')
+        if not school_id:
+            return jsonify({'error': 'school_id required'}), 400
+        _supabase_db.remove_athlete_school(g.athlete_id, school_id)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ============================================================================

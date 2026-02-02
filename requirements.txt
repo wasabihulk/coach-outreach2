@@ -33,3 +33,6 @@ pyperclip>=1.8.0
 
 # Database (Supabase)
 supabase>=2.0.0
+
+# Encryption (for per-athlete Gmail credentials)
+cryptography>=41.0.0
