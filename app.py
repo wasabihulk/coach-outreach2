@@ -1395,7 +1395,8 @@ HTML_TEMPLATE = '''
                             <span class="command-number" id="tomorrow-count">—</span>
                             <span class="command-unit">coaches</span>
                             <span style="color:var(--muted);margin:0 8px;">@</span>
-                            <span class="command-time" id="optimal-time">--:--</span>
+                            <span class="command-time" id="optimal-time" onclick="editSendTime()" style="cursor:pointer;border-bottom:1px dashed var(--muted);" title="Click to change">--:--</span>
+                            <input type="time" id="send-time-input" style="display:none;background:var(--bg);color:var(--text);border:1px solid var(--accent);border-radius:4px;padding:4px 8px;font-size:16px;font-family:monospace;" onchange="saveSendTime(this.value)" onblur="cancelEditTime()">
                         </div>
                         <div class="command-breakdown" id="tomorrow-breakdown"></div>
                     </div>
@@ -2036,6 +2037,58 @@ HTML_TEMPLATE = '''
                 console.error(e);
                 document.getElementById('tomorrow-breakdown').textContent = 'Error loading preview';
             }
+        }
+
+        function editSendTime() {
+            const display = document.getElementById('optimal-time');
+            const input = document.getElementById('send-time-input');
+            // Parse current display time to set input value
+            const text = display.textContent.trim();
+            let hours = 9, mins = 0;
+            const match12 = text.match(/(\d+):(\d+)\s*(AM|PM)/i);
+            const match24 = text.match(/^(\d+):(\d+)$/);
+            if (match12) {
+                hours = parseInt(match12[1]);
+                mins = parseInt(match12[2]);
+                if (match12[3].toUpperCase() === 'PM' && hours !== 12) hours += 12;
+                if (match12[3].toUpperCase() === 'AM' && hours === 12) hours = 0;
+            } else if (match24) {
+                hours = parseInt(match24[1]);
+                mins = parseInt(match24[2]);
+            }
+            input.value = `${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}`;
+            display.style.display = 'none';
+            input.style.display = 'inline-block';
+            input.focus();
+        }
+
+        function cancelEditTime() {
+            setTimeout(() => {
+                document.getElementById('optimal-time').style.display = '';
+                document.getElementById('send-time-input').style.display = 'none';
+            }, 200);
+        }
+
+        async function saveSendTime(timeVal) {
+            if (!timeVal) return;
+            const [h, m] = timeVal.split(':').map(Number);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const h12 = h % 12 || 12;
+            const display = `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+            try {
+                const res = await fetch('/api/settings/send-time', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ time: timeVal })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('optimal-time').textContent = display;
+                    document.getElementById('optimal-time').style.display = '';
+                    document.getElementById('send-time-input').style.display = 'none';
+                    showToast(`Send time set to ${display}`, 'success');
+                }
+            } catch(e) { showToast('Error saving time', 'error'); }
         }
 
         async function loadRepliedCount() {
@@ -7540,11 +7593,22 @@ def start_auto_send_scheduler():
             # Fallback to random hour
             return random.randint(8, 18)
 
-        local_send_hour = get_optimal_send_hour()
+        def get_send_time_from_settings():
+            """Check if user set a specific send time, otherwise use optimal/random."""
+            try:
+                s = load_settings()
+                stored = s.get('email', {}).get('auto_send_time', '')
+                if stored and ':' in stored:
+                    parts = stored.split(':')
+                    return int(parts[0]), int(parts[1])
+            except:
+                pass
+            return get_optimal_send_hour(), random.randint(0, 59)
+
+        local_send_hour, send_minute = get_send_time_from_settings()
         send_hour_utc = (local_send_hour - tz_offset) % 24
-        send_minute = random.randint(0, 59)
         logger.info(f"Today's auto-send scheduled for {local_send_hour}:{send_minute:02d} local (UTC hour: {send_hour_utc})")
-        
+
         while True:
             try:
                 # Load cloud settings on each loop iteration (fresh from Google Sheets)
@@ -7555,11 +7619,10 @@ def start_auto_send_scheduler():
                 current_minute = datetime.now().minute
                 now = datetime.now()
 
-                # Pick optimal/random time each day (in user's local timezone, converted to UTC)
+                # Recalculate send time each day (picks up user changes)
                 if last_send_date != today:
-                    local_send_hour = get_optimal_send_hour()
+                    local_send_hour, send_minute = get_send_time_from_settings()
                     send_hour_utc = (local_send_hour - tz_offset) % 24
-                    send_minute = random.randint(0, 59)
                     logger.info(f"New day - auto-send scheduled for {local_send_hour}:{send_minute:02d} local (UTC: {send_hour_utc}:{send_minute:02d})")
 
                 # Auto-send at the random time if enabled (compare against UTC)
@@ -7678,23 +7741,16 @@ def api_tomorrow_preview():
         total = sum(counts.values())
         total_capped = min(total, limit)
 
-        # Get optimal time from open tracking
-        optimal_time = "9:00 AM"
-        try:
-            from collections import defaultdict
-            hour_counts = defaultdict(int)
-            for tid, opens in email_tracking.get('opens', {}).items():
-                for o in opens:
-                    try:
-                        opened_at = datetime.fromisoformat(o['opened_at'].replace('Z', '+00:00'))
-                        hour_counts[opened_at.hour] += 1
-                    except:
-                        pass
-            if hour_counts:
-                best_hour = max(hour_counts.items(), key=lambda x: x[1])[0]
-                optimal_time = f"{best_hour}:00"
-        except:
-            pass
+        # Get send time — prefer stored setting, fall back to 9:00 AM
+        stored_time = current_settings.get('email', {}).get('auto_send_time', '')
+        if stored_time and ':' in stored_time:
+            h, m = stored_time.split(':')[:2]
+            h, m = int(h), int(m)
+            ampm = 'PM' if h >= 12 else 'AM'
+            h12 = h % 12 or 12
+            optimal_time = f"{h12}:{m:02d} {ampm}"
+        else:
+            optimal_time = "9:00 AM"
 
         return jsonify({
             'success': True,
@@ -7751,6 +7807,31 @@ def api_holiday_mode():
         'success': True,
         'holiday_mode': settings.get('email', {}).get('holiday_mode', False)
     })
+
+
+@app.route('/api/settings/send-time', methods=['GET', 'POST'])
+@login_required
+def api_settings_send_time():
+    """Get or set the daily auto-send time."""
+    current_settings = load_settings()
+    if request.method == 'GET':
+        send_time = current_settings.get('email', {}).get('auto_send_time', '')
+        return jsonify({'success': True, 'time': send_time})
+    # POST
+    data = request.get_json() or {}
+    time_val = data.get('time', '').strip()  # Expected "HH:MM" 24h format
+    if not time_val or ':' not in time_val:
+        return jsonify({'success': False, 'error': 'Invalid time format'}), 400
+    current_settings.setdefault('email', {})['auto_send_time'] = time_val
+    save_settings(current_settings)
+    # Also save to Supabase
+    if SUPABASE_AVAILABLE and _supabase_db:
+        try:
+            _supabase_db.save_settings(auto_send_time=time_val)
+        except Exception as e:
+            logger.warning(f"Failed to save send time to Supabase: {e}")
+    logger.info(f"Auto-send time set to {time_val}")
+    return jsonify({'success': True})
 
 
 @app.route('/api/email/pause', methods=['GET', 'POST', 'DELETE'])
