@@ -1336,14 +1336,13 @@ HTML_TEMPLATE = '''
             </div>
             <div class="header-actions">
                 <span id="connection-status" class="text-sm text-muted">Connecting...</span>
-                <button class="gear-btn" onclick="openSettings()">&#9881;</button>
                 <button class="gear-btn" onclick="doLogout()" title="Logout" style="font-size:14px;">Logout</button>
             </div>
         </header>
 
         <nav>
             <div class="tab active" data-page="home">Home</div>
-            <div class="tab" data-page="find">Find</div>
+            <div class="tab" data-page="find">Schools</div>
             <div class="tab" data-page="email">Email</div>
             <div class="tab" data-page="dms">DMs</div>
             {% if is_admin %}<div class="tab" data-page="admin">Admin</div>{% endif %}
@@ -1636,63 +1635,10 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-                        AI Email Generator
-                        <button class="btn btn-secondary btn-sm" onclick="loadAIEmailStatus()">Refresh</button>
-                    </div>
-                    <div id="ai-email-status" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;overflow:hidden;">
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
-                            <div><span class="text-muted">Schools in sheet:</span> <span id="ai-total-schools">-</span></div>
-                            <div><span class="text-muted">With AI emails:</span> <span id="ai-with-emails" style="color:var(--success);">-</span></div>
-                            <div><span class="text-muted">Needing AI:</span> <span id="ai-needing-emails" style="color:var(--warn);">-</span></div>
-                            <div><span class="text-muted">API remaining:</span> <span id="ai-api-remaining">-</span></div>
-                        </div>
-                    </div>
-                    <p class="text-sm text-muted mb-4">Generate personalized AI emails using Ollama + Google Search.</p>
-                    <div class="form-group">
-                        <label>Schools to Generate (max per run)</label>
-                        <input type="number" id="ai-email-limit" value="5" min="1" max="20">
-                    </div>
-                    <div style="display:flex;gap:10px;margin-bottom:16px;">
-                        <button class="btn btn-secondary" onclick="loadAIEmailSchools()">View Schools</button>
-                        <button class="btn btn-success" onclick="generateAIEmails()">GENERATE AI</button>
-                    </div>
-                    <div id="ai-email-schools" style="max-height:300px;overflow-y:auto;font-size:12px;"></div>
-                </div>
-
-                <div class="card">
-                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-                        Cloud Email Storage
-                        <button class="btn btn-secondary btn-sm" onclick="loadCloudEmailStats()">Refresh</button>
-                    </div>
-                    <p class="text-sm text-muted mb-4">Sync AI emails to Google Sheets for Railway deployment.</p>
-                    <div id="cloud-email-stats" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:11px;overflow:hidden;">
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
-                            <div><span class="text-muted">Total in cloud:</span> <span id="cloud-total">-</span></div>
-                            <div><span class="text-muted">Pending:</span> <span id="cloud-pending" style="color:var(--accent);">-</span></div>
-                            <div><span class="text-muted">Sent:</span> <span id="cloud-sent" style="color:var(--success);">-</span></div>
-                            <div><span class="text-muted">Open rate:</span> <span id="cloud-open-rate">-</span></div>
-                            <div><span class="text-muted">Response rate:</span> <span id="cloud-response-rate">-</span></div>
-                            <div><span class="text-muted">Successful:</span> <span id="cloud-successful" style="color:var(--success);">-</span></div>
-                        </div>
-                    </div>
-                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                        <button class="btn btn-success" onclick="syncEmailsToCloud()">UPLOAD TO CLOUD</button>
-                        <button class="btn btn-secondary" onclick="viewCloudEmails()">View Emails</button>
-                        <button class="btn btn-secondary" onclick="viewSuccessfulEmails()">View Successful</button>
-                    </div>
-                    <div id="cloud-email-log" class="mt-4 text-sm text-muted"></div>
-                </div>
-
                 <!-- Pause Controls Footer -->
-                <div id="email-pause-footer" style="margin-top:20px;padding:14px 18px;background:var(--bg3);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-                    <span id="email-mode-status" style="font-family:monospace;font-size:12px;color:var(--muted);">Auto-send active</span>
-                    <div style="display:flex;gap:10px;align-items:center;">
-                        <input type="date" id="pause-until-date" style="padding:8px 12px;font-size:12px;">
-                        <button class="btn btn-secondary btn-sm" onclick="setPauseDate()">Pause</button>
-                        <button class="btn btn-success btn-sm" id="resume-btn" onclick="resumeEmails()" style="display:none;">Resume</button>
-                    </div>
+                <div id="email-pause-footer" style="margin-top:20px;padding:14px 18px;background:var(--bg3);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+                    <span id="email-mode-status" style="font-family:monospace;font-size:13px;">Auto-send active</span>
+                    <button class="btn btn-secondary btn-sm" id="pause-toggle-btn" onclick="togglePause()">PAUSE</button>
                 </div>
             </div>
 
@@ -1785,7 +1731,10 @@ HTML_TEMPLATE = '''
                 <div class="card">
                     <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
                         Athletes
-                        <button class="btn btn-primary btn-sm" onclick="showCreateAthlete()">+ NEW ATHLETE</button>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-secondary btn-sm" onclick="window.open(window.location.origin + '/?preview=client', '_blank')">Preview as Client</button>
+                            <button class="btn btn-primary btn-sm" onclick="showCreateAthlete()">+ NEW ATHLETE</button>
+                        </div>
                     </div>
                     <div id="athletes-list" style="padding:12px;">Loading...</div>
                 </div>
@@ -1842,6 +1791,22 @@ HTML_TEMPLATE = '''
                     </div>
                     <form onsubmit="saveCreds(event)" style="padding:20px;">
                         <input type="hidden" id="ec-aid">
+                        <!-- Setup Guide -->
+                        <details style="margin-bottom:16px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px;">
+                            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent);">How to get Gmail API credentials</summary>
+                            <ol style="font-size:12px;color:var(--muted);line-height:1.8;margin:10px 0 0 16px;padding:0;">
+                                <li>Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent);">Google Cloud Console</a></li>
+                                <li>Create a new project (or select existing)</li>
+                                <li>Enable the <strong>Gmail API</strong> (APIs &amp; Services &rarr; Library)</li>
+                                <li>Go to <strong>Credentials</strong> &rarr; Create Credentials &rarr; <strong>OAuth 2.0 Client ID</strong></li>
+                                <li>Application type: <strong>Desktop app</strong></li>
+                                <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong></li>
+                                <li>Go to <a href="https://developers.google.com/oauthplayground" target="_blank" style="color:var(--accent);">OAuth 2.0 Playground</a></li>
+                                <li>Click gear icon &rarr; check "Use your own OAuth credentials" &rarr; paste Client ID &amp; Secret</li>
+                                <li>In Step 1, select <strong>Gmail API v1</strong> &rarr; <code>https://www.googleapis.com/auth/gmail.send</code></li>
+                                <li>Authorize &rarr; Exchange code &rarr; copy the <strong>Refresh Token</strong></li>
+                            </ol>
+                        </details>
                         <div style="display:grid;gap:12px;">
                             <div><label style="font-size:12px;color:var(--muted);">Gmail Email</label><input id="ec-gmail" type="email" required style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
                             <div><label style="font-size:12px;color:var(--muted);">Client ID</label><input id="ec-cid" required style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
@@ -1857,82 +1822,6 @@ HTML_TEMPLATE = '''
         </main>
     </div>
 
-    <!-- Settings Modal -->
-    <div class="modal-overlay" id="settings-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <span class="modal-title">Settings</span>
-                <button class="modal-close" onclick="closeSettings()">&times;</button>
-            </div>
-
-            <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:16px;">Athlete Profile</div>
-            <div class="grid-2 mb-4">
-                <div class="form-group"><label>Name</label><input type="text" id="s-name"></div>
-                <div class="form-group"><label>Grad Year</label><input type="text" id="s-year" value="2026"></div>
-                <div class="form-group"><label>Position</label><input type="text" id="s-position" placeholder="OL"></div>
-                <div class="form-group"><label>High School</label><input type="text" id="s-school"></div>
-                <div class="form-group"><label>Height</label><input type="text" id="s-height" placeholder="6'3&quot;"></div>
-                <div class="form-group"><label>Weight</label><input type="text" id="s-weight" placeholder="295"></div>
-                <div class="form-group"><label>GPA</label><input type="text" id="s-gpa"></div>
-                <div class="form-group"><label>Hudl / Film Link</label><input type="text" id="s-hudl"></div>
-                <div class="form-group"><label>Phone</label><input type="text" id="s-phone"></div>
-                <div class="form-group"><label>Email</label><input type="email" id="s-email"></div>
-            </div>
-
-            <!-- Railway Banner -->
-            <div id="railway-banner" style="display:none;background:var(--bg3);border:1px solid var(--accent);border-radius:8px;padding:16px;margin-bottom:20px;">
-                <div style="display:flex;align-items:center;gap:14px;">
-                    <div style="width:36px;height:36px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:white;">RW</div>
-                    <div>
-                        <div style="font-weight:600;color:var(--accent);">Running on Railway</div>
-                        <div style="font-size:12px;color:var(--muted);">Credentials managed via environment variables</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Credentials Section -->
-            <div id="credentials-section">
-                <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:24px 0 16px;">Email Settings</div>
-                <div class="grid-2 mb-4">
-                    <div class="form-group"><label>Gmail Address</label><input type="email" id="s-gmail"></div>
-                    <div class="form-group"><label>App Password</label><input type="password" id="s-gmail-pass"></div>
-                </div>
-
-                <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:24px 0 16px;">Google Sheets</div>
-                <div id="sheets-status" class="mb-4" style="padding:12px 16px;background:var(--bg3);border:1px solid var(--border);font-family:monospace;font-size:12px;">
-                    <span id="sheets-connection-text">Checking...</span>
-                </div>
-                <div class="form-group">
-                    <label>Spreadsheet Name or ID</label>
-                    <input type="text" id="s-sheet" value="bardeen" placeholder="bardeen or spreadsheet ID">
-                    <p class="text-sm text-muted mt-2">Enter the spreadsheet name or ID from URL</p>
-                </div>
-                <div class="form-group">
-                    <label>Credentials JSON</label>
-                    <p class="text-sm text-muted mb-4" style="line-height:1.6;">
-                        1. Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent);">Google Cloud Console</a><br>
-                        2. Create project → Enable Sheets API<br>
-                        3. Create Service Account → Download JSON<br>
-                        4. Share spreadsheet with service account email
-                    </p>
-                    <input type="file" id="credentials-file" accept=".json" style="padding:10px;">
-                    <button class="btn btn-secondary btn-sm mt-2" onclick="uploadCredentials()">Upload Credentials</button>
-                </div>
-                <button class="btn btn-secondary mb-4" onclick="testSheetConnection()">Test Connection</button>
-            </div>
-
-            <div style="font-size:12px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin:24px 0 16px;">Response Tracking</div>
-            <div class="grid-2 mb-4">
-                <div class="form-group"><label>Gmail for Replies</label><input type="email" id="s-inbox-email" placeholder="Same or different Gmail"></div>
-                <div class="form-group"><label>App Password</label><input type="password" id="s-inbox-pass" placeholder="For IMAP access"></div>
-            </div>
-            <button class="btn btn-secondary mb-4" onclick="testInboxConnection()">Test Inbox</button>
-
-            <div style="border-top:1px solid var(--border);padding-top:20px;margin-top:20px;">
-                <button class="btn btn-primary" onclick="saveSettings()">SAVE SETTINGS</button>
-            </div>
-        </div>
-    </div>
 
     <!-- Create Template Modal -->
     <div class="modal-overlay" id="template-modal">
@@ -1984,7 +1873,7 @@ HTML_TEMPLATE = '''
         function loadPageData(page) {
             if (page === 'home') loadDashboard();
             if (page === 'find') initSchoolSearch();
-            if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); loadAIEmailStatus(); }
+            if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); }
             if (page === 'dms') { loadDMQueue(); loadTemplates('dm'); }
             if (page === 'track') loadTrackStats();
             if (page === 'admin') loadAdminPanel();
@@ -2534,7 +2423,7 @@ HTML_TEMPLATE = '''
                 console.log('Pause data:', pauseData);
 
                 const statusEl = document.getElementById('email-mode-status');
-                const resumeBtn = document.getElementById('resume-btn');
+                const toggleBtn = document.getElementById('pause-toggle-btn');
                 const footer = document.getElementById('email-pause-footer');
 
                 // Also update home page banner
@@ -2547,17 +2436,17 @@ HTML_TEMPLATE = '''
 
                 if (pauseData.is_paused) {
                     if (footer) footer.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
-                    if (statusEl) statusEl.innerHTML = `PAUSED until ${pauseData.paused_until}`;
-                    if (resumeBtn) resumeBtn.style.display = '';
+                    if (statusEl) statusEl.innerHTML = 'Auto-send paused';
+                    if (toggleBtn) { toggleBtn.textContent = 'RESUME'; toggleBtn.className = 'btn btn-primary btn-sm'; }
                     // Home page - smaller indicator
                     if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #e74c3c, #c0392b)';
                     if (homeIcon) homeIcon.textContent = 'II';
-                    if (homeStatusText) homeStatusText.textContent = `Paused until ${pauseData.paused_until}`;
+                    if (homeStatusText) homeStatusText.textContent = 'Paused';
                     if (homeResumeBtn) homeResumeBtn.style.display = '';
                 } else if (holidayData.holiday_mode) {
                     if (footer) footer.style.background = 'linear-gradient(135deg, #27ae60 0%, #1e8449 100%)';
                     if (statusEl) statusEl.innerHTML = 'HOLIDAY MODE ACTIVE';
-                    if (resumeBtn) resumeBtn.style.display = 'none';
+                    if (toggleBtn) { toggleBtn.textContent = 'PAUSE'; toggleBtn.className = 'btn btn-secondary btn-sm'; }
                     // Home page
                     if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #f39c12, #e67e22)';
                     if (homeIcon) homeIcon.textContent = 'H';
@@ -2565,8 +2454,8 @@ HTML_TEMPLATE = '''
                     if (homeResumeBtn) homeResumeBtn.style.display = 'none';
                 } else {
                     if (footer) footer.style.background = 'var(--bg3)';
-                    if (statusEl) statusEl.innerHTML = 'AUTO-SEND ACTIVE';
-                    if (resumeBtn) resumeBtn.style.display = 'none';
+                    if (statusEl) statusEl.innerHTML = 'Auto-send active';
+                    if (toggleBtn) { toggleBtn.textContent = 'PAUSE'; toggleBtn.className = 'btn btn-secondary btn-sm'; }
                     // Home page
                     if (homeStatus) homeStatus.style.background = 'linear-gradient(135deg, #27ae60, #1e8449)';
                     if (homeIcon) homeIcon.textContent = 'ON';
@@ -2591,38 +2480,31 @@ HTML_TEMPLATE = '''
             } catch(e) { showToast('Error', 'error'); }
         }
 
-        async function setPauseDate() {
-            const dateInput = document.getElementById('pause-until-date');
-            const date = dateInput.value;
-            if (!date) {
-                showToast('Select a date first', 'error');
-                return;
-            }
-
+        async function togglePause() {
             try {
-                const res = await fetch('/api/email/pause', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ until: date })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    showToast(`Emails paused until ${date}`, 'success');
-                    loadEmailModeStatus();
+                const pauseRes = await fetch('/api/email/pause');
+                const pauseData = await pauseRes.json();
+
+                if (pauseData.is_paused) {
+                    // Resume
+                    const res = await fetch('/api/email/pause', { method: 'DELETE' });
+                    const data = await res.json();
+                    if (data.success) {
+                        showToast('Emails resumed!', 'success');
+                        loadEmailModeStatus();
+                    }
                 } else {
-                    showToast(data.error || 'Error setting pause', 'error');
-                }
-            } catch(e) { showToast('Error', 'error'); }
-        }
-
-        async function resumeEmails() {
-            try {
-                const res = await fetch('/api/email/pause', { method: 'DELETE' });
-                const data = await res.json();
-                if (data.success) {
-                    showToast('Emails resumed!', 'success');
-                    document.getElementById('pause-until-date').value = '';
-                    loadEmailModeStatus();
+                    // Pause (set far-future date)
+                    const res = await fetch('/api/email/pause', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ until: '2099-12-31' })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showToast('Emails paused', 'success');
+                        loadEmailModeStatus();
+                    }
                 }
             } catch(e) { showToast('Error', 'error'); }
         }
@@ -3006,92 +2888,21 @@ HTML_TEMPLATE = '''
             }
         }
         
-        // Settings
+        // Settings - simplified (settings modal removed)
         async function loadSettings() {
             try {
                 const res = await fetch('/api/settings');
                 settings = await res.json();
-                
+
                 const a = settings.athlete || {};
-                document.getElementById('s-name').value = a.name || '';
-                document.getElementById('s-year').value = a.graduation_year || '2026';
-                document.getElementById('s-position').value = a.positions || '';
-                document.getElementById('s-school').value = a.high_school || '';
-                document.getElementById('s-height').value = a.height || '';
-                document.getElementById('s-weight').value = a.weight || '';
-                document.getElementById('s-gpa').value = a.gpa || '';
-                document.getElementById('s-hudl').value = a.highlight_url || '';
-                document.getElementById('s-phone').value = a.phone || '';
-                document.getElementById('s-email').value = a.email || '';
-                
-                const e = settings.email || {};
-                document.getElementById('s-gmail').value = e.email_address || '';
-                document.getElementById('s-gmail-pass').value = e.app_password || '';
-                
-                document.getElementById('s-sheet').value = (settings.sheets || {}).spreadsheet_name || 'bardeen';
-                
-                // Load toggle states
-                const autoSendToggle = document.getElementById('auto-send-toggle');
-                if (autoSendToggle) autoSendToggle.checked = e.auto_send_enabled || false;
-                
-                const notifyToggle = document.getElementById('notify-toggle');
-                if (notifyToggle) notifyToggle.checked = (settings.notifications || {}).enabled || false;
-                
                 // Update header with athlete info
                 document.getElementById('header-name').textContent = (a.name || 'ATHLETE').toUpperCase();
                 const headerInfo = document.getElementById('header-info');
                 if (headerInfo) headerInfo.textContent = `${a.graduation_year || '2026'} ${a.positions || 'OL'}`;
-                
-                // Update connection status
-                const connected = e.email_address && e.app_password;
-                document.getElementById('connection-status').textContent = connected ? 'ONLINE' : 'SETUP';
+
+                document.getElementById('connection-status').textContent = 'ONLINE';
             } catch(e) { console.error(e); }
         }
-        
-        async function saveSettings() {
-            settings.athlete = {
-                name: document.getElementById('s-name').value,
-                graduation_year: document.getElementById('s-year').value,
-                positions: document.getElementById('s-position').value,
-                high_school: document.getElementById('s-school').value,
-                height: document.getElementById('s-height').value,
-                weight: document.getElementById('s-weight').value,
-                gpa: document.getElementById('s-gpa').value,
-                highlight_url: document.getElementById('s-hudl').value,
-                phone: document.getElementById('s-phone').value,
-                email: document.getElementById('s-email').value,
-            };
-            
-            // Only update password if user actually changed it (not masked value)
-            const newPassword = document.getElementById('s-gmail-pass').value;
-            settings.email = {
-                ...settings.email,
-                email_address: document.getElementById('s-gmail').value,
-            };
-            // Only send password if it's not the masked placeholder
-            if (newPassword && newPassword !== '********') {
-                settings.email.app_password = newPassword;
-            }
-            
-            settings.sheets = {
-                ...settings.sheets,
-                spreadsheet_name: document.getElementById('s-sheet').value,
-            };
-            
-            try {
-                await fetch('/api/settings', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(settings)
-                });
-                showToast('Settings saved', 'success');
-                closeSettings();
-                loadSettings();
-            } catch(e) { showToast('Failed to save', 'error'); }
-        }
-        
-        // openSettings is defined below with extra functionality
-        function closeSettings() { document.getElementById('settings-modal').classList.remove('active'); }
         
         // Template modal
         function openCreateTemplate(type) {
@@ -3300,279 +3111,12 @@ HTML_TEMPLATE = '''
             } catch(e) { showToast('Failed to send', 'error'); }
         }
 
-        // ========== AI EMAIL GENERATOR FUNCTIONS ==========
-
-        async function loadAIEmailStatus() {
-            try {
-                // Load schools from spreadsheet
-                const schoolsRes = await fetch('/api/ai-emails/schools');
-                const schoolsData = await schoolsRes.json();
-
-                if (schoolsData.success) {
-                    document.getElementById('ai-total-schools').textContent = schoolsData.total || 0;
-                    document.getElementById('ai-with-emails').textContent = schoolsData.with_ai_emails || 0;
-                    document.getElementById('ai-needing-emails').textContent = schoolsData.needing_ai_emails || 0;
-                }
-
-                // Load API status
-                const statusRes = await fetch('/api/ai-emails/status');
-                const statusData = await statusRes.json();
-
-                if (statusData.success && statusData.api_usage) {
-                    document.getElementById('ai-api-remaining').textContent = statusData.api_usage.remaining_schools || 0;
-                }
-            } catch(e) { console.error('AI email status error:', e); }
-        }
-
-        async function loadAIEmailSchools() {
-            const el = document.getElementById('ai-email-schools');
-            el.innerHTML = '<p class="text-muted">Loading schools from spreadsheet...</p>';
-
-            try {
-                const res = await fetch('/api/ai-emails/schools');
-                const data = await res.json();
-
-                if (!data.success) {
-                    el.innerHTML = `<p class="text-danger">${data.error}</p>`;
-                    return;
-                }
-
-                if (!data.schools || data.schools.length === 0) {
-                    el.innerHTML = '<p class="text-muted">No schools with email addresses in spreadsheet</p>';
-                    return;
-                }
-
-                el.innerHTML = `
-                    <table style="width:100%;font-size:12px;">
-                        <tr style="background:var(--bg3);"><th style="padding:6px;">School</th><th>Coach</th><th>AI Email</th><th></th></tr>
-                        ${data.schools.slice(0, 50).map(s => `
-                            <tr style="border-bottom:1px solid var(--border);">
-                                <td style="padding:6px;">${s.school}</td>
-                                <td>${s.rc_name || s.ol_name || 'Coach'}</td>
-                                <td>${s.has_ai_email ? '<span style="color:var(--success);">Yes</span>' : '<span style="color:var(--warning);">No</span>'}</td>
-                                <td>
-                                    ${s.has_ai_email
-                                        ? `<button class="btn btn-sm btn-outline" onclick="previewAIEmail('${s.school.replace(/'/g, "\\'")}')">Preview</button>`
-                                        : `<button class="btn btn-sm" onclick="generateOneAIEmail('${s.school.replace(/'/g, "\\'")}')">Generate</button>`
-                                    }
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </table>
-                    ${data.schools.length > 50 ? `<p class="text-muted mt-2">Showing 50 of ${data.schools.length} schools</p>` : ''}
-                `;
-            } catch(e) {
-                el.innerHTML = `<p class="text-danger">Error: ${e.message}</p>`;
-            }
-        }
-
-        async function generateAIEmails() {
-            const limit = parseInt(document.getElementById('ai-email-limit').value) || 5;
-            showToast(`Generating AI emails for ${limit} schools...`);
-
-            try {
-                const res = await fetch('/api/ai-emails/generate', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ limit })
-                });
-                const data = await res.json();
-
-                if (data.success) {
-                    if (data.count > 0) {
-                        showToast(`Generated AI emails for ${data.count} schools!`, 'success');
-                    } else {
-                        showToast('No new schools to generate emails for', 'info');
-                    }
-                    loadAIEmailStatus();
-                    loadAIEmailSchools();
-                } else {
-                    showToast(data.error || 'Generation failed', 'error');
-                }
-            } catch(e) {
-                showToast('Error: ' + e.message, 'error');
-            }
-        }
-
-        async function generateOneAIEmail(school) {
-            showToast(`Generating AI email for ${school}...`);
-
-            try {
-                const res = await fetch('/api/ai-emails/generate', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ school, limit: 1 })
-                });
-                const data = await res.json();
-
-                if (data.success && data.count > 0) {
-                    showToast(`Generated AI email for ${school}!`, 'success');
-                    loadAIEmailStatus();
-                    loadAIEmailSchools();
-                } else {
-                    showToast(data.error || 'Generation failed', 'error');
-                }
-            } catch(e) {
-                showToast('Error: ' + e.message, 'error');
-            }
-        }
-
-        async function previewAIEmail(school) {
-            try {
-                const res = await fetch(`/api/ai-emails/preview/${encodeURIComponent(school)}`);
-                const data = await res.json();
-
-                if (data.success && data.emails && data.emails.length > 0) {
-                    const email = data.emails[0];
-                    alert(`AI Email Preview for ${school}\\n\\n${email.content}\\n\\n---\\nResearch: ${email.research_used ? 'Yes' : 'No'}\\nGenerated: ${email.generated_at}`);
-                } else {
-                    showToast(data.error || 'No preview available', 'error');
-                }
-            } catch(e) {
-                showToast('Preview error: ' + e.message, 'error');
-            }
-        }
 
         // Refresh DM queue (Fix #12)
         function refreshDMQueue() {
             loadDMQueue();
             showToast('Queue refreshed', 'success');
         }
-
-        // ========== CLOUD EMAIL FUNCTIONS ==========
-        async function loadCloudEmailStats() {
-            try {
-                const res = await fetch('/api/cloud-emails/stats');
-                const data = await res.json();
-
-                if (data.success) {
-                    document.getElementById('cloud-total').textContent = data.total_emails || 0;
-                    document.getElementById('cloud-pending').textContent = data.pending || 0;
-                    document.getElementById('cloud-sent').textContent = data.sent || 0;
-                    document.getElementById('cloud-open-rate').textContent = (data.open_rate || 0) + '%';
-                    document.getElementById('cloud-response-rate').textContent = (data.response_rate || 0) + '%';
-                    document.getElementById('cloud-successful').textContent = data.responses || 0;
-                } else {
-                    document.getElementById('cloud-email-log').innerHTML = '<span style="color:var(--warning);">Could not load cloud stats: ' + (data.error || 'Unknown error') + '</span>';
-                }
-            } catch(e) {
-                document.getElementById('cloud-email-log').innerHTML = '<span style="color:var(--error);">Error: ' + e.message + '</span>';
-            }
-        }
-
-        async function syncEmailsToCloud() {
-            const log = document.getElementById('cloud-email-log');
-            log.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Syncing emails to cloud...';
-
-            try {
-                const res = await fetch('/api/cloud-emails/sync', { method: 'POST' });
-                const data = await res.json();
-
-                if (data.success) {
-                    log.innerHTML = '<span style="color:var(--success);">Uploaded ' + data.uploaded + ' emails to cloud!</span>';
-                    showToast('Synced ' + data.uploaded + ' emails to cloud', 'success');
-                    loadCloudEmailStats();
-                } else {
-                    log.innerHTML = '<span style="color:var(--error);">Sync failed: ' + (data.error || 'Unknown error') + '</span>';
-                }
-            } catch(e) {
-                log.innerHTML = '<span style="color:var(--error);">Error: ' + e.message + '</span>';
-            }
-        }
-
-        async function viewCloudEmails() {
-            const log = document.getElementById('cloud-email-log');
-            log.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading cloud emails...';
-
-            try {
-                const res = await fetch('/api/cloud-emails/pending');
-                const data = await res.json();
-
-                if (data.success && data.emails) {
-                    if (data.emails.length === 0) {
-                        log.innerHTML = '<em>No pending emails in cloud</em>';
-                        return;
-                    }
-
-                    let html = '<div style="max-height:300px;overflow-y:auto;">';
-                    html += '<strong>' + data.count + ' pending emails:</strong><br><br>';
-                    data.emails.slice(0, 20).forEach(e => {
-                        html += '<div style="padding:8px;margin-bottom:8px;background:var(--bg2);border-radius:4px;">';
-                        html += '<strong>' + e.school + '</strong> - ' + e.email_type + '<br>';
-                        html += '<small style="color:var(--muted);">' + e.coach_name + ' (' + e.coach_email + ')</small>';
-                        html += '</div>';
-                    });
-                    if (data.emails.length > 20) {
-                        html += '<em>... and ' + (data.emails.length - 20) + ' more</em>';
-                    }
-                    html += '</div>';
-                    log.innerHTML = html;
-                } else {
-                    log.innerHTML = '<span style="color:var(--error);">Error: ' + (data.error || 'Unknown') + '</span>';
-                }
-            } catch(e) {
-                log.innerHTML = '<span style="color:var(--error);">Error: ' + e.message + '</span>';
-            }
-        }
-
-        async function viewSuccessfulEmails() {
-            const log = document.getElementById('cloud-email-log');
-            log.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading successful emails...';
-
-            try {
-                const res = await fetch('/api/cloud-emails/successful');
-                const data = await res.json();
-
-                if (data.success && data.emails) {
-                    if (data.emails.length === 0) {
-                        log.innerHTML = '<em>No successful emails yet. Keep sending and tracking responses!</em>';
-                        return;
-                    }
-
-                    let html = '<div style="max-height:400px;overflow-y:auto;">';
-                    html += '<strong>' + data.count + ' emails that got responses:</strong><br><br>';
-                    data.emails.forEach(e => {
-                        html += '<div style="padding:8px;margin-bottom:8px;background:var(--bg2);border-radius:4px;border-left:3px solid var(--success);">';
-                        html += '<strong>' + e.school + '</strong> - ' + e.email_type;
-                        if (e.sentiment) html += ' <span style="color:var(--success);">(' + e.sentiment + ')</span>';
-                        html += '<br>';
-                        html += '<small style="color:var(--muted);white-space:pre-wrap;">' + (e.body || '').substring(0, 200) + '...</small>';
-                        html += '</div>';
-                    });
-                    html += '</div>';
-                    log.innerHTML = html;
-                } else {
-                    log.innerHTML = '<span style="color:var(--error);">Error: ' + (data.error || 'Unknown') + '</span>';
-                }
-            } catch(e) {
-                log.innerHTML = '<span style="color:var(--error);">Error: ' + e.message + '</span>';
-            }
-        }
-
-        // Load cloud stats on page load
-        setTimeout(loadCloudEmailStats, 2000);
-
-        // Tomorrow's email preview
-        async function loadTomorrowPreview() {
-            try {
-                const res = await fetch('/api/email/tomorrow-preview');
-                const data = await res.json();
-
-                if (data.success) {
-                    document.getElementById('tomorrow-total').textContent = data.total;
-                    document.getElementById('tomorrow-ai').textContent = data.will_send_ai + ' / ' + data.ai;
-                    document.getElementById('tomorrow-template').textContent = data.will_send_template + ' / ' + data.template;
-                    document.getElementById('tomorrow-limit').textContent = data.limit;
-                } else {
-                    console.error('Tomorrow preview error:', data.error);
-                }
-            } catch(e) {
-                console.error('Tomorrow preview error:', e);
-            }
-        }
-
-        // Load tomorrow preview on page load
-        setTimeout(loadTomorrowPreview, 1500);
 
         // ========== NEW SCRAPER FUNCTIONS ==========
         let scraperRunning = false;
@@ -4043,32 +3587,6 @@ HTML_TEMPLATE = '''
             }
         }
         
-        // Check sheet status on settings open
-        async function openSettings() { 
-            document.getElementById('settings-modal').classList.add('active'); 
-            
-            // Check if running on Railway
-            try {
-                const res = await fetch('/api/deployment-info');
-                const info = await res.json();
-                
-                if (info.on_railway) {
-                    // Hide credentials section, show Railway banner
-                    document.getElementById('credentials-section').style.display = 'none';
-                    document.getElementById('railway-banner').style.display = 'block';
-                } else {
-                    // Show credentials section, hide Railway banner
-                    document.getElementById('credentials-section').style.display = 'block';
-                    document.getElementById('railway-banner').style.display = 'none';
-                }
-            } catch(e) {
-                // Default to showing credentials section
-                document.getElementById('credentials-section').style.display = 'block';
-                document.getElementById('railway-banner').style.display = 'none';
-            }
-            
-            testSheetConnection();
-        }
         
         // Toast
         function showToast(msg, type = '') {
@@ -4293,10 +3811,10 @@ HTML_TEMPLATE = '''
                 el.innerHTML = data.schools.map(s => `
                     <div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
                         <div>
-                            <strong>${s.school_name || s.name}</strong>
+                            <strong>${s.schools?.name || s.school_name || s.name}</strong>
                             <span class="text-muted text-sm"> — ${s.coach_preference || 'both'}</span>
                         </div>
-                        <button class="btn btn-sm" onclick="removeMySchool('${s.school_id}')" style="font-size:11px;color:var(--danger);">REMOVE</button>
+                        <button class="btn btn-sm" onclick="removeMySchool('${s.schools?.id || s.school_id}')" style="font-size:11px;color:var(--danger);">REMOVE</button>
                     </div>
                 `).join('');
             } catch(e) { console.error(e); }
@@ -4388,6 +3906,9 @@ def auth_status():
 @login_required
 def index():
     is_admin = session.get('is_admin', False)
+    # Preview as Client mode - hide admin UI
+    if request.args.get('preview') == 'client':
+        is_admin = False
     athlete_name = session.get('athlete_name', 'Athlete')
     response = make_response(render_template_string(
         HTML_TEMPLATE,
@@ -7717,7 +7238,7 @@ def auto_send_emails():
 
         # SAFETY CAP: Never send more than 25 emails in one auto-send run
         # This prevents runaway sends even if settings get corrupted
-        MAX_SAFE_SEND = 25
+        MAX_SAFE_SEND = 100
         if limit > MAX_SAFE_SEND:
             logger.warning(f"⚠️ Auto-send limit {limit} exceeds safety cap, reducing to {MAX_SAFE_SEND}")
             limit = MAX_SAFE_SEND
