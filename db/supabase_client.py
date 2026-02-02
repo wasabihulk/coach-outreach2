@@ -4,6 +4,7 @@ Replaces Google Sheets as primary data store.
 """
 
 import os
+import re
 import logging
 from datetime import datetime, timezone
 from supabase import create_client, Client
@@ -97,12 +98,82 @@ class SupabaseDB:
         return self.client.table('schools').select('*').order('name').execute().data
 
     # ==========================================
+    # EMAIL VALIDATION
+    # ==========================================
+
+    _EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
+
+    @staticmethod
+    def clean_email(email):
+        """Clean and validate an email address. Returns cleaned email or None if invalid."""
+        if not email:
+            return None
+        # Strip whitespace and newlines
+        email = email.strip().replace('\n', '').replace('\r', '').replace('\t', '')
+        if not email:
+            return None
+        # If multiple @ signs, try to split into separate emails and take the first valid one
+        if email.count('@') > 1:
+            # Try common separators
+            parts = re.split(r'[,;\s]+', email)
+            if len(parts) == 1:
+                # No separators — likely concatenated like "a@b.educ@d.edu"
+                # Split on .edu, .com, .org, .net boundaries
+                parts = re.split(r'(?<=\.edu|\.com|\.org|\.net)', email)
+                parts = [p for p in parts if p.strip()]
+            for part in parts:
+                part = part.strip()
+                if SupabaseDB._EMAIL_RE.match(part):
+                    return part.lower()
+            return None
+        email = email.lower()
+        if SupabaseDB._EMAIL_RE.match(email):
+            return email
+        return None
+
+    def cleanup_bad_emails(self):
+        """Scan all coaches and fix/null invalid email addresses. Returns stats dict."""
+        fixed = 0
+        nulled = 0
+        total = 0
+        try:
+            # Fetch all coaches with emails (paginate in batches of 1000)
+            offset = 0
+            batch_size = 1000
+            while True:
+                result = self.client.table('coaches').select('id, email').not_.is_('email', 'null').range(offset, offset + batch_size - 1).execute()
+                if not result.data:
+                    break
+                for coach in result.data:
+                    total += 1
+                    raw = coach['email']
+                    cleaned = self.clean_email(raw)
+                    if cleaned != raw:
+                        if cleaned:
+                            self.client.table('coaches').update({'email': cleaned}).eq('id', coach['id']).execute()
+                            fixed += 1
+                            logger.info(f"Fixed email for coach {coach['id']}: '{raw}' -> '{cleaned}'")
+                        else:
+                            self.client.table('coaches').update({'email': None}).eq('id', coach['id']).execute()
+                            nulled += 1
+                            logger.warning(f"Nulled invalid email for coach {coach['id']}: '{raw}'")
+                if len(result.data) < batch_size:
+                    break
+                offset += batch_size
+        except Exception as e:
+            logger.error(f"Email cleanup error: {e}")
+        logger.info(f"Email cleanup: scanned {total}, fixed {fixed}, nulled {nulled}")
+        return {'total': total, 'fixed': fixed, 'nulled': nulled}
+
+    # ==========================================
     # COACHES
     # ==========================================
 
     def add_coach(self, school_name, name, role, email=None, twitter=None, title=None):
         school = self.get_school(school_name)
         school_id = school['id'] if school else None
+        # Clean email before inserting
+        email = self.clean_email(email)
         data = {
             'school_id': school_id,
             'name': name,

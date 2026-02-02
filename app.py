@@ -144,7 +144,7 @@ DEFAULT_SETTINGS = {
         'email_address': ENV_EMAIL_ADDRESS,
         'app_password': ENV_APP_PASSWORD,
         'max_per_day': 100,  # Gmail limit
-        'delay_seconds': 3,
+        'delay_seconds': 5,
         'days_between_emails': 4,  # Wait 4 days before next email (~2 emails per week max)
         'followup_sequence': ['intro', 'followup_1', 'followup_2'],  # Email sequence
         'auto_send_enabled': ENV_AUTO_SEND,
@@ -279,6 +279,14 @@ try:
             _supabase_db.get_or_create_athlete(_default_athlete_name, _default_athlete_email)
         SUPABASE_AVAILABLE = True
         logger.info("Supabase database connected")
+
+        # Auto-clean bad coach emails on startup
+        try:
+            cleanup = _supabase_db.cleanup_bad_emails()
+            if cleanup['fixed'] or cleanup['nulled']:
+                logger.info(f"Startup email cleanup: fixed {cleanup['fixed']}, nulled {cleanup['nulled']} out of {cleanup['total']}")
+        except Exception as e:
+            logger.warning(f"Startup email cleanup failed: {e}")
 
         # Auto-sync templates from TemplateManager → Supabase on startup
         try:
@@ -6260,7 +6268,13 @@ def api_email_send():
                     subject, body = template.render(variables)
                     logger.info(f"Using template for {coach.get('school_name')} ({email_type})")
 
-                coach_email = coach['coach_email'].strip()
+                coach_email = coach['coach_email'].strip() if coach.get('coach_email') else ''
+                # Validate email before sending
+                import re
+                if not coach_email or not re.match(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$', coach_email):
+                    logger.warning(f"Skipping invalid email for {coach.get('school_name', '?')}: '{coach_email}'")
+                    errors += 1
+                    continue
                 tracking_template_id = 'ai_generated' if used_ai_email else (template.id if 'template' in dir() and template else 'unknown')
 
                 if use_gmail_api:
@@ -6349,7 +6363,7 @@ def api_email_send():
                 else:
                     errors += 1
 
-                time.sleep(email_settings.get('delay_seconds', 3))
+                time.sleep(email_settings.get('delay_seconds', 5))
 
             except Exception as e:
                 error_str = str(e).lower()
