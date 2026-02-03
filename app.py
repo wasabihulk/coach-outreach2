@@ -5033,7 +5033,8 @@ def api_check_responses():
     """Check Gmail inbox for responses from coaches using Gmail API"""
     try:
         # Use Gmail API if available
-        if has_gmail_api():
+        service = get_gmail_service()
+        if service:
             logger.info("Checking responses via Gmail API")
 
             # Get coaches we've emailed from Supabase
@@ -5068,9 +5069,9 @@ def api_check_responses():
                     'responses': [],
                     'total_checked': 0
                 })
-            
+
             logger.info(f"Found {len(coach_emails)} coaches we've emailed, checking inbox...")
-            
+
             # Auto-reply patterns to filter out
             auto_reply_patterns = [
                 'out of office', 'out-of-office', 'automatic reply', 'auto-reply', 'autoreply',
@@ -5086,8 +5087,7 @@ def api_check_responses():
 
             # Search inbox for replies from these coaches
             responses = []
-            service = get_gmail_service()
-            if service:
+            if True:
                 for coach in coach_emails:
                     try:
                         # Search for emails from this coach
@@ -5142,8 +5142,7 @@ def api_check_responses():
             })
         
         else:
-            # Fallback to IMAP (may not work on Railway)
-            return jsonify({'success': False, 'error': 'Gmail API not configured. Add GMAIL_REFRESH_TOKEN to Railway.'})
+            return jsonify({'success': False, 'error': 'Gmail API not configured. Check credentials in Admin panel.'})
     
     except Exception as e:
         logger.error(f"Response check error: {e}")
@@ -5794,11 +5793,12 @@ def api_email_queue_status():
 def api_scan_past_responses():
     """Scan Gmail for past responses and mark them in Supabase."""
     try:
-        if not has_gmail_api():
-            return jsonify({'success': False, 'error': 'Gmail API not configured. Add GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN to Railway.'})
-
         if not _supabase_db:
             return jsonify({'success': False, 'error': 'Database not connected'})
+
+        service = get_gmail_service()
+        if not service:
+            return jsonify({'success': False, 'error': 'Gmail API not configured. Check credentials in Admin panel.'})
 
         # Get all coaches with emails who haven't responded yet
         all_coaches = _supabase_db.get_all_coaches_with_schools()
@@ -5819,11 +5819,7 @@ def api_scan_past_responses():
             })
 
         logger.info(f"Scanning responses for {len(coach_emails)} coach emails")
-        
-        service = get_gmail_service()
-        if not service:
-            return jsonify({'success': False, 'error': 'Could not connect to Gmail API'})
-        
+
         responses_found = []
         marked_count = 0
         checked_count = 0
@@ -7391,10 +7387,12 @@ def check_responses_background():
 
     try:
         with app.app_context():
-            if not has_gmail_api():
+            if not SUPABASE_AVAILABLE or not _supabase_db:
                 return
 
-            if not SUPABASE_AVAILABLE or not _supabase_db:
+            # Check if we can connect to Gmail (per-athlete or global)
+            service = get_gmail_service()
+            if not service:
                 return
 
             # Get coaches we've emailed from Supabase outreach records
@@ -7433,7 +7431,6 @@ def check_responses_background():
             responses = []
             matched_schools = set()  # Track schools already matched by direct email
             matched_emails = set()  # Track coach emails already found
-            service = get_gmail_service()
             if service:
                 # Pass 1: Direct email match (existing behavior)
                 for coach in coach_emails:
@@ -7674,7 +7671,7 @@ def start_auto_send_scheduler():
                 
                 # Check for responses every hour
                 if last_response_check is None or (now - last_response_check).seconds >= 3600:
-                    if has_gmail_api():
+                    if has_gmail_api() or (SUPABASE_AVAILABLE and _supabase_db):
                         logger.info("Hourly response check starting...")
                         try:
                             check_responses_background()
