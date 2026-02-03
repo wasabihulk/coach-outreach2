@@ -1497,6 +1497,10 @@ HTML_TEMPLATE = '''
                             </tbody>
                         </table>
                     </div>
+                    <div style="margin-top:16px;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;text-align:center;">
+                        <span style="color:var(--muted);">Can't find your school?</span>
+                        <a href="#" onclick="showRequestSchool();return false;" style="color:var(--accent);margin-left:8px;">Request it here</a>
+                    </div>
                 </div>
 
                 <div class="card">
@@ -1584,6 +1588,20 @@ HTML_TEMPLATE = '''
                         <button class="btn btn-secondary btn-sm" onclick="cleanupSheet()">Cleanup</button>
                         <button class="btn btn-secondary btn-sm" onclick="loadEmailQueueStatus()">Refresh</button>
                     </div>
+                </div>
+
+                <!-- Response Lookup Section -->
+                <div style="background:var(--bg3);border:1px solid var(--border);padding:16px 20px;margin-bottom:20px;">
+                    <div style="font-family:monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Response Lookup</div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                        <div style="flex:1;min-width:200px;">
+                            <input type="text" id="coach-search-input" placeholder="Search by coach name, email, or school..."
+                                   style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:14px;"
+                                   onkeypress="if(event.key==='Enter')searchCoachResponse()">
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="searchCoachResponse()">Search</button>
+                    </div>
+                    <div id="coach-search-results" style="margin-top:16px;"></div>
                 </div>
 
                 <div class="grid-2">
@@ -1747,6 +1765,16 @@ HTML_TEMPLATE = '''
                     </div>
                     <div id="athletes-list" style="padding:12px;">Loading...</div>
                 </div>
+
+                <!-- School Requests Section -->
+                <div class="card">
+                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                        School Requests
+                        <button class="btn btn-primary btn-sm" onclick="showAddSchool()">+ ADD SCHOOL</button>
+                    </div>
+                    <div id="school-requests" style="padding:12px;">Loading...</div>
+                </div>
+
                 <div class="card">
                     <div class="card-header">Missing Coach Data Alerts</div>
                     <div id="missing-coaches" style="padding:12px;">Loading...</div>
@@ -1791,6 +1819,89 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
+            <!-- Add School Modal -->
+            <div class="modal-overlay" id="add-school-modal">
+                <div class="modal" style="max-width:600px;">
+                    <div class="modal-header">
+                        <span class="modal-title">Add School</span>
+                        <button class="modal-close" onclick="closeModal('add-school-modal')">&times;</button>
+                    </div>
+                    <div style="padding:20px;">
+                        <div style="display:grid;gap:12px;">
+                            <div>
+                                <label style="font-size:12px;color:var(--muted);">School Name *</label>
+                                <input id="as-name" required placeholder="e.g. University of Florida" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                                <div>
+                                    <label style="font-size:12px;color:var(--muted);">Division</label>
+                                    <select id="as-division" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                                        <option value="">Select...</option>
+                                        <option value="FBS">FBS (D1)</option>
+                                        <option value="FCS">FCS (D1)</option>
+                                        <option value="D2">D2</option>
+                                        <option value="D3">D3</option>
+                                        <option value="NAIA">NAIA</option>
+                                        <option value="JUCO">JUCO</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size:12px;color:var(--muted);">Conference</label>
+                                    <input id="as-conference" placeholder="e.g. SEC" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                                </div>
+                                <div>
+                                    <label style="font-size:12px;color:var(--muted);">State</label>
+                                    <input id="as-state" placeholder="e.g. FL" maxlength="2" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                                </div>
+                            </div>
+                            <div>
+                                <label style="font-size:12px;color:var(--muted);">Staff/Coaches Page URL</label>
+                                <input id="as-url" type="url" placeholder="https://athletics.school.edu/sports/football/coaches" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                                <p style="font-size:11px;color:var(--muted);margin-top:4px;">Paste the link to the football staff page. We'll try to scrape coach info automatically.</p>
+                            </div>
+                        </div>
+
+                        <div style="display:flex;gap:10px;margin-top:16px;">
+                            <button class="btn btn-primary" onclick="addSchoolAndScrape()" style="flex:1;">ADD & SCRAPE</button>
+                            <button class="btn btn-secondary" onclick="addSchoolOnly()" style="flex:1;">ADD ONLY</button>
+                        </div>
+
+                        <!-- Scrape Results Area -->
+                        <div id="scrape-results" style="display:none;margin-top:20px;padding:16px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;">
+                            <div id="scrape-status" style="margin-bottom:12px;"></div>
+                            <div id="scrape-coaches" style="display:none;">
+                                <div style="font-weight:600;margin-bottom:8px;">Coaches Found:</div>
+                                <div id="scrape-coaches-list"></div>
+                            </div>
+                            <div id="manual-entry" style="display:none;margin-top:16px;">
+                                <div style="font-weight:600;color:var(--warn);margin-bottom:12px;">Manual Entry Required</div>
+                                <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+                                    Scraping didn't find coaches. Please visit the staff page and add them manually:
+                                    <a id="staff-link" href="#" target="_blank" style="color:var(--accent);text-decoration:underline;">Open Staff Page</a>
+                                </p>
+                                <div style="display:grid;gap:12px;">
+                                    <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
+                                        <div style="font-size:12px;color:var(--cyan);margin-bottom:8px;">OL Coach (Offensive Line)</div>
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                                            <input id="manual-ol-name" placeholder="Coach Name" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                                            <input id="manual-ol-email" type="email" placeholder="Email" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                                        </div>
+                                    </div>
+                                    <div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
+                                        <div style="font-size:12px;color:var(--cyan);margin-bottom:8px;">RC (Recruiting Coordinator)</div>
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                                            <input id="manual-rc-name" placeholder="Coach Name" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                                            <input id="manual-rc-email" type="email" placeholder="Email" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-success" onclick="saveManualCoaches()" style="margin-top:12px;width:100%;">SAVE COACHES</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Edit Credentials Modal -->
             <div class="modal-overlay" id="edit-creds-modal">
                 <div class="modal">
@@ -1802,19 +1913,57 @@ HTML_TEMPLATE = '''
                         <input type="hidden" id="ec-aid">
                         <!-- Setup Guide -->
                         <details style="margin-bottom:16px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px;">
-                            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent);">How to get Gmail API credentials</summary>
-                            <ol style="font-size:12px;color:var(--muted);line-height:1.8;margin:10px 0 0 16px;padding:0;">
-                                <li>Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent);">Google Cloud Console</a></li>
-                                <li>Create a new project (or select existing)</li>
-                                <li>Enable the <strong>Gmail API</strong> (APIs &amp; Services &rarr; Library)</li>
-                                <li>Go to <strong>Credentials</strong> &rarr; Create Credentials &rarr; <strong>OAuth 2.0 Client ID</strong></li>
-                                <li>Application type: <strong>Desktop app</strong></li>
-                                <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong></li>
-                                <li>Go to <a href="https://developers.google.com/oauthplayground" target="_blank" style="color:var(--accent);">OAuth 2.0 Playground</a></li>
-                                <li>Click gear icon &rarr; check "Use your own OAuth credentials" &rarr; paste Client ID &amp; Secret</li>
-                                <li>In Step 1, select <strong>Gmail API v1</strong> &rarr; <code>https://www.googleapis.com/auth/gmail.send</code></li>
-                                <li>Authorize &rarr; Exchange code &rarr; copy the <strong>Refresh Token</strong></li>
-                            </ol>
+                            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent);">Full Gmail API Setup Guide (click to expand)</summary>
+                            <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-top:12px;">
+                                <div style="font-weight:600;color:var(--text);margin-bottom:6px;">Step 1: Google Cloud Project</div>
+                                <ol style="margin:0 0 12px 16px;padding:0;">
+                                    <li>Go to <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent);">Google Cloud Console</a></li>
+                                    <li>Create a new project OR select your existing "RecruitSignal" project</li>
+                                </ol>
+
+                                <div style="font-weight:600;color:var(--text);margin-bottom:6px;">Step 2: Enable Gmail API</div>
+                                <ol style="margin:0 0 12px 16px;padding:0;">
+                                    <li>Go to <strong>APIs &amp; Services</strong> &rarr; <strong>Library</strong></li>
+                                    <li>Search "Gmail API" &rarr; Click <strong>Enable</strong></li>
+                                </ol>
+
+                                <div style="font-weight:600;color:var(--text);margin-bottom:6px;">Step 3: OAuth Consent Screen (first time only)</div>
+                                <ol style="margin:0 0 12px 16px;padding:0;">
+                                    <li>Go to <strong>APIs &amp; Services</strong> &rarr; <strong>OAuth consent screen</strong></li>
+                                    <li>Choose <strong>External</strong> &rarr; Create</li>
+                                    <li>Fill in App name, Support email</li>
+                                    <li>Click <strong>Add or Remove Scopes</strong> &rarr; add <code>gmail.send</code></li>
+                                    <li>Under <strong>Test users</strong>, add the athlete's Gmail address</li>
+                                    <li>Save and continue</li>
+                                </ol>
+
+                                <div style="font-weight:600;color:var(--text);margin-bottom:6px;">Step 4: Create OAuth Credentials</div>
+                                <ol style="margin:0 0 12px 16px;padding:0;">
+                                    <li>Go to <strong>APIs &amp; Services</strong> &rarr; <strong>Credentials</strong></li>
+                                    <li>Click <strong>+ CREATE CREDENTIALS</strong> &rarr; <strong>OAuth client ID</strong></li>
+                                    <li>Application type: <strong>Desktop app</strong></li>
+                                    <li>Name it (e.g., "Athlete - John Smith")</li>
+                                    <li>Click Create &rarr; Copy <strong>Client ID</strong> and <strong>Client Secret</strong></li>
+                                </ol>
+
+                                <div style="font-weight:600;color:var(--text);margin-bottom:6px;">Step 5: Get Refresh Token</div>
+                                <ol style="margin:0 0 12px 16px;padding:0;">
+                                    <li>Go to <a href="https://developers.google.com/oauthplayground" target="_blank" style="color:var(--accent);">OAuth 2.0 Playground</a></li>
+                                    <li>Click the <strong>gear icon</strong> (top right)</li>
+                                    <li>Check <strong>"Use your own OAuth credentials"</strong></li>
+                                    <li>Paste Client ID and Client Secret &rarr; Close</li>
+                                    <li>In Step 1 (left panel), find <strong>Gmail API v1</strong></li>
+                                    <li>Select <code>https://www.googleapis.com/auth/gmail.send</code></li>
+                                    <li>Click <strong>Authorize APIs</strong></li>
+                                    <li>Sign in with the <strong>athlete's Gmail</strong> &rarr; Allow access</li>
+                                    <li>Click <strong>Exchange authorization code for tokens</strong></li>
+                                    <li>Copy the <strong>Refresh Token</strong> (long string starting with "1//")</li>
+                                </ol>
+
+                                <div style="background:var(--bg);padding:8px;border-radius:4px;margin-top:8px;">
+                                    <strong style="color:var(--success);">Security:</strong> All credentials are encrypted (AES-128) before storage. Only decryptable on your server.
+                                </div>
+                            </div>
                         </details>
                         <div style="display:grid;gap:12px;">
                             <div><label style="font-size:12px;color:var(--muted);">Gmail Email</label><input id="ec-gmail" type="email" required style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
@@ -1831,6 +1980,32 @@ HTML_TEMPLATE = '''
         </main>
     </div>
 
+
+    <!-- Request School Modal -->
+    <div class="modal-overlay" id="request-school-modal">
+        <div class="modal" style="max-width:450px;">
+            <div class="modal-header">
+                <span class="modal-title">Request a School</span>
+                <button class="modal-close" onclick="closeModal('request-school-modal')">&times;</button>
+            </div>
+            <div style="padding:20px;">
+                <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">
+                    Can't find the school you're looking for? Submit a request and we'll add it to our database.
+                </p>
+                <div style="display:grid;gap:12px;">
+                    <div>
+                        <label style="font-size:12px;color:var(--muted);">School Name *</label>
+                        <input id="rs-name" required placeholder="e.g. University of Florida" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:var(--muted);">Notes (optional)</label>
+                        <textarea id="rs-notes" placeholder="Any additional info (division, state, etc.)" rows="2" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;resize:vertical;"></textarea>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="submitSchoolRequest()" style="margin-top:16px;width:100%;">SUBMIT REQUEST</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Create Template Modal -->
     <div class="modal-overlay" id="template-modal">
@@ -2246,7 +2421,94 @@ HTML_TEMPLATE = '''
                 }
             } catch(e) { showToast('Error scanning responses', 'error'); }
         }
-        
+
+        async function searchCoachResponse() {
+            const query = document.getElementById('coach-search-input').value.trim();
+            if (!query || query.length < 2) {
+                showToast('Enter at least 2 characters to search', 'error');
+                return;
+            }
+            const resultsDiv = document.getElementById('coach-search-results');
+            resultsDiv.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px;"></span> Searching...';
+
+            try {
+                const res = await fetch(`/api/coach/search?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                if (data.success) {
+                    if (data.results.length === 0) {
+                        resultsDiv.innerHTML = '<p class="text-muted text-sm">No coaches found matching that search.</p>';
+                        return;
+                    }
+                    let html = '<div style="display:flex;flex-direction:column;gap:10px;">';
+                    for (const c of data.results) {
+                        const responded = c.responded;
+                        const outreach = c.outreach;
+                        const statusColor = responded ? 'var(--success)' : 'var(--muted)';
+                        const statusText = responded ? 'REPLIED' : 'No reply';
+                        const statusIcon = responded ? '&#10003;' : '&#8212;';
+
+                        html += `<div style="background:var(--bg);border:1px solid var(--border);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">`;
+                        html += `<div style="flex:1;min-width:200px;">`;
+                        html += `<div style="font-weight:600;">${c.name || 'Unknown'}</div>`;
+                        html += `<div style="font-size:12px;color:var(--muted);">${c.school || ''} ${c.division ? '(' + c.division + ')' : ''}</div>`;
+                        html += `<div style="font-size:11px;font-family:monospace;color:var(--cyan);">${c.email || 'No email'}</div>`;
+                        if (outreach) {
+                            html += `<div style="font-size:11px;margin-top:4px;">`;
+                            html += `Last email: ${outreach.email_type || 'intro'} `;
+                            html += outreach.opened ? '<span style="color:var(--cyan);">Opened</span>' : '';
+                            if (outreach.replied && outreach.reply_snippet) {
+                                html += `<div style="margin-top:4px;padding:6px;background:var(--bg3);font-style:italic;color:var(--success);">"${outreach.reply_snippet.substring(0, 80)}..."</div>`;
+                            }
+                            html += `</div>`;
+                        }
+                        html += `</div>`;
+                        html += `<div style="display:flex;align-items:center;gap:12px;">`;
+                        html += `<span style="font-family:monospace;font-size:12px;color:${statusColor};font-weight:600;">${statusIcon} ${statusText}</span>`;
+                        if (!responded) {
+                            html += `<button class="btn btn-sm" style="background:var(--success);color:#000;" onclick="markCoachReplied('${c.id}', '${c.email || ''}', '${c.name}')">Mark Replied</button>`;
+                        }
+                        html += `</div></div>`;
+                    }
+                    html += '</div>';
+                    if (data.count >= 20) {
+                        html += '<p class="text-muted text-sm mt-2">Showing first 20 results. Refine your search for more specific results.</p>';
+                    }
+                    resultsDiv.innerHTML = html;
+                } else {
+                    resultsDiv.innerHTML = `<p class="text-muted text-sm">${data.error || 'Search failed'}</p>`;
+                }
+            } catch(e) {
+                resultsDiv.innerHTML = '<p class="text-muted text-sm">Error searching coaches</p>';
+            }
+        }
+
+        async function markCoachReplied(coachId, coachEmail, coachName) {
+            if (!confirm(`Mark ${coachName} as replied? This will prevent future emails to this coach.`)) return;
+
+            try {
+                const res = await fetch('/api/coach/mark-replied', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        coach_id: coachId,
+                        coach_email: coachEmail,
+                        sentiment: 'positive',
+                        snippet: 'Manually marked as replied'
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`${coachName} marked as replied`, 'success');
+                    searchCoachResponse();  // Refresh results
+                    loadEmailQueueStatus();
+                } else {
+                    showToast(data.error || 'Failed to mark as replied', 'error');
+                }
+            } catch(e) {
+                showToast('Error marking coach as replied', 'error');
+            }
+        }
+
         async function cleanupSheet() {
             showToast('Cleaning up sheet...');
             try {
@@ -2433,11 +2695,50 @@ HTML_TEMPLATE = '''
                         <div class="empty-state">
                             <div class="empty-state-icon" style="font-size:32px;color:var(--accent);">—</div>
                             <div class="empty-state-title">No schools found</div>
-                            <div class="empty-state-text">Try a different search term or adjust your filters.</div>
+                            <div class="empty-state-text">Try a different search term or <a href="#" onclick="showRequestSchool();return false;" style="color:var(--accent);">request this school</a>.</div>
                         </div>
                     </td></tr>`;
                 }
             } catch(e) { console.error(e); }
+        }
+
+        function showRequestSchool() {
+            const searchVal = document.getElementById('school-search').value;
+            document.getElementById('rs-name').value = searchVal;
+            document.getElementById('rs-notes').value = '';
+            document.getElementById('request-school-modal').classList.add('active');
+        }
+
+        async function submitSchoolRequest() {
+            const schoolName = document.getElementById('rs-name').value.trim();
+            const notes = document.getElementById('rs-notes').value.trim();
+
+            if (!schoolName) {
+                showToast('Please enter a school name', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/athlete/request-school', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ school_name: schoolName, notes: notes })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('School request submitted! We\\'ll add it soon.', 'success');
+                    closeModal('request-school-modal');
+                } else if (data.school_id) {
+                    showToast('This school already exists! Search for it.', 'error');
+                    closeModal('request-school-modal');
+                    document.getElementById('school-search').value = schoolName;
+                    searchSchools();
+                } else {
+                    showToast(data.error || 'Failed to submit request', 'error');
+                }
+            } catch(e) {
+                showToast('Error: ' + e.message, 'error');
+            }
         }
 
         async function addToSheet(schoolName) {
@@ -3746,7 +4047,7 @@ HTML_TEMPLATE = '''
 
         // ========== ADMIN PANEL ==========
         async function loadAdminPanel() {
-            await Promise.all([loadAthletesList(), loadMissingCoaches()]);
+            await Promise.all([loadAthletesList(), loadMissingCoaches(), loadSchoolRequests()]);
         }
 
         async function loadAthletesList() {
@@ -3791,6 +4092,195 @@ HTML_TEMPLATE = '''
                     </div>
                 `).join('');
             } catch(e) { console.error(e); }
+        }
+
+        // School Requests Functions
+        async function loadSchoolRequests() {
+            try {
+                const res = await fetch('/api/admin/school-requests');
+                const data = await res.json();
+                const el = document.getElementById('school-requests');
+                if (!data.requests || !data.requests.length) {
+                    el.innerHTML = '<div style="color:var(--success);">No pending school requests.</div>';
+                    return;
+                }
+                el.innerHTML = data.requests.map(r => `
+                    <div style="padding:12px;background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--warn);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <strong>${r.school_name}</strong>
+                            <div style="font-size:12px;color:var(--muted);">Requested by ${r.athlete_name} • ${new Date(r.created_at).toLocaleDateString()}</div>
+                            ${r.notes ? `<div style="font-size:12px;font-style:italic;margin-top:4px;">"${r.notes}"</div>` : ''}
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="addSchoolFromRequest('${r.school_name}', '${r.id}')">ADD SCHOOL</button>
+                    </div>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        function showAddSchool(schoolName = '') {
+            document.getElementById('as-name').value = schoolName;
+            document.getElementById('as-division').value = '';
+            document.getElementById('as-conference').value = '';
+            document.getElementById('as-state').value = '';
+            document.getElementById('as-url').value = '';
+            document.getElementById('scrape-results').style.display = 'none';
+            document.getElementById('add-school-modal').classList.add('active');
+            window.currentRequestId = null;
+        }
+
+        function addSchoolFromRequest(schoolName, requestId) {
+            showAddSchool(schoolName);
+            window.currentRequestId = requestId;
+        }
+
+        async function addSchoolOnly() {
+            const schoolName = document.getElementById('as-name').value.trim();
+            if (!schoolName) { showToast('School name required', 'error'); return; }
+
+            try {
+                const res = await fetch('/api/admin/add-school', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        school_name: schoolName,
+                        division: document.getElementById('as-division').value,
+                        conference: document.getElementById('as-conference').value,
+                        state: document.getElementById('as-state').value,
+                        staff_url: document.getElementById('as-url').value
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`School "${schoolName}" added!`, 'success');
+                    // Show manual entry form
+                    document.getElementById('scrape-results').style.display = 'block';
+                    document.getElementById('scrape-status').innerHTML = '<span style="color:var(--success);">School added. Now add coaches manually below.</span>';
+                    document.getElementById('scrape-coaches').style.display = 'none';
+                    document.getElementById('manual-entry').style.display = 'block';
+                    document.getElementById('staff-link').href = document.getElementById('as-url').value || '#';
+                    window.currentSchoolName = schoolName;
+                    loadSchoolRequests();
+                } else {
+                    showToast(data.error || 'Failed to add school', 'error');
+                }
+            } catch(e) { showToast('Error: ' + e.message, 'error'); }
+        }
+
+        async function addSchoolAndScrape() {
+            const schoolName = document.getElementById('as-name').value.trim();
+            const staffUrl = document.getElementById('as-url').value.trim();
+
+            if (!schoolName) { showToast('School name required', 'error'); return; }
+            if (!staffUrl) { showToast('Staff URL required for scraping. Use "Add Only" to skip.', 'error'); return; }
+
+            // First add the school
+            try {
+                const addRes = await fetch('/api/admin/add-school', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        school_name: schoolName,
+                        division: document.getElementById('as-division').value,
+                        conference: document.getElementById('as-conference').value,
+                        state: document.getElementById('as-state').value,
+                        staff_url: staffUrl
+                    })
+                });
+                const addData = await addRes.json();
+                if (!addData.success) {
+                    showToast(addData.error || 'Failed to add school', 'error');
+                    return;
+                }
+            } catch(e) { showToast('Error adding school: ' + e.message, 'error'); return; }
+
+            // Now scrape
+            document.getElementById('scrape-results').style.display = 'block';
+            document.getElementById('scrape-status').innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;"></span> Scraping staff page...';
+            document.getElementById('scrape-coaches').style.display = 'none';
+            document.getElementById('manual-entry').style.display = 'none';
+
+            try {
+                const res = await fetch('/api/admin/scrape-school', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ school_name: schoolName, staff_url: staffUrl })
+                });
+                const data = await res.json();
+
+                if (data.coaches_found > 0) {
+                    document.getElementById('scrape-status').innerHTML = `<span style="color:var(--success);">Found ${data.coaches_found} coach(es)!</span>`;
+                    document.getElementById('scrape-coaches').style.display = 'block';
+                    document.getElementById('scrape-coaches-list').innerHTML = data.coaches.map(c => `
+                        <div style="padding:8px;background:var(--bg);margin-bottom:4px;border-radius:4px;">
+                            <strong>${c.role}:</strong> ${c.name} ${c.email ? `<span style="color:var(--cyan);">(${c.email})</span>` : '<span style="color:var(--warn);">(no email found)</span>'}
+                        </div>
+                    `).join('');
+                    showToast(`School added with ${data.coaches_found} coach(es)!`, 'success');
+                    loadSchoolRequests();
+                } else {
+                    document.getElementById('scrape-status').innerHTML = '<span style="color:var(--warn);">No coaches found automatically.</span>';
+                    document.getElementById('manual-entry').style.display = 'block';
+                    document.getElementById('staff-link').href = staffUrl;
+                    window.currentSchoolName = schoolName;
+                }
+            } catch(e) {
+                document.getElementById('scrape-status').innerHTML = '<span style="color:var(--error);">Scraping failed.</span>';
+                document.getElementById('manual-entry').style.display = 'block';
+                document.getElementById('staff-link').href = staffUrl;
+                window.currentSchoolName = schoolName;
+            }
+        }
+
+        async function saveManualCoaches() {
+            const schoolName = window.currentSchoolName || document.getElementById('as-name').value.trim();
+            if (!schoolName) { showToast('School name missing', 'error'); return; }
+
+            const olName = document.getElementById('manual-ol-name').value.trim();
+            const olEmail = document.getElementById('manual-ol-email').value.trim();
+            const rcName = document.getElementById('manual-rc-name').value.trim();
+            const rcEmail = document.getElementById('manual-rc-email').value.trim();
+
+            let added = 0;
+            let errors = [];
+
+            // Add OL coach
+            if (olName) {
+                try {
+                    const res = await fetch('/api/admin/add-coach', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ school_name: schoolName, coach_name: olName, role: 'ol', email: olEmail })
+                    });
+                    const data = await res.json();
+                    if (data.success) added++;
+                    else errors.push('OL: ' + data.error);
+                } catch(e) { errors.push('OL: ' + e.message); }
+            }
+
+            // Add RC coach
+            if (rcName) {
+                try {
+                    const res = await fetch('/api/admin/add-coach', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ school_name: schoolName, coach_name: rcName, role: 'rc', email: rcEmail })
+                    });
+                    const data = await res.json();
+                    if (data.success) added++;
+                    else errors.push('RC: ' + data.error);
+                } catch(e) { errors.push('RC: ' + e.message); }
+            }
+
+            if (added > 0) {
+                showToast(`Added ${added} coach(es) to ${schoolName}!`, 'success');
+                closeModal('add-school-modal');
+                loadSchoolRequests();
+                loadMissingCoaches();
+            } else if (errors.length) {
+                showToast('Errors: ' + errors.join(', '), 'error');
+            } else {
+                showToast('No coaches entered', 'error');
+            }
         }
 
         async function createAthlete(e) {
@@ -4787,6 +5277,17 @@ def api_dm_queue():
                 return handle
             return ''
 
+        # Get coach emails that THIS athlete has marked as replied (per-athlete check)
+        athlete_id = g.athlete_id if hasattr(g, 'athlete_id') else None
+        already_replied_emails = set()
+        if athlete_id:
+            replied_outreach = (_supabase_db.client.table('outreach')
+                               .select('coach_email')
+                               .eq('athlete_id', athlete_id)
+                               .eq('replied', True)
+                               .execute().data)
+            already_replied_emails = {r['coach_email'].lower() for r in replied_outreach if r.get('coach_email')}
+
         all_coaches = _supabase_db.get_all_coaches_with_schools()
         dm_stats = _supabase_db.get_dm_stats()
 
@@ -4802,9 +5303,10 @@ def api_dm_queue():
             twitter = clean_twitter_handle(coach.get('twitter', ''))
             name = coach.get('name', '')
             role = (coach.get('role') or 'ol').upper()
+            email = (coach.get('email') or '').strip().lower()
 
-            # Check if responded
-            if coach.get('responded'):
+            # Check if responded (per-athlete: check outreach table, not coaches table)
+            if email and email in already_replied_emails:
                 replied += 1
                 continue
 
@@ -4978,6 +5480,113 @@ def api_coach_response():
         return jsonify({'success': True, 'school': school, 'status': label})
     except Exception as e:
         logger.error(f"Coach response error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/coach/search', methods=['GET'])
+def api_coach_search():
+    """Search coaches by name, email, or school and return their response status (per-athlete)."""
+    query = request.args.get('q', '').strip().lower()
+    if not query or len(query) < 2:
+        return jsonify({'success': False, 'error': 'Search query must be at least 2 characters'})
+
+    if not _supabase_db:
+        return jsonify({'success': False, 'error': 'Database not connected'})
+
+    try:
+        # Get current athlete ID for per-athlete filtering
+        athlete_id = g.athlete_id if hasattr(g, 'athlete_id') else None
+
+        # Get all coaches with school info
+        all_coaches = _supabase_db.get_all_coaches_with_schools(limit=2000)
+
+        results = []
+        for coach in all_coaches:
+            name = (coach.get('name') or '').lower()
+            email = (coach.get('email') or '').lower()
+            school_info = coach.get('schools') or {}
+            school_name = (school_info.get('name', '') if isinstance(school_info, dict) else '').lower()
+
+            # Match against query
+            if query in name or query in email or query in school_name:
+                # Get outreach history for this coach FOR THIS ATHLETE (per-athlete)
+                outreach_data = None
+                has_replied = False
+                replied_at = None
+                reply_sentiment = None
+
+                if email and athlete_id:
+                    outreach = (_supabase_db.client.table('outreach')
+                               .select('email_type, status, sent_at, opened, open_count, replied, replied_at, reply_snippet, reply_sentiment')
+                               .eq('athlete_id', athlete_id)
+                               .eq('coach_email', email)
+                               .order('sent_at', desc=True)
+                               .limit(5)
+                               .execute().data)
+                    if outreach:
+                        outreach_data = outreach[0]  # Most recent
+                        # Check if ANY outreach record for this athlete shows replied
+                        for o in outreach:
+                            if o.get('replied'):
+                                has_replied = True
+                                replied_at = o.get('replied_at')
+                                reply_sentiment = o.get('reply_sentiment')
+                                break
+
+                results.append({
+                    'id': coach.get('id'),
+                    'name': coach.get('name', ''),
+                    'email': coach.get('email', ''),
+                    'role': coach.get('role', ''),
+                    'school': school_info.get('name', '') if isinstance(school_info, dict) else '',
+                    'division': school_info.get('division', '') if isinstance(school_info, dict) else '',
+                    'responded': has_replied,  # Per-athlete response status
+                    'responded_at': replied_at,
+                    'response_sentiment': reply_sentiment,
+                    'outreach': outreach_data,
+                })
+
+                if len(results) >= 20:
+                    break
+
+        return jsonify({'success': True, 'results': results, 'count': len(results)})
+    except Exception as e:
+        logger.error(f"Coach search error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/coach/mark-replied', methods=['POST'])
+def api_coach_mark_replied():
+    """Manually mark a specific coach as replied."""
+    data = request.get_json() or {}
+    coach_id = data.get('coach_id')
+    coach_email = data.get('coach_email')
+    sentiment = data.get('sentiment', 'positive')
+    snippet = data.get('snippet', 'Manually marked as replied')
+
+    if not coach_id and not coach_email:
+        return jsonify({'success': False, 'error': 'coach_id or coach_email required'})
+
+    if not _supabase_db:
+        return jsonify({'success': False, 'error': 'Database not connected'})
+
+    try:
+        # Mark in coaches table
+        if coach_id:
+            _supabase_db.mark_coach_responded(coach_id, sentiment=sentiment)
+
+        # Mark in outreach table if email provided
+        if coach_email:
+            _supabase_db.track_reply(coach_email, sentiment=sentiment, snippet=snippet)
+            # Also mark coach by email if no coach_id
+            if not coach_id:
+                coach = _supabase_db.find_coach_by_email(coach_email)
+                if coach:
+                    _supabase_db.mark_coach_responded(coach['id'], sentiment=sentiment)
+
+        return jsonify({'success': True, 'message': 'Coach marked as replied'})
+    except Exception as e:
+        logger.error(f"Mark replied error: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 
@@ -5800,14 +6409,26 @@ def api_scan_past_responses():
         if not service:
             return jsonify({'success': False, 'error': 'Gmail API not configured. Check credentials in Admin panel.'})
 
-        # Get all coaches with emails who haven't responded yet
+        # Get coach emails that THIS athlete has already marked as replied (per-athlete check)
+        athlete_id = g.athlete_id if hasattr(g, 'athlete_id') else None
+        already_replied_emails = set()
+        if athlete_id:
+            replied_outreach = (_supabase_db.client.table('outreach')
+                               .select('coach_email')
+                               .eq('athlete_id', athlete_id)
+                               .eq('replied', True)
+                               .execute().data)
+            already_replied_emails = {r['coach_email'].lower() for r in replied_outreach if r.get('coach_email')}
+
+        # Get all coaches with emails who haven't responded to THIS athlete yet
         all_coaches = _supabase_db.get_all_coaches_with_schools()
         coach_emails = []
         for coach in all_coaches:
             email = (coach.get('email') or '').strip().lower()
             if not email or '@' not in email:
                 continue
-            if coach.get('responded'):
+            # Per-athlete check: skip if this athlete already has a replied record for this coach
+            if email in already_replied_emails:
                 continue
             school_info = coach.get('schools') or {}
             school_name = school_info.get('name', '') if isinstance(school_info, dict) else ''
@@ -8087,6 +8708,276 @@ def api_admin_missing_coaches():
                 m['athlete_name'] = a.get('name', 'Unknown')
             alerts.extend(missing)
         return jsonify({'alerts': alerts})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/athlete/request-school', methods=['POST'])
+@login_required
+def api_athlete_request_school():
+    """Athlete requests a school that's not in the database."""
+    try:
+        data = request.json or {}
+        school_name = data.get('school_name', '').strip()
+        notes = data.get('notes', '').strip()
+
+        if not school_name:
+            return jsonify({'error': 'school_name required'}), 400
+
+        # Check if school already exists
+        existing = _supabase_db.get_school(school_name)
+        if existing:
+            return jsonify({'error': 'School already exists in database', 'school_id': existing['id']}), 400
+
+        # Create request record
+        athlete = _supabase_db.get_athlete_by_id(g.athlete_id)
+        athlete_name = athlete.get('name', 'Unknown') if athlete else 'Unknown'
+
+        request_data = {
+            'athlete_id': g.athlete_id,
+            'athlete_name': athlete_name,
+            'school_name': school_name,
+            'notes': notes,
+            'status': 'pending',
+            'created_at': datetime.now(timezone.utc).isoformat(),
+        }
+        _supabase_db.client.table('school_requests').insert(request_data).execute()
+
+        return jsonify({'success': True, 'message': 'School request submitted. Admin will add it soon.'})
+    except Exception as e:
+        logger.error(f"School request error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/school-requests')
+@admin_required
+def api_admin_school_requests():
+    """Get pending school requests (admin only)."""
+    try:
+        result = (_supabase_db.client.table('school_requests')
+                 .select('*')
+                 .eq('status', 'pending')
+                 .order('created_at', desc=True)
+                 .execute())
+        return jsonify({'requests': result.data or []})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/add-school', methods=['POST'])
+@admin_required
+def api_admin_add_school():
+    """Add a new school to the database (admin only)."""
+    try:
+        data = request.json or {}
+        school_name = data.get('school_name', '').strip()
+        division = data.get('division', '').strip()
+        conference = data.get('conference', '').strip()
+        state = data.get('state', '').strip()
+        staff_url = data.get('staff_url', '').strip()
+
+        if not school_name:
+            return jsonify({'error': 'school_name required'}), 400
+
+        # Add school
+        _supabase_db.add_school(
+            name=school_name,
+            division=division or None,
+            conference=conference or None,
+            state=state or None,
+            staff_url=staff_url or None
+        )
+
+        # Get the school to return its ID
+        school = _supabase_db.get_school(school_name)
+
+        # Mark any pending requests for this school as completed
+        try:
+            _supabase_db.client.table('school_requests').update({
+                'status': 'completed',
+                'completed_at': datetime.now(timezone.utc).isoformat()
+            }).ilike('school_name', f'%{school_name}%').execute()
+        except:
+            pass
+
+        return jsonify({
+            'success': True,
+            'school': school,
+            'message': f'School "{school_name}" added successfully'
+        })
+    except Exception as e:
+        logger.error(f"Add school error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/scrape-school', methods=['POST'])
+@admin_required
+def api_admin_scrape_school():
+    """Scrape a single school's staff page for coaches (admin only)."""
+    try:
+        data = request.json or {}
+        staff_url = data.get('staff_url', '').strip()
+        school_name = data.get('school_name', '').strip()
+
+        if not staff_url:
+            return jsonify({'error': 'staff_url required'}), 400
+        if not school_name:
+            return jsonify({'error': 'school_name required'}), 400
+
+        if not HAS_SCRAPER:
+            return jsonify({'error': 'Scraper not available on this server. Please add coaches manually.'}), 400
+
+        # Try to scrape the page
+        import requests
+        from bs4 import BeautifulSoup
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        }
+
+        try:
+            resp = requests.get(staff_url, headers=headers, timeout=15)
+            resp.raise_for_status()
+            html = resp.text
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Failed to fetch URL: {str(e)}',
+                'staff_url': staff_url,
+                'needs_manual': True
+            })
+
+        soup = BeautifulSoup(html, 'html.parser')
+        page_text = soup.get_text(' ', strip=True).lower()
+
+        # Look for OL coach
+        ol_coach = None
+        ol_email = None
+        ol_patterns = ['offensive line', 'o-line', 'oline', 'ol coach']
+
+        # Look for RC
+        rc_coach = None
+        rc_email = None
+        rc_patterns = ['recruiting coordinator', 'director of recruiting', 'recruiting director']
+
+        # Simple extraction - look for emails near keywords
+        emails_found = re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', html, re.IGNORECASE)
+
+        # Try to find coach names and match them
+        # This is a simplified version - the full scraper has more sophisticated logic
+        staff_cards = soup.find_all(['div', 'article', 'li'], class_=lambda x: x and any(
+            k in str(x).lower() for k in ['staff', 'coach', 'card', 'person', 'bio']
+        ))
+
+        for card in staff_cards:
+            card_text = card.get_text(' ', strip=True).lower()
+            card_html = str(card)
+
+            # Check for OL
+            if any(p in card_text for p in ol_patterns) and not ol_coach:
+                # Try to find name
+                name_tag = card.find(['h2', 'h3', 'h4', 'a', 'strong', 'b'])
+                if name_tag:
+                    name = name_tag.get_text(strip=True)
+                    if len(name) > 2 and len(name) < 50 and '@' not in name:
+                        ol_coach = name
+                # Try to find email
+                card_emails = re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', card_html, re.IGNORECASE)
+                if card_emails:
+                    ol_email = card_emails[0]
+
+            # Check for RC
+            if any(p in card_text for p in rc_patterns) and not rc_coach:
+                name_tag = card.find(['h2', 'h3', 'h4', 'a', 'strong', 'b'])
+                if name_tag:
+                    name = name_tag.get_text(strip=True)
+                    if len(name) > 2 and len(name) < 50 and '@' not in name:
+                        rc_coach = name
+                card_emails = re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', card_html, re.IGNORECASE)
+                if card_emails:
+                    rc_email = card_emails[0]
+
+        # Save what we found
+        coaches_added = []
+        if ol_coach:
+            _supabase_db.add_coach(school_name, ol_coach, 'ol', email=ol_email)
+            coaches_added.append({'role': 'OL', 'name': ol_coach, 'email': ol_email})
+
+        if rc_coach:
+            _supabase_db.add_coach(school_name, rc_coach, 'rc', email=rc_email)
+            coaches_added.append({'role': 'RC', 'name': rc_coach, 'email': rc_email})
+
+        # Update school with staff URL
+        school = _supabase_db.get_school(school_name)
+        if school:
+            _supabase_db.client.table('schools').update({'staff_url': staff_url}).eq('id', school['id']).execute()
+
+        return jsonify({
+            'success': True,
+            'coaches_found': len(coaches_added),
+            'coaches': coaches_added,
+            'staff_url': staff_url,
+            'needs_manual': len(coaches_added) == 0,
+            'message': f'Found {len(coaches_added)} coach(es)' if coaches_added else 'No coaches found. Please add manually.'
+        })
+
+    except Exception as e:
+        logger.error(f"Scrape school error: {e}")
+        return jsonify({'error': str(e), 'needs_manual': True}), 500
+
+
+@app.route('/api/admin/add-coach', methods=['POST'])
+@admin_required
+def api_admin_add_coach():
+    """Manually add a coach to a school (admin only)."""
+    try:
+        data = request.json or {}
+        school_name = data.get('school_name', '').strip()
+        coach_name = data.get('coach_name', '').strip()
+        role = data.get('role', 'ol').lower()
+        email = data.get('email', '').strip()
+        twitter = data.get('twitter', '').strip()
+
+        if not school_name or not coach_name:
+            return jsonify({'error': 'school_name and coach_name required'}), 400
+
+        if role not in ('ol', 'rc'):
+            return jsonify({'error': 'role must be "ol" or "rc"'}), 400
+
+        # Make sure school exists
+        school = _supabase_db.get_school(school_name)
+        if not school:
+            return jsonify({'error': f'School "{school_name}" not found. Add the school first.'}), 400
+
+        # Add coach
+        _supabase_db.add_coach(school_name, coach_name, role, email=email or None, twitter=twitter or None)
+
+        return jsonify({
+            'success': True,
+            'message': f'{role.upper()} coach "{coach_name}" added to {school_name}'
+        })
+    except Exception as e:
+        logger.error(f"Add coach error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/admin/school-request/complete', methods=['POST'])
+@admin_required
+def api_admin_complete_request():
+    """Mark a school request as completed (admin only)."""
+    try:
+        data = request.json or {}
+        request_id = data.get('request_id')
+
+        if not request_id:
+            return jsonify({'error': 'request_id required'}), 400
+
+        _supabase_db.client.table('school_requests').update({
+            'status': 'completed',
+            'completed_at': datetime.now(timezone.utc).isoformat()
+        }).eq('id', request_id).execute()
+
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

@@ -427,14 +427,15 @@ class SupabaseDB:
         return self.client.table('outreach').update(update).eq('id', row['id']).execute()
 
     def track_reply(self, coach_email, sentiment=None, snippet=None):
-        """Mark most recent outreach to this coach as replied."""
-        result = (self.client.table('outreach')
-                  .select('id')
-                  .eq('coach_email', coach_email)
-                  .eq('status', 'sent')
-                  .order('sent_at', desc=True)
-                  .limit(1)
-                  .execute())
+        """Mark most recent outreach to this coach as replied (per-athlete)."""
+        q = (self.client.table('outreach')
+             .select('id')
+             .eq('coach_email', coach_email)
+             .eq('status', 'sent'))
+        # Filter by athlete_id for per-athlete tracking
+        if self._athlete_id:
+            q = q.eq('athlete_id', self._athlete_id)
+        result = q.order('sent_at', desc=True).limit(1).execute()
         if not result.data:
             return None
         update = {
