@@ -81,16 +81,14 @@ RC_TEMPLATES = [
         name="Professional Introduction",
         template_type="rc",
         category="system",
-        subject="Coach {coach_name} - 2026 OL from Florida",
+        subject="Coach {coach_name} - {grad_year} {position} from Florida",
         body="""Coach {coach_name},
 
-I hope this email finds you well. My name is {athlete_name}, a 2026 offensive lineman from {high_school} in Florida.
-
-{personalized_hook}
+I hope this email finds you well. My name is {athlete_name}, a {grad_year} {position} from {high_school} in Florida.
 
 I am {height}, {weight} lbs with a {gpa} GPA. Here is my film: {hudl_link}
 
-I would appreciate the opportunity to learn more about {school} and what you look for in your offensive linemen. Please let me know if there is any additional information I can provide.
+I would appreciate the opportunity to learn more about {school} and your program. Please let me know if there is any additional information I can provide.
 
 Thank you for your time,
 {athlete_name}
@@ -101,12 +99,10 @@ Thank you for your time,
         name="Direct Introduction",
         template_type="rc",
         category="system",
-        subject="2026 OL - {athlete_name} - Interested in {school}",
+        subject="{grad_year} {position} - {athlete_name} - Interested in {school}",
         body="""Coach {coach_name},
 
-My name is {athlete_name}, a 2026 offensive lineman from {high_school} in Florida.
-
-{personalized_hook}
+My name is {athlete_name}, a {grad_year} {position} from {high_school} in Florida.
 
 I am {height}, {weight} lbs with a {gpa} GPA. I take pride in my technique and being coachable.
 
@@ -122,43 +118,39 @@ Respectfully,
 
 OC_TEMPLATES = [
     EmailTemplate(
-        id="ol_intro_1",
-        name="OL Coach Introduction",
+        id="position_intro_1",
+        name="Position Coach Introduction",
         template_type="ol",
         category="system",
-        subject="Coach {coach_name} - 2026 OL Film",
+        subject="Coach {coach_name} - {grad_year} {position} Film",
         body="""Coach {coach_name},
 
-I hope you are doing well. My name is {athlete_name}, a 2026 offensive lineman from {high_school} in Florida.
+I hope you are doing well. My name is {athlete_name}, a {grad_year} {position} from {high_school} in Florida.
 
-{personalized_hook}
-
-I wanted to reach out and make sure you had my film. I know offensive line coaches watch a lot of tape, and I would be grateful for any feedback you might have.
+I wanted to reach out and make sure you had my film. I would be grateful for any feedback you might have.
 
 Film: {hudl_link}
 Size: {height}, {weight} lbs
 
-I finish every block and I am always looking to improve my technique. I would appreciate the opportunity to learn more about {school}.
+I am always looking to improve my technique and am committed to getting better every day. I would appreciate the opportunity to learn more about {school}.
 
 Thank you for your time,
 {athlete_name}
 {phone}"""
     ),
     EmailTemplate(
-        id="ol_intro_2",
+        id="position_intro_2",
         name="Film-First Introduction",
         template_type="ol",
         category="system",
-        subject="2026 OL Prospect - {athlete_name}",
+        subject="{grad_year} {position} Prospect - {athlete_name}",
         body="""Coach {coach_name},
 
-My name is {athlete_name}, a 2026 offensive lineman from {high_school} in Florida.
-
-{personalized_hook}
+My name is {athlete_name}, a {grad_year} {position} from {high_school} in Florida.
 
 I wanted to get my film in front of you: {hudl_link}
 
-I am {height}, {weight} lbs. I take pride in my physicality and technique, and I am committed to improving every day.
+I am {height}, {weight} lbs. I take pride in my work ethic and technique, and I am committed to improving every day.
 
 I would appreciate any feedback on my film or information about your program.
 
@@ -174,7 +166,7 @@ FOLLOWUP_TEMPLATES = [
         name="First Follow-Up",
         template_type="followup",
         category="system",
-        subject="Following Up - {athlete_name} (2026 OL)",
+        subject="Following Up - {athlete_name} ({grad_year} {position})",
         body="""Coach {coach_name},
 
 I wanted to follow up on my previous email. I remain very interested in {school} and would appreciate the opportunity to connect when you have a chance.
@@ -214,7 +206,7 @@ DM_TEMPLATES = [
         template_type="dm",
         category="system",
         subject="",
-        body="""Coach, I am {athlete_name}, a 2026 OL from {high_school} in Florida ({height}/{weight}). I am very interested in {school}. Here is my film: {hudl_link} - I would appreciate the opportunity to connect."""
+        body="""Coach, I am {athlete_name}, a {grad_year} {position} from {high_school} in Florida ({height}/{weight}). I am very interested in {school}. Here is my film: {hudl_link} - I would appreciate the opportunity to connect."""
     ),
     EmailTemplate(
         id="dm_with_question",
@@ -222,7 +214,7 @@ DM_TEMPLATES = [
         template_type="dm",
         category="system",
         subject="",
-        body="""Coach, my name is {athlete_name} - 2026 OL, {height}/{weight} from Florida. {school} is a program I am very interested in. Film: {hudl_link} - Thank you for your time."""
+        body="""Coach, my name is {athlete_name} - {grad_year} {position}, {height}/{weight} from Florida. {school} is a program I am very interested in. Film: {hudl_link} - Thank you for your time."""
     ),
 ]
 
