@@ -149,22 +149,11 @@ DEFAULT_SETTINGS = {
 }
 
 def load_settings() -> Dict:
+    """Load settings from Supabase (single source of truth)."""
     settings = json.loads(json.dumps(DEFAULT_SETTINGS))
 
-    # Try loading from local config file first
-    if CONFIG_FILE.exists():
-        try:
-            with open(CONFIG_FILE, 'r') as f:
-                saved = json.load(f)
-                for key in saved:
-                    if isinstance(saved[key], dict) and key in settings:
-                        settings[key].update(saved[key])
-                    else:
-                        settings[key] = saved[key]
-        except: pass
-
-    # On Railway (no config file), load from Supabase
-    if not CONFIG_FILE.exists() and SUPABASE_AVAILABLE and _supabase_db:
+    # Load from Supabase - the only source of truth
+    if SUPABASE_AVAILABLE and _supabase_db:
         try:
             db_settings = _supabase_db.get_settings()
             if db_settings:
@@ -181,66 +170,56 @@ def load_settings() -> Dict:
                     settings['notifications']['enabled'] = db_settings['notifications_enabled']
                 if db_settings.get('ntfy_channel'):
                     settings['notifications']['channel'] = db_settings['ntfy_channel']
+                if db_settings.get('auto_send_time'):
+                    settings['email']['auto_send_time'] = db_settings['auto_send_time']
         except Exception as e:
             try: logger.warning(f"Could not load Supabase settings: {e}")
             except: pass
 
-    # ALWAYS prioritize environment variables over saved settings
+    # Environment variables override Supabase (for deployment flexibility)
     if ENV_EMAIL_ADDRESS:
         settings['email']['email_address'] = ENV_EMAIL_ADDRESS
     if ENV_APP_PASSWORD:
         settings['email']['app_password'] = ENV_APP_PASSWORD
     if ENV_NTFY_CHANNEL:
-        if 'notifications' not in settings:
-            settings['notifications'] = {}
         settings['notifications']['channel'] = ENV_NTFY_CHANNEL
-
-    # Fix corrupted/empty password - use env var or default if invalid
-    if 'email' in settings:
-        pwd = settings['email'].get('app_password')
-        email = settings['email'].get('email_address')
-        if not pwd or pwd is True or pwd == '********' or not isinstance(pwd, str) or len(pwd) < 5:
-            if ENV_APP_PASSWORD:
-                settings['email']['app_password'] = ENV_APP_PASSWORD
-            else:
-                settings['email']['app_password'] = DEFAULT_SETTINGS['email']['app_password']
-            try: logger.warning("Using env/default app_password (saved was invalid)")
-            except NameError: pass
-        if not email or not isinstance(email, str) or '@' not in email:
-            if ENV_EMAIL_ADDRESS:
-                settings['email']['email_address'] = ENV_EMAIL_ADDRESS
-            else:
-                settings['email']['email_address'] = DEFAULT_SETTINGS['email']['email_address']
-            try: logger.warning("Using env/default email_address (saved was invalid)")
-            except NameError: pass
 
     return settings
 
 def save_settings(s: Dict):
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(s, f, indent=2)
-    # Sync to Supabase
-    if SUPABASE_AVAILABLE and _supabase_db:
-        try:
-            email_s = s.get('email', {})
-            sb_settings = {}
-            if 'auto_send_enabled' in email_s:
-                sb_settings['auto_send_enabled'] = bool(email_s['auto_send_enabled'])
-            if 'auto_send_count' in email_s:
-                sb_settings['auto_send_count'] = int(email_s.get('auto_send_count', 25))
-            if 'paused_until' in email_s and email_s['paused_until']:
-                sb_settings['paused_until'] = email_s['paused_until']
-            if 'days_between_emails' in email_s:
-                sb_settings['days_between_followups'] = int(email_s.get('days_between_emails', 7))
-            notif = s.get('notifications', {})
-            if notif.get('enabled') is not None:
-                sb_settings['notifications_enabled'] = bool(notif['enabled'])
-            if notif.get('channel'):
-                sb_settings['ntfy_channel'] = notif['channel']
-            if sb_settings:
-                _supabase_db.save_settings(**sb_settings)
-        except Exception as sb_e:
-            logger.warning(f"Supabase settings sync error: {sb_e}")
+    """Save settings to Supabase (single source of truth)."""
+    if not SUPABASE_AVAILABLE or not _supabase_db:
+        logger.warning("Cannot save settings - Supabase not available")
+        return
+
+    try:
+        email_s = s.get('email', {})
+        notif = s.get('notifications', {})
+        sb_settings = {}
+
+        # Email settings
+        if 'auto_send_enabled' in email_s:
+            sb_settings['auto_send_enabled'] = bool(email_s['auto_send_enabled'])
+        if 'auto_send_count' in email_s:
+            sb_settings['auto_send_count'] = int(email_s.get('auto_send_count', 25))
+        if 'paused_until' in email_s:
+            sb_settings['paused_until'] = email_s['paused_until'] or None
+        if 'days_between_emails' in email_s:
+            sb_settings['days_between_followups'] = int(email_s.get('days_between_emails', 7))
+        if 'auto_send_time' in email_s:
+            sb_settings['auto_send_time'] = email_s['auto_send_time']
+
+        # Notification settings
+        if notif.get('enabled') is not None:
+            sb_settings['notifications_enabled'] = bool(notif['enabled'])
+        if notif.get('channel'):
+            sb_settings['ntfy_channel'] = notif['channel']
+
+        if sb_settings:
+            _supabase_db.save_settings(**sb_settings)
+            logger.info(f"Settings saved to Supabase: {list(sb_settings.keys())}")
+    except Exception as e:
+        logger.error(f"Failed to save settings to Supabase: {e}")
 
 
 # ============================================================================
