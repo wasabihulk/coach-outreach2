@@ -149,51 +149,72 @@ DEFAULT_SETTINGS = {
 }
 
 def load_settings() -> Dict:
+    settings = json.loads(json.dumps(DEFAULT_SETTINGS))
+
+    # Try loading from local config file first
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, 'r') as f:
                 saved = json.load(f)
-                settings = json.loads(json.dumps(DEFAULT_SETTINGS))
                 for key in saved:
                     if isinstance(saved[key], dict) and key in settings:
                         settings[key].update(saved[key])
                     else:
                         settings[key] = saved[key]
-                
-                # ALWAYS prioritize environment variables over saved settings
-                if ENV_EMAIL_ADDRESS:
-                    settings['email']['email_address'] = ENV_EMAIL_ADDRESS
-                if ENV_APP_PASSWORD:
-                    settings['email']['app_password'] = ENV_APP_PASSWORD
-                if ENV_NTFY_CHANNEL:
-                    if 'notifications' not in settings:
-                        settings['notifications'] = {}
-                    settings['notifications']['channel'] = ENV_NTFY_CHANNEL
-                
-                # Fix corrupted/empty password - use env var or default if invalid
-                if 'email' in settings:
-                    pwd = settings['email'].get('app_password')
-                    email = settings['email'].get('email_address')
-                    if not pwd or pwd is True or pwd == '********' or not isinstance(pwd, str) or len(pwd) < 5:
-                        if ENV_APP_PASSWORD:
-                            settings['email']['app_password'] = ENV_APP_PASSWORD
-                        else:
-                            settings['email']['app_password'] = DEFAULT_SETTINGS['email']['app_password']
-                        try: logger.warning("Using env/default app_password (saved was invalid)")
-                        except NameError: pass
-                    if not email or not isinstance(email, str) or '@' not in email:
-                        if ENV_EMAIL_ADDRESS:
-                            settings['email']['email_address'] = ENV_EMAIL_ADDRESS
-                        else:
-                            settings['email']['email_address'] = DEFAULT_SETTINGS['email']['email_address']
-                        try: logger.warning("Using env/default email_address (saved was invalid)")
-                        except NameError: pass
-                
-                return settings
         except: pass
-    
-    # No saved settings - return defaults (which already use env vars)
-    return json.loads(json.dumps(DEFAULT_SETTINGS))
+
+    # On Railway (no config file), load from Supabase
+    if not CONFIG_FILE.exists() and SUPABASE_AVAILABLE and _supabase_db:
+        try:
+            db_settings = _supabase_db.get_settings()
+            if db_settings:
+                # Apply Supabase settings
+                if db_settings.get('auto_send_enabled') is not None:
+                    settings['email']['auto_send_enabled'] = db_settings['auto_send_enabled']
+                if db_settings.get('auto_send_count'):
+                    settings['email']['auto_send_count'] = db_settings['auto_send_count']
+                if db_settings.get('paused_until'):
+                    settings['email']['paused_until'] = db_settings['paused_until']
+                if db_settings.get('days_between_followups'):
+                    settings['email']['days_between_emails'] = db_settings['days_between_followups']
+                if db_settings.get('notifications_enabled') is not None:
+                    settings['notifications']['enabled'] = db_settings['notifications_enabled']
+                if db_settings.get('ntfy_channel'):
+                    settings['notifications']['channel'] = db_settings['ntfy_channel']
+        except Exception as e:
+            try: logger.warning(f"Could not load Supabase settings: {e}")
+            except: pass
+
+    # ALWAYS prioritize environment variables over saved settings
+    if ENV_EMAIL_ADDRESS:
+        settings['email']['email_address'] = ENV_EMAIL_ADDRESS
+    if ENV_APP_PASSWORD:
+        settings['email']['app_password'] = ENV_APP_PASSWORD
+    if ENV_NTFY_CHANNEL:
+        if 'notifications' not in settings:
+            settings['notifications'] = {}
+        settings['notifications']['channel'] = ENV_NTFY_CHANNEL
+
+    # Fix corrupted/empty password - use env var or default if invalid
+    if 'email' in settings:
+        pwd = settings['email'].get('app_password')
+        email = settings['email'].get('email_address')
+        if not pwd or pwd is True or pwd == '********' or not isinstance(pwd, str) or len(pwd) < 5:
+            if ENV_APP_PASSWORD:
+                settings['email']['app_password'] = ENV_APP_PASSWORD
+            else:
+                settings['email']['app_password'] = DEFAULT_SETTINGS['email']['app_password']
+            try: logger.warning("Using env/default app_password (saved was invalid)")
+            except NameError: pass
+        if not email or not isinstance(email, str) or '@' not in email:
+            if ENV_EMAIL_ADDRESS:
+                settings['email']['email_address'] = ENV_EMAIL_ADDRESS
+            else:
+                settings['email']['email_address'] = DEFAULT_SETTINGS['email']['email_address']
+            try: logger.warning("Using env/default email_address (saved was invalid)")
+            except NameError: pass
+
+    return settings
 
 def save_settings(s: Dict):
     with open(CONFIG_FILE, 'w') as f:
