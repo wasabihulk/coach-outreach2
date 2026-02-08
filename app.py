@@ -8614,14 +8614,17 @@ def send_phone_notification(title: str, message: str, channel: str = None):
             logger.warning("No notification channel configured")
             return False
         
-        import requests
+        # Ensure title is safe for headers (latin-1 compatible)
+        # HTTP headers generally require latin-1. Emojis will cause crashes.
+        safe_title = title.encode('latin-1', 'ignore').decode('latin-1')
+        
         response = requests.post(
             f"https://ntfy.sh/{channel}",
             data=message.encode('utf-8'),
             headers={
-                "Title": title,
+                "Title": safe_title,
                 "Priority": "default",
-                "Tags": "football"
+                "Tags": "football,mailbox_with_mail" if "opened" in title.lower() else "football"
             },
             timeout=10
         )
