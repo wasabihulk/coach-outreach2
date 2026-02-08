@@ -348,25 +348,83 @@ class SupabaseDB:
         }).eq('id', coach_id).execute()
 
     def get_email_queue_status(self):
-        """Get counts of coaches by email stage."""
-        coaches = self.client.table('coaches').select('email').not_.is_('email', 'null').execute().data
+        """Get counts of coaches by email stage for current athlete's schools."""
         counts = {'new': 0, 'followup_1': 0, 'followup_2': 0, 'done': 0, 'replied': 0, 'total_with_email': 0}
+
+        # If no athlete context, return zeros
+        if not self._athlete_id:
+            return counts
+
+        # Get athlete's selected schools with preferences
+        athlete_schools = self.get_athlete_schools(self._athlete_id)
+        if not athlete_schools:
+            return counts
+
+        # Build list of school_ids and their preferences
+        school_prefs = {as_row.get('school_id'): as_row.get('coach_preference', 'both')
+                       for as_row in athlete_schools}
+        school_ids = list(school_prefs.keys())
+
+        if not school_ids:
+            return counts
+
+        # Get coaches from these schools only
+        coaches = (self.client.table('coaches')
+                  .select('id, email, role, school_id')
+                  .in_('school_id', school_ids)
+                  .not_.is_('email', 'null')
+                  .execute().data)
+
+        # Filter by preference and count
+        coach_emails = []
         for coach in coaches:
             email = (coach.get('email') or '').strip()
             if not email:
                 continue
-            counts['total_with_email'] += 1
-            outreach = (self.client.table('outreach')
-                        .select('email_type, status, replied')
-                        .eq('coach_email', email)
-                        .order('sent_at', desc=True)
-                        .limit(5)
-                        .execute().data)
+            role = (coach.get('role') or '').lower()
+            pref = school_prefs.get(coach.get('school_id'), 'both')
+
+            # Filter by preference
+            if pref == 'position_coach' and role != 'ol':
+                continue
+            if pref == 'rc' and role != 'rc':
+                continue
+            if pref == 'both' and role not in ('rc', 'ol'):
+                continue
+
+            coach_emails.append(email)
+
+        counts['total_with_email'] = len(coach_emails)
+
+        # Batch get outreach for all these coaches at once
+        if coach_emails:
+            all_outreach = (self.client.table('outreach')
+                          .select('coach_email, email_type, status, replied')
+                          .eq('athlete_id', self._athlete_id)
+                          .in_('coach_email', coach_emails)
+                          .order('sent_at', desc=True)
+                          .execute().data)
+
+            # Group by coach_email
+            outreach_by_coach = {}
+            for o in all_outreach:
+                ce = o.get('coach_email')
+                if ce not in outreach_by_coach:
+                    outreach_by_coach[ce] = []
+                if len(outreach_by_coach[ce]) < 5:
+                    outreach_by_coach[ce].append(o)
+        else:
+            outreach_by_coach = {}
+
+        # Compute stages
+        for email in coach_emails:
+            outreach = outreach_by_coach.get(email, [])
             if outreach and any(r.get('replied') for r in outreach):
                 counts['replied'] += 1
                 continue
             stage = self._compute_email_stage(outreach)
             counts[stage] = counts.get(stage, 0) + 1
+
         return counts
 
     def get_all_coaches_with_schools(self, limit=1000):

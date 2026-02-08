@@ -31,7 +31,7 @@ import smtplib
 import re
 import random
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from email.mime.text import MIMEText
@@ -60,17 +60,6 @@ try:
 except ImportError:
     SUPABASE_AVAILABLE = False
     get_db = None
-
-# Import AI email functions from scheduler
-try:
-    from scheduler.email_scheduler import load_pregenerated_emails, get_ai_email_for_school
-    AI_EMAILS_AVAILABLE = True
-except ImportError:
-    AI_EMAILS_AVAILABLE = False
-    def load_pregenerated_emails():
-        return {}
-    def get_ai_email_for_school(school, coach_name, email_type='intro'):
-        return None
 
 # ============================================================================
 # CONFIGURATION
@@ -1613,11 +1602,9 @@ HTML_TEMPLATE = '''
                         </div>
 
                         <div id="tomorrow-preview" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:16px;">
-                            <div style="font-weight:600;margin-bottom:12px;font-size:13px;color:var(--accent);">TOMORROW'S QUEUE</div>
+                            <div style="font-weight:600;margin-bottom:12px;font-size:13px;color:var(--accent);">EMAIL QUEUE</div>
                             <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:10px;font-size:12px;">
-                                <div style="display:flex;justify-content:space-between;"><span class="text-muted">Total ready:</span> <strong id="tomorrow-total">-</strong></div>
-                                <div style="display:flex;justify-content:space-between;"><span class="text-muted">AI personalized:</span> <strong id="tomorrow-ai" style="color:var(--success);">-</strong></div>
-                                <div style="display:flex;justify-content:space-between;"><span class="text-muted">Template fallback:</span> <strong id="tomorrow-template" style="color:var(--warn);">-</strong></div>
+                                <div style="display:flex;justify-content:space-between;"><span class="text-muted">Coaches ready:</span> <strong id="tomorrow-total">-</strong></div>
                                 <div style="display:flex;justify-content:space-between;"><span class="text-muted">Daily limit:</span> <strong id="tomorrow-limit">25</strong></div>
                             </div>
                             <button class="btn btn-secondary btn-sm mt-4" onclick="loadTomorrowPreview()">Refresh Preview</button>
@@ -1779,6 +1766,53 @@ HTML_TEMPLATE = '''
                     <div class="card-header">Missing Coach Data Alerts</div>
                     <div id="missing-coaches" style="padding:12px;">Loading...</div>
                 </div>
+
+                <!-- Gmail API Setup Guide -->
+                <div class="card">
+                    <div class="card-header">Gmail API Setup Guide</div>
+                    <div style="padding:16px;font-size:13px;line-height:1.6;">
+                        <p style="color:var(--muted);margin-bottom:12px;">Each athlete needs their own Gmail API credentials to send emails. Follow these steps:</p>
+                        <ol style="color:var(--text);padding-left:20px;margin:0;">
+                            <li style="margin-bottom:8px;"><strong>Go to Google Cloud Console:</strong> <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--accent);">console.cloud.google.com</a></li>
+                            <li style="margin-bottom:8px;"><strong>Create a new project</strong> (or select existing one)</li>
+                            <li style="margin-bottom:8px;"><strong>Enable Gmail API:</strong> Go to "APIs & Services" > "Library" > Search "Gmail API" > Enable</li>
+                            <li style="margin-bottom:8px;"><strong>Configure OAuth Consent Screen:</strong>
+                                <ul style="margin-top:4px;padding-left:16px;">
+                                    <li>User Type: External</li>
+                                    <li>Add app name, support email</li>
+                                    <li>Add scope: <code style="background:var(--bg);padding:2px 4px;">https://mail.google.com/</code></li>
+                                    <li>Add test user: the athlete's Gmail address</li>
+                                </ul>
+                            </li>
+                            <li style="margin-bottom:8px;"><strong>Create OAuth Credentials:</strong>
+                                <ul style="margin-top:4px;padding-left:16px;">
+                                    <li>Go to "Credentials" > "Create Credentials" > "OAuth Client ID"</li>
+                                    <li>Application type: Web application</li>
+                                    <li>Add redirect URI: <code style="background:var(--bg);padding:2px 4px;">https://developers.google.com/oauthplayground</code></li>
+                                    <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong></li>
+                                </ul>
+                            </li>
+                            <li style="margin-bottom:8px;"><strong>Get Refresh Token:</strong>
+                                <ul style="margin-top:4px;padding-left:16px;">
+                                    <li>Go to <a href="https://developers.google.com/oauthplayground" target="_blank" style="color:var(--accent);">OAuth Playground</a></li>
+                                    <li>Click gear icon > Check "Use your own OAuth credentials"</li>
+                                    <li>Enter your Client ID and Secret</li>
+                                    <li>In Step 1: Enter <code style="background:var(--bg);padding:2px 4px;">https://mail.google.com/</code> and click Authorize</li>
+                                    <li>Sign in with athlete's Gmail, grant permissions</li>
+                                    <li>In Step 2: Click "Exchange authorization code for tokens"</li>
+                                    <li>Copy the <strong>Refresh Token</strong></li>
+                                </ul>
+                            </li>
+                            <li><strong>Enter credentials</strong> in the athlete's CREDS modal above</li>
+                        </ol>
+                        <div style="margin-top:12px;padding:10px;background:var(--bg);border-left:3px solid var(--accent);">
+                            <strong>Quick Links:</strong><br>
+                            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent);">Google Cloud Credentials</a> |
+                            <a href="https://developers.google.com/oauthplayground" target="_blank" style="color:var(--accent);">OAuth Playground</a> |
+                            <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" style="color:var(--accent);">Enable Gmail API</a>
+                        </div>
+                    </div>
+                </div>
             </div>
             {% endif %}
 
@@ -1797,7 +1831,23 @@ HTML_TEMPLATE = '''
                             <div><label style="font-size:12px;color:var(--muted);">Password *</label><input id="ca-pw" type="password" required minlength="8" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
                             <div><label style="font-size:12px;color:var(--muted);">Phone</label><input id="ca-phone" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
                             <div><label style="font-size:12px;color:var(--muted);">Grad Year</label><input id="ca-year" placeholder="2026" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
-                            <div><label style="font-size:12px;color:var(--muted);">Position</label><input id="ca-pos" placeholder="OL" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
+                            <div><label style="font-size:12px;color:var(--muted);">Position *</label>
+                                <select id="ca-pos" required style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;">
+                                    <option value="">Select Position...</option>
+                                    <option value="OL">OL - Offensive Line</option>
+                                    <option value="QB">QB - Quarterback</option>
+                                    <option value="RB">RB - Running Back</option>
+                                    <option value="WR">WR - Wide Receiver</option>
+                                    <option value="TE">TE - Tight End</option>
+                                    <option value="DL">DL - Defensive Line</option>
+                                    <option value="LB">LB - Linebacker</option>
+                                    <option value="DB">DB - Defensive Back</option>
+                                    <option value="K">K - Kicker</option>
+                                    <option value="P">P - Punter</option>
+                                    <option value="LS">LS - Long Snapper</option>
+                                    <option value="ATH">ATH - Athlete</option>
+                                </select>
+                            </div>
                             <div><label style="font-size:12px;color:var(--muted);">Height</label><input id="ca-ht" placeholder="6'3" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
                             <div><label style="font-size:12px;color:var(--muted);">Weight</label><input id="ca-wt" placeholder="295" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
                             <div><label style="font-size:12px;color:var(--muted);">GPA</label><input id="ca-gpa" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;"></div>
@@ -2018,7 +2068,14 @@ HTML_TEMPLATE = '''
                 <label>Template Type</label>
                 <select id="new-tpl-type">
                     <option value="rc">Recruiting Coordinator</option>
-                    <option value="ol">O-Line Coach</option>
+                    <option value="ol">OL - Offensive Line Coach</option>
+                    <option value="wr">WR - Wide Receivers Coach</option>
+                    <option value="qb">QB - Quarterbacks Coach</option>
+                    <option value="rb">RB - Running Backs Coach</option>
+                    <option value="te">TE - Tight Ends Coach</option>
+                    <option value="dl">DL - Defensive Line Coach</option>
+                    <option value="lb">LB - Linebackers Coach</option>
+                    <option value="db">DB - Defensive Backs Coach</option>
                     <option value="followup">Follow-up</option>
                     <option value="dm">Twitter DM</option>
                 </select>
@@ -4359,15 +4416,25 @@ HTML_TEMPLATE = '''
                     el.innerHTML = '<div class="empty-state"><div class="empty-state-title">No schools selected</div><div class="empty-state-text">Search above and add schools to your list.</div></div>';
                     return;
                 }
-                el.innerHTML = data.schools.map(s => `
-                    <div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-                        <div>
+                const posRole = data.athlete_position || 'OL';
+                el.innerHTML = data.schools.map(s => {
+                    const rcStatus = s.rc_has_email
+                        ? `<span style="color:var(--success);">RC: ${s.rc_name || 'Yes'}</span>`
+                        : '<span style="color:var(--danger);">RC: Missing</span>';
+                    const posStatus = s.position_coach_has_email
+                        ? `<span style="color:var(--success);">${s.position_coach_role || posRole}: ${s.position_coach_name || 'Yes'}</span>`
+                        : `<span style="color:var(--danger);">${s.position_coach_role || posRole}: Missing</span>`;
+                    return `
+                    <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                        <div style="flex:1;">
                             <strong>${s.schools?.name || s.school_name || s.name}</strong>
-                            <span class="text-muted text-sm"> — ${s.coach_preference || 'both'}</span>
+                            <div style="font-size:11px;margin-top:4px;">
+                                ${rcStatus} &nbsp;|&nbsp; ${posStatus}
+                            </div>
                         </div>
                         <button class="btn btn-sm" onclick="removeMySchool('${s.schools?.id || s.school_id}')" style="font-size:11px;color:var(--danger);">REMOVE</button>
-                    </div>
-                `).join('');
+                    </div>`;
+                }).join('');
             } catch(e) { console.error(e); }
         }
 
@@ -5875,34 +5942,12 @@ def api_email_tomorrow_preview():
         coaches_ready = _supabase_db.get_coaches_to_email(limit=500, days_between=days_between)
         total_ready = len(coaches_ready)
 
-        # Check for pregenerated AI emails
-        from pathlib import Path
-        import json
-        pregenerated_file = Path.home() / '.coach_outreach' / 'pregenerated_emails.json'
-        pregenerated_schools = set()
-        if pregenerated_file.exists():
-            try:
-                with open(pregenerated_file) as f:
-                    pregenerated = json.load(f)
-                pregenerated_schools = set(s.lower() for s in pregenerated.keys())
-            except:
-                pass
-
-        ai_count = sum(1 for c in coaches_ready if c.get('school_name', '').lower() in pregenerated_schools)
-        template_count = total_ready - ai_count
-
         will_send = min(total_ready, daily_limit)
-        will_send_ai = min(ai_count, will_send)
-        will_send_template = will_send - will_send_ai
 
         return jsonify({
             'success': True,
             'total': total_ready,
-            'ai': ai_count,
-            'template': template_count,
             'will_send': will_send,
-            'will_send_ai': will_send_ai,
-            'will_send_template': will_send_template,
             'limit': daily_limit
         })
 
@@ -6888,55 +6933,22 @@ def api_email_send():
                 if email_type == 'new':
                     email_type = 'intro'
 
-                # Try to get pregenerated AI email
-                ai_email = None
-                used_ai_email = False
-                if AI_EMAILS_AVAILABLE:
-                    try:
-                        ai_email = get_ai_email_for_school(
-                            school=coach.get('school_name', ''),
-                            coach_name=coach_name,
-                            email_type=email_type
-                        )
-                        if ai_email and ai_email.get('body'):
-                            logger.info(f"Using AI email for {coach.get('school_name')} ({email_type})")
-                            used_ai_email = True
-                    except Exception as e:
-                        logger.warning(f"AI email lookup failed for {coach.get('school_name')}: {e}")
-
-                if used_ai_email and ai_email:
-                    subject = ai_email.get('subject', f"2026 OL - {athlete.get('name', 'Keelan Underwood')} - {coach.get('school_name')}")
-                    body = ai_email['body']
+                # Get appropriate template
+                if email_type == 'followup_1':
+                    template = template_mgr.get_followup_template(1)
+                elif email_type == 'followup_2':
+                    template = template_mgr.get_followup_template(2)
                 else:
-                    if email_type == 'followup_1':
-                        template = template_mgr.get_followup_template(1)
-                    elif email_type == 'followup_2':
-                        template = template_mgr.get_followup_template(2)
-                    else:
-                        template = template_mgr.get_next_template(coach.get('coach_role', 'ol'), coach.get('school_name', ''))
+                    template = template_mgr.get_next_template(coach.get('coach_role', 'ol'), coach.get('school_name', ''))
 
-                    if not template:
-                        errors += 1
-                        continue
+                if not template:
+                    errors += 1
+                    continue
 
-                    if ai_hooks_available and email_type == 'intro':
-                        try:
-                            hook = generate_personalized_hook(
-                                school=variables['school'],
-                                division=coach.get('division', ''),
-                                conference=coach.get('conference', ''),
-                                email_type=email_type,
-                                use_ai=True
-                            )
-                            variables['personalized_hook'] = hook
-                        except Exception as e:
-                            logger.warning(f"Hook generation failed for {variables['school']}: {e}")
-                            variables['personalized_hook'] = f"I am very interested in {variables['school']}'s program."
-                    else:
-                        variables['personalized_hook'] = f"I remain very interested in {variables['school']}'s program."
+                variables['personalized_hook'] = f"I am very interested in {variables['school']}'s program."
 
-                    subject, body = template.render(variables)
-                    logger.info(f"Using template for {coach.get('school_name')} ({email_type})")
+                subject, body = template.render(variables)
+                logger.info(f"Using template for {coach.get('school_name')} ({email_type})")
 
                 coach_email = coach['coach_email'].strip() if coach.get('coach_email') else ''
                 # Validate email before sending
@@ -6945,7 +6957,7 @@ def api_email_send():
                     logger.warning(f"Skipping invalid email for {coach.get('school_name', '?')}: '{coach_email}'")
                     errors += 1
                     continue
-                tracking_template_id = 'ai_generated' if used_ai_email else (template.id if 'template' in dir() and template else 'unknown')
+                tracking_template_id = template.id if template else 'unknown'
 
                 if use_gmail_api:
                     success = send_email_gmail_api(coach_email, subject, body, email_addr, school=coach.get('school_name', ''), coach_name=coach_name, template_id=tracking_template_id)
@@ -8989,11 +9001,45 @@ def api_admin_complete_request():
 @app.route('/api/athlete/schools')
 @login_required
 def api_athlete_schools():
-    """Get logged-in athlete's selected schools."""
+    """Get logged-in athlete's selected schools with coach info."""
     try:
         schools = _supabase_db.get_athlete_schools(g.athlete_id)
-        return jsonify({'schools': schools})
+
+        # Get athlete's position to filter coaches
+        athlete = _supabase_db.get_athlete_by_id(g.athlete_id)
+        athlete_position = (athlete.get('positions') or 'OL').upper().split('/')[0].split(',')[0].strip()
+
+        # Map athlete position to coach role
+        position_to_role = {
+            'OL': 'ol', 'OT': 'ol', 'OG': 'ol', 'C': 'ol',
+            'WR': 'wr', 'QB': 'qb', 'RB': 'rb', 'TE': 'te',
+            'DL': 'dl', 'DE': 'dl', 'DT': 'dl',
+            'LB': 'lb', 'ILB': 'lb', 'OLB': 'lb',
+            'DB': 'db', 'CB': 'db', 'S': 'db', 'FS': 'db', 'SS': 'db',
+            'K': 'k', 'P': 'p', 'LS': 'ls', 'ATH': 'ol'
+        }
+        target_role = position_to_role.get(athlete_position, 'ol')
+
+        # Enhance each school with coach info
+        for s in schools:
+            school_id = s.get('school_id')
+            if school_id:
+                coaches = _supabase_db.client.table('coaches').select('name, email, role').eq('school_id', school_id).execute().data
+                rc_coach = next((c for c in coaches if c.get('role') == 'rc'), None)
+                pos_coach = next((c for c in coaches if c.get('role') == target_role), None)
+                # Fall back to OL if target position coach not found
+                if not pos_coach and target_role != 'ol':
+                    pos_coach = next((c for c in coaches if c.get('role') == 'ol'), None)
+
+                s['rc_has_email'] = bool(rc_coach and rc_coach.get('email'))
+                s['rc_name'] = rc_coach.get('name') if rc_coach else None
+                s['position_coach_has_email'] = bool(pos_coach and pos_coach.get('email'))
+                s['position_coach_name'] = pos_coach.get('name') if pos_coach else None
+                s['position_coach_role'] = target_role.upper()
+
+        return jsonify({'schools': schools, 'athlete_position': athlete_position})
     except Exception as e:
+        logger.error(f"Error getting athlete schools: {e}")
         return jsonify({'error': str(e)}), 500
 
 
