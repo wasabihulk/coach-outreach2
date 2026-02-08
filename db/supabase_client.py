@@ -360,6 +360,17 @@ class SupabaseDB:
         if not athlete_schools:
             return counts
 
+        # Get athlete's position to filter position coaches
+        athlete = self.get_athlete_by_id(self._athlete_id)
+        athlete_position = (athlete.get('position') or 'OL').upper() if athlete else 'OL'
+
+        # Map athlete position to coach role
+        position_to_role = {
+            'OL': 'ol', 'WR': 'wr', 'QB': 'qb', 'RB': 'rb', 'TE': 'te',
+            'DL': 'dl', 'LB': 'lb', 'DB': 'db', 'K': 'st', 'P': 'st', 'LS': 'st', 'ATH': 'ath'
+        }
+        position_role = position_to_role.get(athlete_position, 'ol')
+
         # Build list of school_ids and their preferences
         school_prefs = {as_row.get('school_id'): as_row.get('coach_preference', 'both')
                        for as_row in athlete_schools}
@@ -375,7 +386,7 @@ class SupabaseDB:
                   .not_.is_('email', 'null')
                   .execute().data)
 
-        # Filter by preference and count
+        # Filter by preference and athlete position
         coach_emails = []
         for coach in coaches:
             email = (coach.get('email') or '').strip()
@@ -384,12 +395,12 @@ class SupabaseDB:
             role = (coach.get('role') or '').lower()
             pref = school_prefs.get(coach.get('school_id'), 'both')
 
-            # Filter by preference
-            if pref == 'position_coach' and role != 'ol':
+            # Filter by preference using athlete's actual position
+            if pref == 'position_coach' and role != position_role:
                 continue
             if pref == 'rc' and role != 'rc':
                 continue
-            if pref == 'both' and role not in ('rc', 'ol'):
+            if pref == 'both' and role not in ('rc', position_role):
                 continue
 
             coach_emails.append(email)
@@ -865,10 +876,22 @@ class SupabaseDB:
 
     def get_coaches_for_athlete_schools(self, athlete_id, limit=25, days_between=7):
         """Get coaches due for outreach from athlete's selected schools.
-        Filters by coach_preference and outreach history."""
+        Filters by coach_preference, athlete position, and outreach history."""
         athlete_schools = self.get_athlete_schools(athlete_id)
         if not athlete_schools:
             return []
+
+        # Get athlete's position to filter position coaches
+        athlete = self.get_athlete_by_id(athlete_id)
+        athlete_position = (athlete.get('position') or 'OL').upper() if athlete else 'OL'
+
+        # Map athlete position to coach role
+        # OL->ol, WR->wr, QB->qb, RB->rb, TE->te, DL->dl, LB->lb, DB->db, K->k/st, P->p/st, LS->ls/st, ATH->ath
+        position_to_role = {
+            'OL': 'ol', 'WR': 'wr', 'QB': 'qb', 'RB': 'rb', 'TE': 'te',
+            'DL': 'dl', 'LB': 'lb', 'DB': 'db', 'K': 'st', 'P': 'st', 'LS': 'st', 'ATH': 'ath'
+        }
+        position_role = position_to_role.get(athlete_position, 'ol')
 
         results = []
         for as_row in athlete_schools:
@@ -880,12 +903,12 @@ class SupabaseDB:
 
             for coach in coaches:
                 role = (coach.get('role') or '').lower()
-                # Filter by preference
-                if preference == 'position_coach' and role != 'ol':
+                # Filter by preference and athlete position
+                if preference == 'position_coach' and role != position_role:
                     continue
                 if preference == 'rc' and role != 'rc':
                     continue
-                if preference == 'both' and role not in ('rc', 'ol'):
+                if preference == 'both' and role not in ('rc', position_role):
                     continue
 
                 if not coach.get('email'):

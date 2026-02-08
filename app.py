@@ -1409,7 +1409,7 @@ HTML_TEMPLATE = '''
                                 Coach Responses
                                 <button class="btn btn-secondary btn-sm" onclick="checkInbox()">Check Inbox</button>
                             </div>
-                            <div id="recent-responses">
+                            <div id="recent-responses" style="max-height:350px;overflow-y:auto;">
                                 <div class="loading-state">
                                     <div class="spinner"></div>
                                     <span>Checking for responses...</span>
@@ -1566,19 +1566,6 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
 
-                <!-- Queue Summary Bar -->
-                <div style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:16px 20px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;overflow:hidden;">
-                    <div>
-                        <div style="font-family:monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Queue Status</div>
-                        <div class="text-sm" id="email-queue-summary" style="margin-top:4px;"><span class="spinner" style="width:12px;height:12px;border-width:2px;"></span> Loading queue...</div>
-                    </div>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <button class="btn btn-secondary btn-sm" onclick="scanPastResponses()">Scan Responses</button>
-                        <button class="btn btn-secondary btn-sm" onclick="cleanupSheet()">Cleanup</button>
-                        <button class="btn btn-secondary btn-sm" onclick="loadEmailQueueStatus()">Refresh</button>
-                    </div>
-                </div>
-
                 <!-- Response Lookup Section -->
                 <div style="background:var(--bg3);border:1px solid var(--border);padding:16px 20px;margin-bottom:20px;">
                     <div style="font-family:monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Response Lookup</div>
@@ -1599,15 +1586,6 @@ HTML_TEMPLATE = '''
                         <div id="auto-send-info" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);padding:14px;font-family:monospace;font-size:12px;">
                             <div style="display:flex;justify-content:space-between;"><span style="color:var(--muted);">Last auto-send:</span> <span id="last-auto-send">Never</span></div>
                             <div style="display:flex;justify-content:space-between;margin-top:6px;"><span style="color:var(--muted);">Next scheduled:</span> <span id="next-auto-send">Not scheduled</span></div>
-                        </div>
-
-                        <div id="tomorrow-preview" class="mb-4" style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--accent);padding:16px;">
-                            <div style="font-weight:600;margin-bottom:12px;font-size:13px;color:var(--accent);">EMAIL QUEUE</div>
-                            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:10px;font-size:12px;">
-                                <div style="display:flex;justify-content:space-between;"><span class="text-muted">Coaches ready:</span> <strong id="tomorrow-total">-</strong></div>
-                                <div style="display:flex;justify-content:space-between;"><span class="text-muted">Daily limit:</span> <strong id="tomorrow-limit">25</strong></div>
-                            </div>
-                            <button class="btn btn-secondary btn-sm mt-4" onclick="loadTomorrowPreview()">Refresh Preview</button>
                         </div>
 
                         <div class="form-group">
@@ -2076,6 +2054,7 @@ HTML_TEMPLATE = '''
                     <option value="dl">DL - Defensive Line Coach</option>
                     <option value="lb">LB - Linebackers Coach</option>
                     <option value="db">DB - Defensive Backs Coach</option>
+                    <option value="st">ST - Special Teams Coach (K/P/LS)</option>
                     <option value="followup">Follow-up</option>
                     <option value="dm">Twitter DM</option>
                 </select>
@@ -2357,8 +2336,8 @@ HTML_TEMPLATE = '''
                 const data = await res.json();
                 const el = document.getElementById('recent-responses');
                 if (data.responses && data.responses.length) {
-                    // Analyze sentiment for each response
-                    const responsesWithSentiment = await Promise.all(data.responses.slice(0, 5).map(async r => {
+                    // Analyze sentiment for each response (show up to 20 in scrollable list)
+                    const responsesWithSentiment = await Promise.all(data.responses.slice(0, 20).map(async r => {
                         try {
                             const sentimentRes = await fetch('/api/responses/analyze-sentiment', {
                                 method: 'POST',
@@ -4632,41 +4611,65 @@ TRACKING_PIXEL = base64.b64decode(
 @app.route('/api/track/open/<tracking_id>')
 def track_open(tracking_id):
     """Track email opens via invisible pixel."""
+    info = None
+    is_first_open = False
+
+    # First check in-memory (for recent sends in this session)
     if tracking_id in email_tracking['sent']:
-        open_event = {
-            'opened_at': datetime.now().isoformat(),
-            'ip': request.remote_addr,
-            'user_agent': request.headers.get('User-Agent', '')[:200]
-        }
+        info = email_tracking['sent'][tracking_id]
         if tracking_id not in email_tracking['opens']:
             email_tracking['opens'][tracking_id] = []
         is_first_open = len(email_tracking['opens'][tracking_id]) == 0
-        email_tracking['opens'][tracking_id].append(open_event)
+        email_tracking['opens'][tracking_id].append({
+            'opened_at': datetime.now().isoformat(),
+            'ip': request.remote_addr,
+            'user_agent': request.headers.get('User-Agent', '')[:200]
+        })
         save_tracking()
 
-        info = email_tracking['sent'][tracking_id]
-        logger.info(f"📬 Email OPENED: {info.get('school')} - {info.get('coach')}")
+    # Check Supabase for tracking info (persists across restarts)
+    if SUPABASE_AVAILABLE and _supabase_db:
+        try:
+            # Look up by tracking_id (might be supabase_tracking_id or the tracking_id itself)
+            outreach = (_supabase_db.client.table('outreach')
+                       .select('id, school_name, coach_name, opened, open_count')
+                       .eq('tracking_id', tracking_id)
+                       .limit(1)
+                       .execute().data)
 
-        # Update Supabase tracking
-        if SUPABASE_AVAILABLE and _supabase_db:
-            try:
-                sb_tid = info.get('supabase_tracking_id')
-                if sb_tid:
-                    _supabase_db.track_open(sb_tid)
-            except Exception as e:
-                logger.warning(f"Supabase track_open error: {e}")
+            if outreach:
+                record = outreach[0]
+                is_first_open = not record.get('opened', False)
 
-        # Send phone notification on FIRST open only
-        if is_first_open:
-            try:
-                current_settings = load_settings()
-                if current_settings.get('notifications', {}).get('enabled'):
-                    send_phone_notification(
-                        title="📬 Coach Opened Email!",
-                        message=f"{info.get('coach', 'A coach')} at {info.get('school', 'Unknown')} just opened your email!"
-                    )
-            except Exception as e:
-                logger.warning(f"Could not send open notification: {e}")
+                # Update Supabase
+                _supabase_db.client.table('outreach').update({
+                    'opened': True,
+                    'open_count': (record.get('open_count') or 0) + 1,
+                    'opened_at': datetime.now(timezone.utc).isoformat()
+                }).eq('id', record['id']).execute()
+
+                # Use Supabase info if not in memory
+                if not info:
+                    info = {
+                        'school': record.get('school_name', 'Unknown'),
+                        'coach': record.get('coach_name', 'A coach')
+                    }
+
+                logger.info(f"Email OPENED: {info.get('school')} - {info.get('coach')}")
+
+                # Send phone notification on FIRST open only
+                if is_first_open:
+                    try:
+                        current_settings = load_settings()
+                        if current_settings.get('notifications', {}).get('enabled'):
+                            send_phone_notification(
+                                title="Coach Opened Email!",
+                                message=f"{info.get('coach', 'A coach')} at {info.get('school', 'Unknown')} just opened your email!"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Could not send open notification: {e}")
+        except Exception as e:
+            logger.warning(f"Supabase track_open error: {e}")
 
     return Response(TRACKING_PIXEL, mimetype='image/png', headers={
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -4676,51 +4679,46 @@ def track_open(tracking_id):
 
 @app.route('/api/tracking/stats')
 def tracking_stats():
-    """Get email tracking statistics."""
-    total_sent = len(email_tracking['sent'])
-    total_opened = sum(1 for tid in email_tracking['opens'] if email_tracking['opens'][tid])
-
-    # Get opens by school
-    opens_by_school = {}
-    for tid, info in email_tracking['sent'].items():
-        school = info.get('school', 'Unknown')
-        if school not in opens_by_school:
-            opens_by_school[school] = {'sent': 0, 'opened': 0}
-        opens_by_school[school]['sent'] += 1
-        if email_tracking['opens'].get(tid):
-            opens_by_school[school]['opened'] += 1
-
-    # Recent opens (last 20)
-    recent_opens = []
-    for tid, opens in email_tracking['opens'].items():
-        if opens:
-            info = email_tracking['sent'].get(tid, {})
-            for o in opens[-3:]:  # Last 3 opens per email
-                recent_opens.append({
-                    'school': info.get('school'),
-                    'coach': info.get('coach'),
-                    'opened_at': o.get('opened_at'),
-                    'sent_at': info.get('sent_at')
-                })
-    recent_opens.sort(key=lambda x: x.get('opened_at', ''), reverse=True)
-
-    # Merge Supabase stats if available
+    """Get email tracking statistics from Supabase."""
+    # Get stats from Supabase (persistent across deploys)
     supabase_stats = {}
     hot_leads = []
+    recent_opens = []
+
     if SUPABASE_AVAILABLE and _supabase_db:
         try:
             supabase_stats = _supabase_db.get_outreach_stats()
             hot_leads = _supabase_db.get_hot_leads(limit=10)
+
+            # Get recent opens from Supabase
+            recent_opens_raw = _supabase_db.client.table('outreach').select(
+                'school_name, coach_name, opened_at, sent_at'
+            ).eq('opened', True)
+            if _supabase_db._athlete_id:
+                recent_opens_raw = recent_opens_raw.eq('athlete_id', _supabase_db._athlete_id)
+            recent_opens_raw = recent_opens_raw.order('opened_at', desc=True).limit(20).execute().data
+
+            recent_opens = [{
+                'school': o.get('school_name'),
+                'coach': o.get('coach_name'),
+                'opened_at': o.get('opened_at'),
+                'sent_at': o.get('sent_at')
+            } for o in (recent_opens_raw or [])]
         except Exception as e:
             logger.warning(f"Could not fetch Supabase stats: {e}")
+
+    # Use Supabase stats (persistent) instead of in-memory tracking
+    total_sent = supabase_stats.get('sent', 0)
+    total_opened = supabase_stats.get('opened', 0)
+    open_rate = supabase_stats.get('open_rate', 0)
 
     return jsonify({
         'success': True,
         'total_sent': total_sent,
         'total_opened': total_opened,
-        'open_rate': round(total_opened / total_sent * 100, 1) if total_sent > 0 else 0,
-        'by_school': opens_by_school,
-        'recent_opens': recent_opens[:20],
+        'open_rate': open_rate,
+        'by_school': {},  # Deprecated - use supabase stats
+        'recent_opens': recent_opens,
         'supabase': supabase_stats,
         'hot_leads': hot_leads,
     })
@@ -5559,7 +5557,7 @@ def api_coach_response():
 @app.route('/api/coach/search', methods=['GET'])
 def api_coach_search():
     """Search coaches by name, email, or school and return their response status (per-athlete)."""
-    query = request.args.get('q', '').strip().lower()
+    query = request.args.get('q', '').strip()
     if not query or len(query) < 2:
         return jsonify({'success': False, 'error': 'Search query must be at least 2 characters'})
 
@@ -5569,58 +5567,84 @@ def api_coach_search():
     try:
         # Get current athlete ID for per-athlete filtering
         athlete_id = g.athlete_id if hasattr(g, 'athlete_id') else None
+        search_pattern = f'%{query}%'
 
-        # Get all coaches with school info
-        all_coaches = _supabase_db.get_all_coaches_with_schools(limit=2000)
+        # Search directly in database (much faster than loading all coaches)
+        # Search by coach name or email
+        coaches_by_name = (_supabase_db.client.table('coaches')
+                         .select('*, schools(name, division, conference)')
+                         .or_(f'name.ilike.{search_pattern},email.ilike.{search_pattern}')
+                         .limit(30)
+                         .execute().data or [])
 
+        # Search by school name
+        schools = (_supabase_db.client.table('schools')
+                  .select('id, name')
+                  .ilike('name', search_pattern)
+                  .limit(10)
+                  .execute().data or [])
+
+        coaches_by_school = []
+        if schools:
+            school_ids = [s['id'] for s in schools]
+            coaches_by_school = (_supabase_db.client.table('coaches')
+                                .select('*, schools(name, division, conference)')
+                                .in_('school_id', school_ids)
+                                .limit(30)
+                                .execute().data or [])
+
+        # Combine and dedupe
+        seen_ids = set()
+        all_coaches = []
+        for coach in coaches_by_name + coaches_by_school:
+            if coach['id'] not in seen_ids:
+                seen_ids.add(coach['id'])
+                all_coaches.append(coach)
+            if len(all_coaches) >= 30:
+                break
+
+        # Get outreach data for all coaches in one batch query
+        coach_emails = [c.get('email') for c in all_coaches if c.get('email')]
+        outreach_by_email = {}
+
+        if coach_emails and athlete_id:
+            all_outreach = (_supabase_db.client.table('outreach')
+                          .select('coach_email, email_type, status, sent_at, opened, open_count, replied, replied_at, reply_snippet, reply_sentiment')
+                          .eq('athlete_id', athlete_id)
+                          .in_('coach_email', coach_emails)
+                          .order('sent_at', desc=True)
+                          .execute().data or [])
+
+            for o in all_outreach:
+                ce = o.get('coach_email')
+                if ce not in outreach_by_email:
+                    outreach_by_email[ce] = []
+                outreach_by_email[ce].append(o)
+
+        # Build results
         results = []
-        for coach in all_coaches:
-            name = (coach.get('name') or '').lower()
-            email = (coach.get('email') or '').lower()
+        for coach in all_coaches[:20]:
+            email = coach.get('email', '')
             school_info = coach.get('schools') or {}
-            school_name = (school_info.get('name', '') if isinstance(school_info, dict) else '').lower()
 
-            # Match against query
-            if query in name or query in email or query in school_name:
-                # Get outreach history for this coach FOR THIS ATHLETE (per-athlete)
-                outreach_data = None
-                has_replied = False
-                replied_at = None
-                reply_sentiment = None
+            outreach_list = outreach_by_email.get(email, [])
+            outreach_data = outreach_list[0] if outreach_list else None
+            has_replied = any(o.get('replied') for o in outreach_list)
+            replied_at = next((o.get('replied_at') for o in outreach_list if o.get('replied')), None)
+            reply_sentiment = next((o.get('reply_sentiment') for o in outreach_list if o.get('replied')), None)
 
-                if email and athlete_id:
-                    outreach = (_supabase_db.client.table('outreach')
-                               .select('email_type, status, sent_at, opened, open_count, replied, replied_at, reply_snippet, reply_sentiment')
-                               .eq('athlete_id', athlete_id)
-                               .eq('coach_email', email)
-                               .order('sent_at', desc=True)
-                               .limit(5)
-                               .execute().data)
-                    if outreach:
-                        outreach_data = outreach[0]  # Most recent
-                        # Check if ANY outreach record for this athlete shows replied
-                        for o in outreach:
-                            if o.get('replied'):
-                                has_replied = True
-                                replied_at = o.get('replied_at')
-                                reply_sentiment = o.get('reply_sentiment')
-                                break
-
-                results.append({
-                    'id': coach.get('id'),
-                    'name': coach.get('name', ''),
-                    'email': coach.get('email', ''),
-                    'role': coach.get('role', ''),
-                    'school': school_info.get('name', '') if isinstance(school_info, dict) else '',
-                    'division': school_info.get('division', '') if isinstance(school_info, dict) else '',
-                    'responded': has_replied,  # Per-athlete response status
-                    'responded_at': replied_at,
-                    'response_sentiment': reply_sentiment,
-                    'outreach': outreach_data,
-                })
-
-                if len(results) >= 20:
-                    break
+            results.append({
+                'id': coach.get('id'),
+                'name': coach.get('name', ''),
+                'email': email,
+                'role': coach.get('role', ''),
+                'school': school_info.get('name', '') if isinstance(school_info, dict) else '',
+                'division': school_info.get('division', '') if isinstance(school_info, dict) else '',
+                'responded': has_replied,
+                'responded_at': replied_at,
+                'response_sentiment': reply_sentiment,
+                'outreach': outreach_data,
+            })
 
         return jsonify({'success': True, 'results': results, 'count': len(results)})
     except Exception as e:
@@ -6405,18 +6429,35 @@ def run_email_send():
 
 @app.route('/api/responses/recent')
 def api_responses_recent():
-    """Get recent responses - returns cached responses from last check."""
+    """Get recent responses from Supabase (persists across restarts)."""
     try:
-        # Return cached responses if available
-        global cached_responses
-        if 'cached_responses' not in globals():
-            cached_responses = []
-        
-        if cached_responses:
-            return jsonify({'success': True, 'responses': cached_responses})
-        
-        # If no cache, return empty and suggest checking
-        return jsonify({'success': True, 'responses': [], 'message': 'Click "Check for Responses" to scan inbox'})
+        responses = []
+
+        # Get from Supabase (persistent)
+        if SUPABASE_AVAILABLE and _supabase_db:
+            try:
+                recent = _supabase_db.get_recent_responses(limit=25)
+                for r in (recent or []):
+                    responses.append({
+                        'school': r.get('school_name', ''),
+                        'coach': r.get('coach_name', ''),
+                        'email': r.get('coach_email', ''),
+                        'snippet': r.get('reply_snippet', ''),
+                        'subject': '',
+                        'date': r.get('replied_at', ''),
+                        'sentiment': r.get('reply_sentiment', 'positive'),
+                    })
+            except Exception as e:
+                logger.warning(f"Could not fetch Supabase responses: {e}")
+
+        # Fall back to cached responses if Supabase empty
+        if not responses:
+            global cached_responses
+            if 'cached_responses' not in globals():
+                cached_responses = []
+            responses = cached_responses
+
+        return jsonify({'success': True, 'responses': responses})
     except Exception as e:
         logger.error(f"Responses error: {e}")
         return jsonify({'success': False, 'error': str(e), 'responses': []})
@@ -8351,7 +8392,12 @@ def api_tomorrow_preview():
         limit = current_settings.get('email', {}).get('auto_send_count', 100)
         days_between = current_settings.get('email', {}).get('days_between_emails', 3)
 
-        coaches = _supabase_db.get_coaches_to_email(limit=500, days_between=days_between)
+        # Use athlete-specific function to get coaches from selected schools only
+        athlete_id = g.athlete_id if hasattr(g, 'athlete_id') else None
+        if athlete_id:
+            coaches = _supabase_db.get_coaches_for_athlete_schools(athlete_id, limit=500, days_between=days_between)
+        else:
+            coaches = _supabase_db.get_coaches_to_email(limit=500, days_between=days_between)
 
         counts = {'intro': 0, 'followup1': 0, 'followup2': 0, 'restart': 0}
         schools_preview = []
@@ -8742,15 +8788,16 @@ def api_athlete_request_school():
         if not school_name:
             return jsonify({'error': 'school_name required'}), 400
 
-        # Check if school already exists
+        # Check if school already exists (case-insensitive)
         existing = _supabase_db.get_school(school_name)
         if existing:
             return jsonify({'error': 'School already exists in database', 'school_id': existing['id']}), 400
 
-        # Create request record
+        # Get athlete info
         athlete = _supabase_db.get_athlete_by_id(g.athlete_id)
         athlete_name = athlete.get('name', 'Unknown') if athlete else 'Unknown'
 
+        # Create request record
         request_data = {
             'athlete_id': g.athlete_id,
             'athlete_name': athlete_name,
@@ -8759,7 +8806,21 @@ def api_athlete_request_school():
             'status': 'pending',
             'created_at': datetime.now(timezone.utc).isoformat(),
         }
-        _supabase_db.client.table('school_requests').insert(request_data).execute()
+
+        try:
+            _supabase_db.client.table('school_requests').insert(request_data).execute()
+        except Exception as db_err:
+            # Table might not exist - log and return user-friendly error
+            logger.error(f"School request DB error (table might not exist): {db_err}")
+            return jsonify({'error': 'School request feature is being set up. Please try again later or contact admin.'}), 500
+
+        # Send notification to admin
+        current_settings = load_settings()
+        if current_settings.get('notifications', {}).get('enabled'):
+            send_phone_notification(
+                title="New School Request",
+                message=f"{athlete_name} requested: {school_name}"
+            )
 
         return jsonify({'success': True, 'message': 'School request submitted. Admin will add it soon.'})
     except Exception as e:
