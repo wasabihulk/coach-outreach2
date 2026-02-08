@@ -4520,6 +4520,12 @@ def auth_status():
     })
 
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint for Railway."""
+    return jsonify({'status': 'healthy', 'version': '8.4.0'}), 200
+
+
 @app.route('/')
 @login_required
 def index():
