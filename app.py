@@ -31,6 +31,7 @@ import smtplib
 import re
 import random
 import base64
+import requests
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, List
 from pathlib import Path
