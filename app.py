@@ -8672,7 +8672,8 @@ def send_phone_notification(title: str, message: str, channel: str = None):
         
         # Ensure title is safe for headers (latin-1 compatible)
         # HTTP headers generally require latin-1. Emojis will cause crashes.
-        safe_title = title.encode('latin-1', 'ignore').decode('latin-1')
+        # Strip whitespace after encoding to handle cases like "🏈 Title" -> " Title"
+        safe_title = title.encode('latin-1', 'ignore').decode('latin-1').strip()
         
         response = requests.post(
             f"https://ntfy.sh/{channel}",
