@@ -451,7 +451,7 @@ class SupabaseDB:
     # ==========================================
 
     def create_outreach(self, coach_email, coach_name, school_name, coach_role='ol',
-                        subject='', body='', email_type='intro', is_ai=False):
+                        subject='', body='', email_type='intro', is_ai=False, tracking_id=None):
         """Create an outreach record. Returns the row with tracking_id."""
         school = self.get_school(school_name)
         data = {
@@ -467,6 +467,9 @@ class SupabaseDB:
             'is_ai_generated': is_ai,
             'status': 'pending',
         }
+        # Use provided tracking_id instead of letting DB auto-generate
+        if tracking_id:
+            data['tracking_id'] = tracking_id
         result = self.client.table('outreach').insert(data).execute()
         return result.data[0] if result.data else None
 

@@ -499,10 +499,9 @@ def save_tracking():
         logger.error(f"Error saving tracking locally: {e}")
 
 def generate_tracking_id(to_email: str, school: str) -> str:
-    """Generate unique tracking ID for an email."""
-    import hashlib
-    data = f"{to_email}{school}{datetime.now().isoformat()}{random.random()}"
-    return hashlib.sha256(data.encode()).hexdigest()[:16]
+    """Generate unique tracking ID for an email (UUID format for Supabase compatibility)."""
+    import uuid
+    return str(uuid.uuid4())
 
 load_tracking()  # Load on startup
 
@@ -682,15 +681,12 @@ def send_email_gmail_api(to_email: str, subject: str, body: str, from_email: str
                     school_name=school,
                     subject=subject,
                     body=body,
+                    tracking_id=tracking_id,  # Use same UUID as in pixel URL
                 )
                 if outreach:
                     _supabase_db.mark_sent(outreach['id'])
-                    # Map the local tracking_id to the Supabase tracking_id
-                    supabase_tid = outreach.get('tracking_id')
-                    if supabase_tid:
-                        email_tracking['sent'][tracking_id]['supabase_tracking_id'] = supabase_tid
-                        email_tracking['sent'][tracking_id]['supabase_outreach_id'] = outreach['id']
-                    logger.info(f"Outreach saved to Supabase: {outreach['id']}")
+                    email_tracking['sent'][tracking_id]['supabase_outreach_id'] = outreach['id']
+                    logger.info(f"Outreach saved to Supabase: {outreach['id']} with tracking_id: {tracking_id}")
             except Exception as e:
                 logger.warning(f"Failed to save outreach to Supabase: {e}")
 
@@ -4635,7 +4631,19 @@ def track_open(tracking_id):
     # Check Supabase for tracking info (persists across restarts)
     if SUPABASE_AVAILABLE and _supabase_db:
         try:
-            # Look up by tracking_id (might be supabase_tracking_id or the tracking_id itself)
+            # Validate UUID format before querying (old emails used 16-char hex, not UUIDs)
+            import uuid as uuid_module
+            try:
+                uuid_module.UUID(tracking_id)
+            except ValueError:
+                logger.debug(f"Skipping Supabase lookup for non-UUID tracking_id: {tracking_id[:16]}...")
+                # Return pixel immediately for old tracking IDs
+                return Response(TRACKING_PIXEL, mimetype='image/png', headers={
+                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma': 'no-cache'
+                })
+
+            # Look up by tracking_id
             outreach = (_supabase_db.client.table('outreach')
                        .select('id, school_name, coach_name, opened, open_count')
                        .eq('tracking_id', tracking_id)
@@ -7059,13 +7067,11 @@ def api_email_send():
                             subject=subject,
                             body=body,
                             email_type=email_type,
+                            tracking_id=tracking_id,  # Use same UUID as in pixel URL
                         )
                         if outreach:
                             _supabase_db.mark_sent(outreach['id'])
-                            sb_tid = outreach.get('tracking_id')
-                            if sb_tid:
-                                email_tracking['sent'][tracking_id]['supabase_tracking_id'] = sb_tid
-                                email_tracking['sent'][tracking_id]['supabase_outreach_id'] = outreach['id']
+                            email_tracking['sent'][tracking_id]['supabase_outreach_id'] = outreach['id']
                     except Exception as sb_e:
                         logger.warning(f"Supabase SMTP outreach error: {sb_e}")
 
