@@ -1672,13 +1672,6 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
 
-                {% if is_admin %}
-                <!-- Pause Controls Footer - Admin only -->
-                <div id="email-pause-footer" style="margin-top:20px;padding:14px 18px;background:var(--bg3);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-                    <span id="email-mode-status" style="font-family:monospace;font-size:13px;">Auto-send active</span>
-                    <button class="btn btn-secondary btn-sm" id="pause-toggle-btn" onclick="togglePause()">PAUSE</button>
-                </div>
-                {% endif %}
             </div>
 
             <!-- DMS PAGE -->
@@ -8595,21 +8588,23 @@ def api_auto_send_status():
     current_settings = load_settings()
     enabled = current_settings.get('email', {}).get('auto_send_enabled', False)
 
-    # Compute next_run based on stored send time
+    # Compute next_run based on stored send time (default to 9:00 AM if not set)
     stored_time = current_settings.get('email', {}).get('auto_send_time', '')
     next_run_str = None
-    if stored_time and ':' in stored_time:
-        try:
+    try:
+        if stored_time and ':' in stored_time:
             h, m = stored_time.split(':')[:2]
             h, m = int(h), int(m)
-            now = datetime.now()
-            send_today = now.replace(hour=h, minute=m, second=0, microsecond=0)
-            if now >= send_today:
-                # Already past send time today, show tomorrow
-                send_today += timedelta(days=1)
-            next_run_str = send_today.isoformat()
-        except:
-            pass
+        else:
+            h, m = 9, 0  # Default to 9:00 AM
+        now = datetime.now()
+        send_today = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if now >= send_today:
+            # Already past send time today, show tomorrow
+            send_today += timedelta(days=1)
+        next_run_str = send_today.isoformat()
+    except:
+        pass
 
     # Try to get last_run from Supabase (most recent sent email)
     last_run_str = auto_send_state.get('last_run')
