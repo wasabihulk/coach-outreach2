@@ -274,63 +274,75 @@ try:
         SUPABASE_AVAILABLE = True
         logger.info("Supabase database connected")
 
-        # Auto-clean bad coach emails on startup
-        try:
-            cleanup = _supabase_db.cleanup_bad_emails()
-            if cleanup['fixed'] or cleanup['nulled']:
-                logger.info(f"Startup email cleanup: fixed {cleanup['fixed']}, nulled {cleanup['nulled']} out of {cleanup['total']}")
-        except Exception as e:
-            logger.warning(f"Startup email cleanup failed: {e}")
-
-        # Auto-sync templates from TemplateManager → Supabase on startup
-        try:
-            from enterprise.templates import get_template_manager
-            tm = get_template_manager()
-            existing_sb = _supabase_db.get_templates()
-            existing_names = {t['name'] for t in existing_sb}
-            synced = 0
-            for t in tm.templates.values():
-                if t.name not in existing_names:
-                    _supabase_db.create_template(
-                        name=t.name,
-                        body=t.body,
-                        subject=t.subject,
-                        template_type=t.template_type if t.template_type in ('email', 'dm', 'followup') else 'email',
-                        coach_type=t.template_type if t.template_type in ('rc', 'ol', 'any') else 'any',
-                    )
-                    synced += 1
-            if synced:
-                logger.info(f"Synced {synced} templates to Supabase")
-        except Exception as te:
-            logger.warning(f"Template sync to Supabase failed: {te}")
-
-        # Auto-sync settings → Supabase on startup
-        try:
-            s = load_settings()
-            email_s = s.get('email', {})
-            sb_settings = {}
-            if email_s.get('auto_send_enabled') is not None:
-                sb_settings['auto_send_enabled'] = bool(email_s['auto_send_enabled'])
-            if email_s.get('auto_send_count'):
-                sb_settings['auto_send_count'] = int(email_s['auto_send_count'])
-            if email_s.get('paused_until'):
-                sb_settings['paused_until'] = email_s['paused_until']
-            if email_s.get('days_between_emails'):
-                sb_settings['days_between_followups'] = int(email_s['days_between_emails'])
-            notif = s.get('notifications', {})
-            if notif.get('enabled') is not None:
-                sb_settings['notifications_enabled'] = bool(notif['enabled'])
-            if notif.get('channel'):
-                sb_settings['ntfy_channel'] = notif['channel']
-            if sb_settings:
-                _supabase_db.save_settings(**sb_settings)
-                logger.info(f"Synced settings to Supabase: {list(sb_settings.keys())}")
-        except Exception as se:
-            logger.warning(f"Settings sync to Supabase failed: {se}")
-
 except Exception as e:
     logger.warning(f"Supabase not available, using legacy tracking: {e}")
     SUPABASE_AVAILABLE = False
+
+def _run_startup_tasks():
+    """Run heavy startup tasks in background to not block server start."""
+    time.sleep(2)  # Wait for server to be ready
+
+    if not SUPABASE_AVAILABLE or not _supabase_db:
+        return
+
+    # Auto-clean bad coach emails
+    try:
+        cleanup = _supabase_db.cleanup_bad_emails()
+        if cleanup['fixed'] or cleanup['nulled']:
+            logger.info(f"Email cleanup: fixed {cleanup['fixed']}, nulled {cleanup['nulled']} out of {cleanup['total']}")
+        else:
+            logger.info(f"Email cleanup: scanned {cleanup['total']}, no fixes needed")
+    except Exception as e:
+        logger.warning(f"Email cleanup failed: {e}")
+
+    # Auto-sync templates from TemplateManager → Supabase
+    try:
+        from enterprise.templates import get_template_manager
+        tm = get_template_manager()
+        existing_sb = _supabase_db.get_templates()
+        existing_names = {t['name'] for t in existing_sb}
+        synced = 0
+        for t in tm.templates.values():
+            if t.name not in existing_names:
+                _supabase_db.create_template(
+                    name=t.name,
+                    body=t.body,
+                    subject=t.subject,
+                    template_type=t.template_type if t.template_type in ('email', 'dm', 'followup') else 'email',
+                    coach_type=t.template_type if t.template_type in ('rc', 'ol', 'any') else 'any',
+                )
+                synced += 1
+        if synced:
+            logger.info(f"Synced {synced} templates to Supabase")
+    except Exception as te:
+        logger.warning(f"Template sync to Supabase failed: {te}")
+
+    # Auto-sync settings → Supabase
+    try:
+        s = load_settings()
+        email_s = s.get('email', {})
+        sb_settings = {}
+        if email_s.get('auto_send_enabled') is not None:
+            sb_settings['auto_send_enabled'] = bool(email_s['auto_send_enabled'])
+        if email_s.get('auto_send_count'):
+            sb_settings['auto_send_count'] = int(email_s['auto_send_count'])
+        if email_s.get('paused_until'):
+            sb_settings['paused_until'] = email_s['paused_until']
+        if email_s.get('days_between_emails'):
+            sb_settings['days_between_followups'] = int(email_s['days_between_emails'])
+        notif = s.get('notifications', {})
+        if notif.get('enabled') is not None:
+            sb_settings['notifications_enabled'] = bool(notif['enabled'])
+        if notif.get('channel'):
+            sb_settings['ntfy_channel'] = notif['channel']
+        if sb_settings:
+            _supabase_db.save_settings(**sb_settings)
+            logger.info(f"Synced settings to Supabase: {list(sb_settings.keys())}")
+    except Exception as se:
+        logger.warning(f"Settings sync to Supabase failed: {se}")
+
+# Start background startup tasks (don't block server start)
+threading.Thread(target=_run_startup_tasks, daemon=True).start()
 
 # ============================================================================
 # AUTHENTICATION
@@ -8399,6 +8411,20 @@ def start_auto_send_scheduler():
     thread.start()
     logger.info("Auto-send scheduler started (random daily timing enabled)")
 
+# Track if scheduler has been started
+_scheduler_started = False
+
+def ensure_scheduler_started():
+    """Ensure scheduler is started (called once on first request)."""
+    global _scheduler_started
+    if not _scheduler_started:
+        _scheduler_started = True
+        start_auto_send_scheduler()
+
+# Start scheduler when module loads (for gunicorn)
+# This runs once when the app is imported
+ensure_scheduler_started()
+
 
 @app.route('/api/auto-send/status')
 def api_auto_send_status():
@@ -9186,10 +9212,10 @@ def main():
     parser.add_argument('--port', type=int, default=5001, help='Port to run on')
     parser.add_argument('--debug', action='store_true', help='Debug mode')
     args = parser.parse_args()
-    
-    # Start auto-send scheduler
-    start_auto_send_scheduler()
-    
+
+    # Scheduler already started at module load, but ensure it's running
+    ensure_scheduler_started()
+
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║           Coach Outreach Pro - Enterprise Edition            ║
