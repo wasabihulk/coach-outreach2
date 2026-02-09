@@ -1419,7 +1419,10 @@ HTML_TEMPLATE = '''
                     <div>
                         <div class="card">
                             <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-                                Coach Responses
+                                <span onclick="toggleResponses()" style="cursor:pointer;display:flex;align-items:center;gap:8px;">
+                                    Coach Responses <span id="responses-count" style="opacity:0.6;font-weight:normal;"></span>
+                                    <span id="responses-arrow" style="transition:transform 0.2s;font-size:12px;">▼</span>
+                                </span>
                                 <button class="btn btn-secondary btn-sm" onclick="checkInbox()">Check Inbox</button>
                             </div>
                             <div id="recent-responses" style="max-height:350px;overflow-y:auto;">
@@ -2351,7 +2354,9 @@ HTML_TEMPLATE = '''
                 const res = await fetch('/api/responses/recent');
                 const data = await res.json();
                 const el = document.getElementById('recent-responses');
+                const countEl = document.getElementById('responses-count');
                 if (data.responses && data.responses.length) {
+                    if (countEl) countEl.textContent = `(${data.responses.length})`;
                     // Analyze sentiment for each response (show up to 20 in scrollable list)
                     const responsesWithSentiment = await Promise.all(data.responses.slice(0, 20).map(async r => {
                         try {
@@ -2398,6 +2403,7 @@ HTML_TEMPLATE = '''
                         `;
                     }).join('');
                 } else {
+                    if (countEl) countEl.textContent = '(0)';
                     el.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon" style="font-size:32px;color:var(--accent);">—</div>
@@ -2408,7 +2414,7 @@ HTML_TEMPLATE = '''
                 }
             } catch(e) { console.error(e); }
         }
-        
+
         async function loadHotLeads() {
             try {
                 const res = await fetch('/api/responses/hot-leads');
@@ -4043,13 +4049,13 @@ HTML_TEMPLATE = '''
             try {
                 const res = await fetch('/api/auto-send/status');
                 const data = await res.json();
-                
-                document.getElementById('last-auto-send').textContent = 
-                    data.last_run ? new Date(data.last_run).toLocaleString() : 'Never';
-                document.getElementById('next-auto-send').textContent = 
-                    data.next_run ? new Date(data.next_run).toLocaleString() : 
-                    (data.enabled ? 'Today (random time)' : 'Auto-send disabled');
-                    
+
+                document.getElementById('last-auto-send').textContent =
+                    data.last_run ? new Date(data.last_run).toLocaleString() : 'No emails sent yet';
+                document.getElementById('next-auto-send').textContent =
+                    data.next_run ? new Date(data.next_run).toLocaleString() :
+                    (data.enabled ? 'Scheduled' : 'Auto-send disabled');
+
                 // Update toggle state
                 const toggle = document.getElementById('auto-send-toggle');
                 if (toggle) toggle.checked = data.enabled;
@@ -4411,6 +4417,20 @@ HTML_TEMPLATE = '''
                 arrow.style.transform = 'rotate(-90deg)';
             } else {
                 list.style.display = 'block';
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        let responsesCollapsed = false;
+        function toggleResponses() {
+            const container = document.getElementById('recent-responses');
+            const arrow = document.getElementById('responses-arrow');
+            responsesCollapsed = !responsesCollapsed;
+            if (responsesCollapsed) {
+                container.style.display = 'none';
+                arrow.style.transform = 'rotate(-90deg)';
+            } else {
+                container.style.display = 'block';
                 arrow.style.transform = 'rotate(0deg)';
             }
         }
@@ -8448,10 +8468,41 @@ def ensure_scheduler_started():
 def api_auto_send_status():
     """Get auto-send status."""
     current_settings = load_settings()
+    enabled = current_settings.get('email', {}).get('auto_send_enabled', False)
+
+    # Compute next_run based on stored send time
+    stored_time = current_settings.get('email', {}).get('auto_send_time', '')
+    next_run_str = None
+    if stored_time and ':' in stored_time:
+        try:
+            h, m = stored_time.split(':')[:2]
+            h, m = int(h), int(m)
+            now = datetime.now()
+            send_today = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if now >= send_today:
+                # Already past send time today, show tomorrow
+                send_today += timedelta(days=1)
+            next_run_str = send_today.isoformat()
+        except:
+            pass
+
+    # Try to get last_run from Supabase (most recent sent email)
+    last_run_str = auto_send_state.get('last_run')
+    if not last_run_str and SUPABASE_AVAILABLE and _supabase_db:
+        try:
+            # Get the most recent auto-sent email
+            recent = _supabase_db.client.table('outreach').select('sent_at').eq('status', 'sent').order('sent_at', desc=True).limit(1).execute().data
+            if recent and recent[0].get('sent_at'):
+                last_run_str = recent[0]['sent_at']
+        except:
+            pass
+
     return jsonify({
         **auto_send_state,
-        'enabled': current_settings.get('email', {}).get('auto_send_enabled', False),
-        'emails_per_day': current_settings.get('email', {}).get('auto_send_count', 100)
+        'enabled': enabled,
+        'emails_per_day': current_settings.get('email', {}).get('auto_send_count', 100),
+        'last_run': last_run_str,
+        'next_run': next_run_str if enabled else None
     })
 
 
