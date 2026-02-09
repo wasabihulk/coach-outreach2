@@ -7940,7 +7940,16 @@ def auto_send_emails():
     auto_send_state['last_run'] = datetime.now().isoformat()
 
     try:
+        # Ensure athlete context is set for scheduler (use default from env)
+        if SUPABASE_AVAILABLE and _supabase_db and not _supabase_db._athlete_id:
+            default_email = os.environ.get('EMAIL_ADDRESS', 'underwoodkeelan@gmail.com')
+            default_name = os.environ.get('ATHLETE_NAME', 'Keelan Underwood')
+            athlete = _supabase_db.get_or_create_athlete(default_name, default_email)
+            if athlete:
+                logger.info(f"Auto-send: Set athlete context to {athlete.get('name', default_email)} (ID: {_supabase_db._athlete_id})")
+
         current_settings = load_settings()
+        logger.info(f"Auto-send settings: notifications={current_settings.get('notifications', {})}")
 
         # Check if auto-send is enabled
         if not current_settings.get('email', {}).get('auto_send_enabled', False):
@@ -8010,11 +8019,18 @@ def auto_send_emails():
                     logger.info(f"Auto-send: Sent {result['sent']} emails")
 
                     # Send notification if enabled
-                    if current_settings.get('notifications', {}).get('enabled'):
-                        send_phone_notification(
+                    notif_enabled = current_settings.get('notifications', {}).get('enabled', False)
+                    notif_channel = current_settings.get('notifications', {}).get('channel', '')
+                    logger.info(f"Auto-send notification check: enabled={notif_enabled}, channel={notif_channel}")
+
+                    if notif_enabled:
+                        success = send_phone_notification(
                             title="Emails Sent!",
                             message=f"Auto-sent {result['sent']} emails to coaches. {result.get('intro', 0)} intros, {result.get('followup1', 0)} follow-up 1s, {result.get('followup2', 0)} follow-up 2s."
                         )
+                        logger.info(f"Auto-send notification result: {success}")
+                    else:
+                        logger.warning("Auto-send: Notifications disabled, skipping notification")
 
                 # Notify on failures
                 if result.get('errors', 0) > 0 or result.get('error'):
