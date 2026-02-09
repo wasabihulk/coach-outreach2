@@ -155,7 +155,9 @@ def load_settings() -> Dict:
     # Load from Supabase - the only source of truth
     if SUPABASE_AVAILABLE and _supabase_db:
         try:
+            athlete_id = _supabase_db._athlete_id
             db_settings = _supabase_db.get_settings()
+            logger.debug(f"load_settings: athlete_id={athlete_id}, db_settings={db_settings}")
             if db_settings:
                 # Apply Supabase settings
                 if db_settings.get('auto_send_enabled') is not None:
@@ -172,6 +174,8 @@ def load_settings() -> Dict:
                     settings['notifications']['channel'] = db_settings['ntfy_channel']
                 if db_settings.get('auto_send_time'):
                     settings['email']['auto_send_time'] = db_settings['auto_send_time']
+            else:
+                logger.warning(f"load_settings: No settings found for athlete_id={athlete_id}")
         except Exception as e:
             try: logger.warning(f"Could not load Supabase settings: {e}")
             except: pass
@@ -7940,13 +7944,16 @@ def auto_send_emails():
     auto_send_state['last_run'] = datetime.now().isoformat()
 
     try:
-        # Ensure athlete context is set for scheduler (use default from env)
-        if SUPABASE_AVAILABLE and _supabase_db and not _supabase_db._athlete_id:
+        # ALWAYS set athlete context for scheduler (web requests may have changed it)
+        # This fixes a race condition where web requests modify the shared _athlete_id
+        if SUPABASE_AVAILABLE and _supabase_db:
             default_email = os.environ.get('EMAIL_ADDRESS', 'underwoodkeelan@gmail.com')
             default_name = os.environ.get('ATHLETE_NAME', 'Keelan Underwood')
             athlete = _supabase_db.get_or_create_athlete(default_name, default_email)
             if athlete:
                 logger.info(f"Auto-send: Set athlete context to {athlete.get('name', default_email)} (ID: {_supabase_db._athlete_id})")
+            else:
+                logger.error(f"Auto-send: Failed to get/create athlete for {default_email}")
 
         current_settings = load_settings()
         logger.info(f"Auto-send settings: notifications={current_settings.get('notifications', {})}")
@@ -8625,9 +8632,11 @@ def send_phone_notification(title: str, message: str, channel: str = None):
     try:
         current_settings = load_settings()
         channel = channel or current_settings.get('notifications', {}).get('channel', '')
-        
+        notif_enabled = current_settings.get('notifications', {}).get('enabled', False)
+        logger.info(f"send_phone_notification: channel={channel}, enabled={notif_enabled}, title={title[:30]}")
+
         if not channel:
-            logger.warning("No notification channel configured")
+            logger.warning("No notification channel configured - check NTFY_CHANNEL env var or settings")
             return False
         
         # Ensure title is safe for headers (latin-1 compatible)
