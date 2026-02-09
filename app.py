@@ -175,6 +175,15 @@ def load_settings() -> Dict:
                     settings['notifications']['channel'] = db_settings['ntfy_channel']
                 if db_settings.get('auto_send_time'):
                     settings['email']['auto_send_time'] = db_settings['auto_send_time']
+                if db_settings.get('email_sequence'):
+                    try:
+                        import json
+                        seq = db_settings['email_sequence']
+                        if isinstance(seq, str):
+                            seq = json.loads(seq)
+                        settings['email']['sequence'] = seq
+                    except:
+                        pass
             else:
                 logger.warning(f"load_settings: No settings found for athlete_id={athlete_id}")
         except Exception as e:
@@ -1626,23 +1635,12 @@ HTML_TEMPLATE = '''
                                     <p style="font-size:11px;color:var(--muted);margin-top:4px;">Minimum wait time before sending the next email in sequence to a coach.</p>
                                 </div>
                                 <div class="form-group" style="margin:0;">
-                                    <label style="font-size:12px;">Email Sequence</label>
-                                    <div style="font-size:12px;color:var(--muted);padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
-                                        1. <strong>Intro Email</strong> - First contact with the coach<br>
-                                        2. <strong>Follow-up 1</strong> - Sent after {days} days<br>
-                                        3. <strong>Follow-up 2</strong> - Final follow-up
-                                    </div>
-                                </div>
-                                <div class="form-group" style="margin:0;">
-                                    <label style="font-size:12px;">Template Mode</label>
-                                    <select id="template-mode">
-                                        <option value="auto">Auto (match template to coach role)</option>
-                                        <option value="manual">Manual (choose specific template)</option>
-                                    </select>
-                                </div>
-                                <div id="template-select-wrapper" style="display:none;" class="form-group" style="margin:0;">
-                                    <label style="font-size:12px;">Select Template</label>
-                                    <select id="template-select"></select>
+                                    <label style="font-size:12px;display:flex;justify-content:space-between;align-items:center;">
+                                        Email Sequence
+                                        <button class="btn btn-secondary btn-sm" onclick="addSequenceStep()" style="padding:2px 8px;font-size:10px;">+ ADD STEP</button>
+                                    </label>
+                                    <div id="sequence-builder" style="margin-top:8px;"></div>
+                                    <p style="font-size:10px;color:var(--muted);margin-top:6px;">Drag to reorder. Each coach goes through this sequence in order.</p>
                                 </div>
                             </div>
                         </div>
@@ -2182,7 +2180,7 @@ HTML_TEMPLATE = '''
         function loadPageData(page) {
             if (page === 'home') loadDashboard();
             if (page === 'find') initSchoolSearch();
-            if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); loadDaysBetween(); }
+            if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); loadDaysBetween(); loadSequence(); }
             if (page === 'dms') { loadDMQueue(); loadTemplates('dm'); }
             if (page === 'track') loadTrackStats();
             if (page === 'admin') loadAdminPanel();
@@ -4182,6 +4180,117 @@ HTML_TEMPLATE = '''
                 const select = document.getElementById('days-between');
                 if (select) select.value = days;
             } catch(e) {}
+        }
+
+        // Email Sequence Builder
+        let emailSequence = [
+            { type: 'intro', target: 'both', wait_days: 0, template_id: null },
+            { type: 'followup', target: 'both', wait_days: 4, template_id: null },
+            { type: 'followup', target: 'both', wait_days: 4, template_id: null }
+        ];
+
+        function renderSequenceBuilder() {
+            const container = document.getElementById('sequence-builder');
+            if (!container) return;
+
+            container.innerHTML = emailSequence.map((step, i) => `
+                <div class="sequence-step" data-index="${i}" draggable="true" style="display:flex;align-items:center;gap:8px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;margin-bottom:6px;cursor:grab;">
+                    <span style="color:var(--muted);font-size:11px;min-width:20px;">${i + 1}.</span>
+                    <select onchange="updateSequenceStep(${i}, 'type', this.value)" style="flex:1;padding:6px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:3px;font-size:11px;">
+                        <option value="intro" ${step.type === 'intro' ? 'selected' : ''}>Intro Email</option>
+                        <option value="followup" ${step.type === 'followup' ? 'selected' : ''}>Follow-up</option>
+                    </select>
+                    <select onchange="updateSequenceStep(${i}, 'target', this.value)" style="width:90px;padding:6px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:3px;font-size:11px;">
+                        <option value="both" ${step.target === 'both' ? 'selected' : ''}>Both</option>
+                        <option value="position" ${step.target === 'position' ? 'selected' : ''}>Position</option>
+                        <option value="rc" ${step.target === 'rc' ? 'selected' : ''}>RC Only</option>
+                    </select>
+                    ${i > 0 ? `
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <span style="font-size:10px;color:var(--muted);">wait</span>
+                            <input type="number" value="${step.wait_days}" min="1" max="30" onchange="updateSequenceStep(${i}, 'wait_days', parseInt(this.value))" style="width:45px;padding:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:3px;font-size:11px;text-align:center;">
+                            <span style="font-size:10px;color:var(--muted);">days</span>
+                        </div>
+                    ` : '<span style="font-size:10px;color:var(--muted);width:80px;">First email</span>'}
+                    ${emailSequence.length > 1 ? `<button onclick="removeSequenceStep(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:4px;font-size:14px;" title="Remove">&times;</button>` : ''}
+                </div>
+            `).join('');
+
+            // Add drag-and-drop handlers
+            container.querySelectorAll('.sequence-step').forEach(el => {
+                el.addEventListener('dragstart', handleDragStart);
+                el.addEventListener('dragover', handleDragOver);
+                el.addEventListener('drop', handleDrop);
+                el.addEventListener('dragend', handleDragEnd);
+            });
+        }
+
+        let draggedIndex = null;
+        function handleDragStart(e) {
+            draggedIndex = parseInt(e.target.dataset.index);
+            e.target.style.opacity = '0.5';
+        }
+        function handleDragOver(e) {
+            e.preventDefault();
+        }
+        function handleDrop(e) {
+            e.preventDefault();
+            const targetIndex = parseInt(e.target.closest('.sequence-step').dataset.index);
+            if (draggedIndex !== null && draggedIndex !== targetIndex) {
+                const [removed] = emailSequence.splice(draggedIndex, 1);
+                emailSequence.splice(targetIndex, 0, removed);
+                renderSequenceBuilder();
+                saveSequence();
+            }
+        }
+        function handleDragEnd(e) {
+            e.target.style.opacity = '1';
+            draggedIndex = null;
+        }
+
+        function updateSequenceStep(index, field, value) {
+            emailSequence[index][field] = value;
+            saveSequence();
+        }
+
+        function addSequenceStep() {
+            const lastStep = emailSequence[emailSequence.length - 1];
+            emailSequence.push({
+                type: 'followup',
+                target: 'both',
+                wait_days: lastStep?.wait_days || 4,
+                template_id: null
+            });
+            renderSequenceBuilder();
+            saveSequence();
+        }
+
+        function removeSequenceStep(index) {
+            if (emailSequence.length <= 1) return;
+            emailSequence.splice(index, 1);
+            renderSequenceBuilder();
+            saveSequence();
+        }
+
+        async function saveSequence() {
+            try {
+                await fetch('/api/settings/sequence', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ sequence: emailSequence })
+                });
+            } catch(e) { console.error('Failed to save sequence:', e); }
+        }
+
+        async function loadSequence() {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                if (data.email?.sequence && Array.isArray(data.email.sequence)) {
+                    emailSequence = data.email.sequence;
+                }
+                renderSequenceBuilder();
+            } catch(e) { renderSequenceBuilder(); }
         }
 
         // Init with error handling
@@ -8802,6 +8911,46 @@ def api_settings_days_between():
 
     logger.info(f"Days between emails set to {days}")
     return jsonify({'success': True, 'days': days})
+
+
+@app.route('/api/settings/sequence', methods=['POST'])
+@login_required
+def api_settings_sequence():
+    """Save the custom email sequence."""
+    current_settings = load_settings()
+    data = request.get_json() or {}
+    sequence = data.get('sequence', [])
+
+    # Validate sequence
+    if not isinstance(sequence, list):
+        return jsonify({'success': False, 'error': 'Invalid sequence format'}), 400
+
+    # Validate each step
+    valid_types = ['intro', 'followup']
+    valid_targets = ['both', 'position', 'rc']
+    for i, step in enumerate(sequence):
+        if not isinstance(step, dict):
+            return jsonify({'success': False, 'error': f'Invalid step {i+1}'}), 400
+        if step.get('type') not in valid_types:
+            step['type'] = 'followup'
+        if step.get('target') not in valid_targets:
+            step['target'] = 'both'
+        if not isinstance(step.get('wait_days'), int) or step['wait_days'] < 0:
+            step['wait_days'] = 4 if i > 0 else 0
+
+    current_settings.setdefault('email', {})['sequence'] = sequence
+    save_settings(current_settings)
+
+    # Also save to Supabase
+    if SUPABASE_AVAILABLE and _supabase_db:
+        try:
+            import json
+            _supabase_db.save_settings(email_sequence=json.dumps(sequence))
+        except Exception as e:
+            logger.warning(f"Failed to save sequence to Supabase: {e}")
+
+    logger.info(f"Email sequence updated: {len(sequence)} steps")
+    return jsonify({'success': True, 'sequence': sequence})
 
 
 @app.route('/api/email/pause', methods=['GET', 'POST', 'DELETE'])
