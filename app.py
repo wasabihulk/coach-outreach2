@@ -2079,10 +2079,18 @@ HTML_TEMPLATE = '''
                 </select>
             </div>
             <div class="form-group"><label>Template Name</label><input type="text" id="new-tpl-name" placeholder="My Template"></div>
-            <div class="form-group" id="tpl-subject-group"><label>Subject Line</label><input type="text" id="new-tpl-subject" placeholder="{grad_year} {position} - {athlete_name}"></div>
-            <div class="form-group"><label>Body</label><textarea id="new-tpl-body" rows="10" placeholder="Coach {coach_name},..."></textarea></div>
-            <div style="background:var(--bg3);border:1px solid var(--border);padding:12px;margin-bottom:20px;font-family:monospace;font-size:11px;color:var(--muted);">
-                <strong style="color:var(--accent);">Variables:</strong> {coach_name}, {school}, {athlete_name}, {position}, {grad_year}, {height}, {weight}, {gpa}, {hudl_link}, {phone}, {email}
+            <div class="form-group" id="tpl-subject-group">
+                <label>Subject Line</label>
+                <input type="text" id="new-tpl-subject" placeholder="{grad_year} {position} - {athlete_name}">
+                <div id="subject-variable-chips" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;"></div>
+            </div>
+            <div class="form-group">
+                <label>Body</label>
+                <textarea id="new-tpl-body" rows="10" placeholder="Coach {coach_name},..."></textarea>
+                <div style="background:var(--bg3);border:1px solid var(--border);padding:10px;margin-top:8px;border-radius:6px;">
+                    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;"><strong style="color:var(--accent);">Click to insert:</strong></div>
+                    <div id="body-variable-chips" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+                </div>
             </div>
             <button class="btn btn-primary" id="tpl-save-btn" onclick="createTemplate()">SAVE TEMPLATE</button>
         </div>
@@ -2096,6 +2104,47 @@ HTML_TEMPLATE = '''
         let templates = [];
         let dmQueue = [];
         let hudlUrl = '';
+
+        // Template variable chips - initialize
+        const subjectVariables = [
+            '{grad_year}', '{position}', '{athlete_name}', '{school}'
+        ];
+        const bodyVariables = [
+            '{coach_name}', '{school}', '{athlete_name}', '{position}',
+            '{grad_year}', '{height}', '{weight}', '{gpa}',
+            '{hudl_link}', '{phone}', '{email}'
+        ];
+
+        function initVariableChips() {
+            const chipStyle = 'background:var(--bg2);border:1px solid var(--border);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:monospace;transition:all 0.15s;';
+            const subjectContainer = document.getElementById('subject-variable-chips');
+            const bodyContainer = document.getElementById('body-variable-chips');
+
+            if (subjectContainer) {
+                subjectContainer.innerHTML = subjectVariables.map(v =>
+                    `<span onclick="insertVariable('${v}', 'new-tpl-subject')" style="${chipStyle}" onmouseover="this.style.background='var(--accent)';this.style.color='white';this.style.borderColor='var(--accent)';" onmouseout="this.style.background='var(--bg2)';this.style.color='inherit';this.style.borderColor='var(--border)';">${v}</span>`
+                ).join('');
+            }
+            if (bodyContainer) {
+                bodyContainer.innerHTML = bodyVariables.map(v =>
+                    `<span onclick="insertVariable('${v}', 'new-tpl-body')" style="${chipStyle}" onmouseover="this.style.background='var(--accent)';this.style.color='white';this.style.borderColor='var(--accent)';" onmouseout="this.style.background='var(--bg2)';this.style.color='inherit';this.style.borderColor='var(--border)';">${v}</span>`
+                ).join('');
+            }
+        }
+
+        function insertVariable(varText, targetId) {
+            const el = document.getElementById(targetId);
+            if (!el) return;
+            const start = el.selectionStart || el.value.length;
+            const end = el.selectionEnd || el.value.length;
+            const text = el.value;
+            el.value = text.substring(0, start) + varText + text.substring(end);
+            el.selectionStart = el.selectionEnd = start + varText.length;
+            el.focus();
+        }
+
+        // Initialize variable chips when DOM is ready
+        document.addEventListener('DOMContentLoaded', initVariableChips);
         
         // Tab switching
         document.querySelectorAll('.tab').forEach(tab => {
@@ -3011,20 +3060,21 @@ HTML_TEMPLATE = '''
         async function editTemplate(id) {
             const t = templates.find(x => x.id === id);
             if (!t) return;
-            
+
             document.getElementById('template-modal').classList.add('active');
             document.getElementById('new-tpl-type').value = t.template_type;
             document.getElementById('new-tpl-name').value = t.name;
             document.getElementById('new-tpl-subject').value = t.subject || '';
             document.getElementById('new-tpl-body').value = t.body || '';
-            
+
             // Store editing ID
             document.getElementById('template-modal').dataset.editId = id;
             document.querySelector('#template-modal .modal-title').textContent = 'Edit Template';
             document.getElementById('tpl-save-btn').textContent = 'Save Changes';
-            
+
             // Show/hide subject based on type
             document.getElementById('tpl-subject-group').style.display = t.template_type === 'dm' ? 'none' : 'block';
+            initVariableChips();  // Populate clickable variable chips
         }
         
         async function toggleTemplate(id, enabled) {
@@ -3336,6 +3386,7 @@ HTML_TEMPLATE = '''
             document.getElementById('new-tpl-subject').value = '';
             document.getElementById('new-tpl-body').value = '';
             document.getElementById('tpl-subject-group').style.display = type === 'dm' ? 'none' : 'block';
+            initVariableChips();  // Populate clickable variable chips
         }
         function closeTemplateModal() { 
             const modal = document.getElementById('template-modal');
