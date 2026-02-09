@@ -2268,7 +2268,14 @@ HTML_TEMPLATE = '''
                 } else {
                     bestTimeEl.innerHTML = '';
                 }
-            } catch(e) { console.error(e); }
+            } catch(e) {
+                console.error('loadTrackingStats error:', e);
+                // Show error states instead of staying at loading
+                document.getElementById('perf-sent').textContent = '—';
+                document.getElementById('perf-opened').textContent = '—';
+                const el = document.getElementById('recent-opens');
+                if (el) el.innerHTML = '<div class="text-muted" style="padding:16px;">Could not load data</div>';
+            }
         }
 
         async function backfillTracking() {
@@ -2334,8 +2341,10 @@ HTML_TEMPLATE = '''
                     }
                 }
             } catch(e) {
-                console.error(e);
-                document.getElementById('tomorrow-breakdown').textContent = 'Error loading preview';
+                console.error('loadTomorrowPreview error:', e);
+                document.getElementById('tomorrow-count').textContent = '—';
+                document.getElementById('optimal-time').textContent = '—';
+                document.getElementById('tomorrow-breakdown').textContent = 'Could not load preview';
             }
         }
 
@@ -2482,7 +2491,11 @@ HTML_TEMPLATE = '''
                         </div>
                     `;
                 }
-            } catch(e) { console.error(e); }
+            } catch(e) {
+                console.error('loadRecentResponses error:', e);
+                const el = document.getElementById('recent-responses');
+                if (el) el.innerHTML = '<div class="text-muted" style="padding:16px;">Could not load responses</div>';
+            }
         }
 
         async function loadHotLeads() {
@@ -4863,6 +4876,7 @@ def track_open(tracking_id):
 
 
 @app.route('/api/tracking/stats')
+@login_required
 def tracking_stats():
     """Get email tracking statistics from Supabase."""
     # Get stats from Supabase (persistent across deploys)
@@ -8627,6 +8641,7 @@ def api_auto_send_status():
 
 
 @app.route('/api/auto-send/tomorrow-preview')
+@login_required
 def api_tomorrow_preview():
     """Preview what emails will be sent tomorrow."""
     try:
