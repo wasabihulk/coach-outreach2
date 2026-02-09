@@ -177,7 +177,6 @@ def load_settings() -> Dict:
                     settings['email']['auto_send_time'] = db_settings['auto_send_time']
                 if db_settings.get('email_sequence'):
                     try:
-                        import json
                         seq = db_settings['email_sequence']
                         if isinstance(seq, str):
                             seq = json.loads(seq)
@@ -8146,7 +8145,6 @@ def api_sheets_credentials():
     
     try:
         # Validate JSON
-        import json
         creds = json.loads(credentials_content)
         
         # Save to credentials.json
@@ -8944,7 +8942,6 @@ def api_settings_sequence():
     # Also save to Supabase
     if SUPABASE_AVAILABLE and _supabase_db:
         try:
-            import json
             _supabase_db.save_settings(email_sequence=json.dumps(sequence))
         except Exception as e:
             logger.warning(f"Failed to save sequence to Supabase: {e}")
