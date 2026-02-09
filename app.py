@@ -1105,36 +1105,40 @@ HTML_TEMPLATE = '''
            ============================================ */
         @media (max-width: 768px) {
             header {
-                flex-direction: column;
+                flex-direction: row;
+                flex-wrap: nowrap;
                 padding: 10px 14px;
-                gap: 4px;
-                align-items: stretch;
+                gap: 8px;
+                align-items: center;
+                justify-content: space-between;
             }
             .header-left {
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
-                width: 100%;
+                justify-content: flex-start;
+                flex: 1;
                 order: 1;
+                min-width: 0;
             }
             .header-center {
                 display: none;
             }
             .header-actions {
-                position: absolute;
-                right: 14px;
-                top: 10px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
                 order: 2;
+                flex-shrink: 0;
             }
             .athlete-name {
-                font-size: 16px;
-                max-width: 60vw;
+                font-size: 14px;
+                max-width: 40vw;
                 overflow: hidden;
                 text-overflow: ellipsis;
             }
             #header-info {
-                font-size: 12px;
-                margin-left: 8px;
+                font-size: 11px;
+                margin-left: 6px;
                 white-space: nowrap;
             }
             #connection-status { display: none; }
@@ -1379,10 +1383,6 @@ HTML_TEMPLATE = '''
                         <div class="stat-value" id="stat-opens">0%</div>
                         <div class="stat-label">Open Rate</div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-value" id="stat-followups">0</div>
-                        <div class="stat-label">Follow-ups Due</div>
-                    </div>
                     <div class="stat" style="cursor:pointer;" onclick="window.open(hudlUrl, '_blank')" title="View Film">
                         <div class="stat-value success" id="stat-hudl-views"><span class="spinner" style="width:24px;height:24px;"></span></div>
                         <div class="stat-label">Film Views</div>
@@ -1506,8 +1506,11 @@ HTML_TEMPLATE = '''
                 </div>
 
                 <div class="card">
-                    <div class="card-header">My Selected Schools</div>
-                    <div id="my-schools-list" style="padding:12px;">Loading...</div>
+                    <div class="card-header" onclick="toggleMySchools()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+                        <span>My Selected Schools <span id="my-schools-count" style="opacity:0.6;font-weight:normal;"></span></span>
+                        <span id="my-schools-arrow" style="transition:transform 0.2s;">▼</span>
+                    </div>
+                    <div id="my-schools-list" style="padding:12px;max-height:300px;overflow-y:auto;">Loading...</div>
                 </div>
 
                 {% if is_admin %}
@@ -1570,10 +1573,6 @@ HTML_TEMPLATE = '''
                         <div class="stat-label">Sent Today</div>
                     </div>
                     <div class="stat">
-                        <div class="stat-value" id="email-followups">0</div>
-                        <div class="stat-label">Follow-ups Due</div>
-                    </div>
-                    <div class="stat">
                         <div class="stat-value success" id="email-responded">0</div>
                         <div class="stat-label">Responded</div>
                     </div>
@@ -1619,7 +1618,7 @@ HTML_TEMPLATE = '''
                         <p class="text-sm text-muted mb-4">Sends to coaches not emailed recently. Each coach gets the next email in sequence.</p>
                         <div style="display:flex;gap:10px;flex-wrap:wrap;">
                             <button class="btn btn-secondary" onclick="previewEmail()">Preview</button>
-                            <button class="btn btn-secondary" onclick="sendTestEmail()">Test Email</button>
+                            {% if is_admin %}<button class="btn btn-secondary" onclick="sendTestEmail()">Test Email</button>{% endif %}
                             <button class="btn btn-success" onclick="sendEmails()">SEND EMAILS</button>
                         </div>
                         <div id="email-log" class="mt-4 text-sm text-muted"></div>
@@ -1630,6 +1629,7 @@ HTML_TEMPLATE = '''
                         <div id="email-templates"></div>
                         <button class="btn btn-secondary btn-sm mt-4" onclick="openCreateTemplate('email')">+ New Template</button>
 
+                        {% if is_admin %}
                         <div class="card-header mt-4" style="display:flex;justify-content:space-between;align-items:center;">
                             Template Performance
                             <button class="btn btn-secondary btn-sm" onclick="loadTemplatePerformance()">Refresh</button>
@@ -1637,14 +1637,17 @@ HTML_TEMPLATE = '''
                         <div id="template-performance" style="font-size:12px;">
                             <p class="text-muted text-sm">Loading performance data...</p>
                         </div>
+                        {% endif %}
                     </div>
                 </div>
 
-                <!-- Pause Controls Footer -->
+                {% if is_admin %}
+                <!-- Pause Controls Footer - Admin only -->
                 <div id="email-pause-footer" style="margin-top:20px;padding:14px 18px;background:var(--bg3);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
                     <span id="email-mode-status" style="font-family:monospace;font-size:13px;">Auto-send active</span>
                     <button class="btn btn-secondary btn-sm" id="pause-toggle-btn" onclick="togglePause()">PAUSE</button>
                 </div>
+                {% endif %}
             </div>
 
             <!-- DMS PAGE -->
@@ -2190,7 +2193,7 @@ HTML_TEMPLATE = '''
                     }).join(' & ');
                     bestTimeEl.innerHTML = `Best send times: <strong style="color:var(--accent);">${times}</strong>`;
                 } else {
-                    bestTimeEl.innerHTML = 'Send more emails to discover best times';
+                    bestTimeEl.innerHTML = '';
                 }
             } catch(e) { console.error(e); }
         }
@@ -4398,16 +4401,33 @@ HTML_TEMPLATE = '''
         }
 
         // ========== SCHOOL SELECTION (MY SCHOOLS) ==========
+        let mySchoolsCollapsed = false;
+        function toggleMySchools() {
+            const list = document.getElementById('my-schools-list');
+            const arrow = document.getElementById('my-schools-arrow');
+            mySchoolsCollapsed = !mySchoolsCollapsed;
+            if (mySchoolsCollapsed) {
+                list.style.display = 'none';
+                arrow.style.transform = 'rotate(-90deg)';
+            } else {
+                list.style.display = 'block';
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
+
         async function loadMySchools() {
             try {
                 const res = await fetch('/api/athlete/schools');
                 const data = await res.json();
                 const el = document.getElementById('my-schools-list');
+                const countEl = document.getElementById('my-schools-count');
                 if (!el) return;
                 if (!data.schools || !data.schools.length) {
                     el.innerHTML = '<div class="empty-state"><div class="empty-state-title">No schools selected</div><div class="empty-state-text">Search above and add schools to your list.</div></div>';
+                    if (countEl) countEl.textContent = '(0)';
                     return;
                 }
+                if (countEl) countEl.textContent = `(${data.schools.length})`;
                 const posRole = data.athlete_position || 'OL';
                 el.innerHTML = data.schools.map(s => {
                     const rcStatus = s.rc_has_email
