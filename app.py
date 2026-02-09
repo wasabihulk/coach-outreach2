@@ -4255,12 +4255,15 @@ HTML_TEMPLATE = '''
                         division: document.getElementById('as-division').value,
                         conference: document.getElementById('as-conference').value,
                         state: document.getElementById('as-state').value,
-                        staff_url: document.getElementById('as-url').value
+                        staff_url: document.getElementById('as-url').value,
+                        request_id: window.currentRequestId || null
                     })
                 });
                 const data = await res.json();
                 if (data.success) {
-                    showToast(`School "${schoolName}" added!`, 'success');
+                    let msg = `School "${schoolName}" added!`;
+                    if (data.notified_athlete) msg += ' Athlete notified.';
+                    showToast(msg, 'success');
                     // Show manual entry form
                     document.getElementById('scrape-results').style.display = 'block';
                     document.getElementById('scrape-status').innerHTML = '<span style="color:var(--success);">School added. Now add coaches manually below.</span>';
@@ -4268,6 +4271,7 @@ HTML_TEMPLATE = '''
                     document.getElementById('manual-entry').style.display = 'block';
                     document.getElementById('staff-link').href = document.getElementById('as-url').value || '#';
                     window.currentSchoolName = schoolName;
+                    window.currentRequestId = null;
                     loadSchoolRequests();
                 } else {
                     showToast(data.error || 'Failed to add school', 'error');
@@ -4292,7 +4296,8 @@ HTML_TEMPLATE = '''
                         division: document.getElementById('as-division').value,
                         conference: document.getElementById('as-conference').value,
                         state: document.getElementById('as-state').value,
-                        staff_url: staffUrl
+                        staff_url: staffUrl,
+                        request_id: window.currentRequestId || null
                     })
                 });
                 const addData = await addRes.json();
@@ -4300,6 +4305,10 @@ HTML_TEMPLATE = '''
                     showToast(addData.error || 'Failed to add school', 'error');
                     return;
                 }
+                if (addData.notified_athlete) {
+                    showToast('Athlete notified of new school', 'success');
+                }
+                window.currentRequestId = null;
             } catch(e) { showToast('Error adding school: ' + e.message, 'error'); return; }
 
             // Now scrape
@@ -9036,6 +9045,7 @@ def api_admin_add_school():
         conference = data.get('conference', '').strip()
         state = data.get('state', '').strip()
         staff_url = data.get('staff_url', '').strip()
+        request_id = data.get('request_id')
 
         if not school_name:
             return jsonify({'error': 'school_name required'}), 400
@@ -9051,19 +9061,57 @@ def api_admin_add_school():
 
         # Get the school to return its ID
         school = _supabase_db.get_school(school_name)
+        notified_athlete = False
 
-        # Mark any pending requests for this school as completed
-        try:
-            _supabase_db.client.table('school_requests').update({
-                'status': 'completed',
-                'completed_at': datetime.now(timezone.utc).isoformat()
-            }).ilike('school_name', f'%{school_name}%').execute()
-        except:
-            pass
+        # If this came from a school request, notify the athlete and auto-add the school
+        if request_id:
+            try:
+                # Get the request details
+                req_result = _supabase_db.client.table('school_requests').select('*').eq('id', request_id).limit(1).execute()
+                if req_result.data:
+                    req = req_result.data[0]
+                    athlete_id = req.get('athlete_id')
+                    athlete_name = req.get('athlete_name', 'Athlete')
+
+                    # Mark request as completed
+                    _supabase_db.client.table('school_requests').update({
+                        'status': 'completed',
+                        'completed_at': datetime.now(timezone.utc).isoformat()
+                    }).eq('id', request_id).execute()
+
+                    # Auto-add the school to the athlete's list
+                    if athlete_id and school:
+                        try:
+                            _supabase_db.add_athlete_school(athlete_id, school['id'], 'both')
+                            logger.info(f"Auto-added {school_name} to athlete {athlete_id}'s list")
+                        except Exception as ae:
+                            logger.warning(f"Could not auto-add school to athlete list: {ae}")
+
+                    # Send notification to the athlete
+                    try:
+                        send_phone_notification(
+                            title="School Added!",
+                            message=f"Great news! {school_name} has been added to the database and your school list."
+                        )
+                        notified_athlete = True
+                    except Exception as ne:
+                        logger.warning(f"Could not notify athlete: {ne}")
+            except Exception as re:
+                logger.warning(f"Could not process school request: {re}")
+        else:
+            # Mark any pending requests for this school as completed (legacy matching)
+            try:
+                _supabase_db.client.table('school_requests').update({
+                    'status': 'completed',
+                    'completed_at': datetime.now(timezone.utc).isoformat()
+                }).ilike('school_name', f'%{school_name}%').execute()
+            except:
+                pass
 
         return jsonify({
             'success': True,
             'school': school,
+            'notified_athlete': notified_athlete,
             'message': f'School "{school_name}" added successfully'
         })
     except Exception as e:
