@@ -1603,20 +1603,48 @@ HTML_TEMPLATE = '''
                             <div style="display:flex;justify-content:space-between;margin-top:6px;"><span style="color:var(--muted);">Next scheduled:</span> <span id="next-auto-send">Not scheduled</span></div>
                         </div>
 
-                        <div class="form-group">
-                            <label>Max Emails to Send</label>
-                            <input type="number" id="email-limit" value="100" min="1" max="100">
+                        <!-- Email Settings Toggle -->
+                        <div onclick="toggleEmailSettings()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;margin-bottom:12px;">
+                            <span style="font-weight:500;font-size:13px;">Email Settings</span>
+                            <span id="email-settings-arrow" style="transition:transform 0.2s;">▼</span>
                         </div>
-                        <div class="form-group">
-                            <label>Template Mode</label>
-                            <select id="template-mode">
-                                <option value="auto">Auto (sends correct template per coach)</option>
-                                <option value="manual">Choose specific template</option>
-                            </select>
-                        </div>
-                        <div id="template-select-wrapper" style="display:none" class="form-group">
-                            <label>Select Template</label>
-                            <select id="template-select"></select>
+                        <div id="email-settings-panel" style="display:none;padding:14px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;margin-bottom:16px;">
+                            <div style="display:grid;gap:14px;">
+                                <div class="form-group" style="margin:0;">
+                                    <label style="font-size:12px;">Max Emails Per Send</label>
+                                    <input type="number" id="email-limit" value="100" min="1" max="100">
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label style="font-size:12px;">Days Between Emails</label>
+                                    <select id="days-between" onchange="saveDaysBetween()">
+                                        <option value="2">2 days (faster outreach)</option>
+                                        <option value="3">3 days</option>
+                                        <option value="4" selected>4 days (recommended)</option>
+                                        <option value="5">5 days</option>
+                                        <option value="7">7 days (weekly)</option>
+                                    </select>
+                                    <p style="font-size:11px;color:var(--muted);margin-top:4px;">Minimum wait time before sending the next email in sequence to a coach.</p>
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label style="font-size:12px;">Email Sequence</label>
+                                    <div style="font-size:12px;color:var(--muted);padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
+                                        1. <strong>Intro Email</strong> - First contact with the coach<br>
+                                        2. <strong>Follow-up 1</strong> - Sent after {days} days<br>
+                                        3. <strong>Follow-up 2</strong> - Final follow-up
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label style="font-size:12px;">Template Mode</label>
+                                    <select id="template-mode">
+                                        <option value="auto">Auto (match template to coach role)</option>
+                                        <option value="manual">Manual (choose specific template)</option>
+                                    </select>
+                                </div>
+                                <div id="template-select-wrapper" style="display:none;" class="form-group" style="margin:0;">
+                                    <label style="font-size:12px;">Select Template</label>
+                                    <select id="template-select"></select>
+                                </div>
+                            </div>
                         </div>
                         <p class="text-sm text-muted mb-4">Sends to coaches not emailed recently. Each coach gets the next email in sequence.</p>
                         <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -2161,7 +2189,7 @@ HTML_TEMPLATE = '''
         function loadPageData(page) {
             if (page === 'home') loadDashboard();
             if (page === 'find') initSchoolSearch();
-            if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); }
+            if (page === 'email') { loadEmailPage(); loadTemplates('email'); loadEmailQueueStatus(); loadTemplatePerformance(); loadDaysBetween(); }
             if (page === 'dms') { loadDMQueue(); loadTemplates('dm'); }
             if (page === 'track') loadTrackStats();
             if (page === 'admin') loadAdminPanel();
@@ -4112,7 +4140,44 @@ HTML_TEMPLATE = '''
                 if (toggle) toggle.checked = data.enabled;
             } catch(e) { /* silent fail */ }
         }
-        
+
+        // Email settings panel toggle
+        let emailSettingsExpanded = false;
+        function toggleEmailSettings() {
+            const panel = document.getElementById('email-settings-panel');
+            const arrow = document.getElementById('email-settings-arrow');
+            emailSettingsExpanded = !emailSettingsExpanded;
+            if (emailSettingsExpanded) {
+                panel.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            } else {
+                panel.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        async function saveDaysBetween() {
+            const days = document.getElementById('days-between').value;
+            try {
+                await fetch('/api/settings/days-between', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ days: parseInt(days) })
+                });
+                showToast(`Email spacing set to ${days} days`, 'success');
+            } catch(e) { showToast('Error saving setting', 'error'); }
+        }
+
+        async function loadDaysBetween() {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                const days = data.email?.days_between_emails || 4;
+                const select = document.getElementById('days-between');
+                if (select) select.value = days;
+            } catch(e) {}
+        }
+
         // Init with error handling
         console.log('Starting initialization...');
 
@@ -8699,6 +8764,34 @@ def api_settings_send_time():
             logger.warning(f"Failed to save send time to Supabase: {e}")
     logger.info(f"Auto-send time set to {time_val}")
     return jsonify({'success': True})
+
+
+@app.route('/api/settings/days-between', methods=['POST'])
+@login_required
+def api_settings_days_between():
+    """Set the days between follow-up emails."""
+    current_settings = load_settings()
+    data = request.get_json() or {}
+    days = data.get('days', 4)
+    try:
+        days = int(days)
+        if days < 1 or days > 30:
+            return jsonify({'success': False, 'error': 'Days must be between 1 and 30'}), 400
+    except:
+        return jsonify({'success': False, 'error': 'Invalid days value'}), 400
+
+    current_settings.setdefault('email', {})['days_between_emails'] = days
+    save_settings(current_settings)
+
+    # Also save to Supabase
+    if SUPABASE_AVAILABLE and _supabase_db:
+        try:
+            _supabase_db.save_settings(days_between_followups=days)
+        except Exception as e:
+            logger.warning(f"Failed to save days between to Supabase: {e}")
+
+    logger.info(f"Days between emails set to {days}")
+    return jsonify({'success': True, 'days': days})
 
 
 @app.route('/api/email/pause', methods=['GET', 'POST', 'DELETE'])
