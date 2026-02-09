@@ -4515,6 +4515,8 @@ def auth_status():
 @app.route('/health')
 def health_check():
     """Health check endpoint for Railway."""
+    # Start scheduler on first health check (Railway calls this after deploy)
+    ensure_scheduler_started()
     return jsonify({'status': 'healthy', 'version': '8.4.0'}), 200
 
 
@@ -8415,15 +8417,11 @@ def start_auto_send_scheduler():
 _scheduler_started = False
 
 def ensure_scheduler_started():
-    """Ensure scheduler is started (called once on first request)."""
+    """Ensure scheduler is started (called once)."""
     global _scheduler_started
     if not _scheduler_started:
         _scheduler_started = True
         start_auto_send_scheduler()
-
-# Start scheduler when module loads (for gunicorn)
-# This runs once when the app is imported
-ensure_scheduler_started()
 
 
 @app.route('/api/auto-send/status')
