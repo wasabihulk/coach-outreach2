@@ -387,6 +387,20 @@ def load_athlete_context():
     g.athlete_id = session.get('athlete_id')
     g.is_admin = session.get('is_admin', False)
     g.athlete_name = session.get('athlete_name', '')
+
+    # Fallback: If no session but only one athlete, use that athlete
+    # This helps when sessions aren't working or for single-user setups
+    if not g.athlete_id and _supabase_db:
+        try:
+            athletes = _supabase_db.client.table('athletes').select('id,name,is_admin').eq('is_admin', True).limit(1).execute()
+            if athletes.data:
+                g.athlete_id = athletes.data[0]['id']
+                g.is_admin = athletes.data[0].get('is_admin', False)
+                g.athlete_name = athletes.data[0].get('name', '')
+                logger.debug(f"Using fallback athlete_id: {g.athlete_id}")
+        except Exception as e:
+            logger.warning(f"Fallback athlete lookup failed: {e}")
+
     if g.athlete_id and _supabase_db:
         _supabase_db.set_context_athlete(g.athlete_id)
 
@@ -5222,6 +5236,8 @@ def api_stats():
         'emails_sent': 0,
         'responses': 0,
         'response_rate': 0,
+        'open_rate': 0,
+        'opened': 0,
         'followups_due': 0,
         'dms_sent': 0
     }
@@ -5241,6 +5257,8 @@ def api_stats():
             stats['emails_sent'] = outreach_stats.get('sent', 0)
             stats['responses'] = outreach_stats.get('replied', 0)
             stats['response_rate'] = outreach_stats.get('response_rate', 0)
+            stats['open_rate'] = outreach_stats.get('open_rate', 0)
+            stats['opened'] = outreach_stats.get('opened', 0)
 
             # DM stats
             dm_stats = _supabase_db.get_dm_stats()
@@ -5472,31 +5490,45 @@ def api_record_response():
 def api_templates():
     """Get all templates or create new user template."""
     try:
-        from enterprise.templates import get_template_manager
-        manager = get_template_manager()
-        
         if request.method == 'POST':
             data = request.get_json()
+            # Create in Supabase
+            if _supabase_db:
+                try:
+                    result = _supabase_db.create_template(
+                        name=data.get('name', 'New Template'),
+                        body=data.get('body', ''),
+                        subject=data.get('subject'),
+                        template_type=data.get('template_type', 'email'),
+                        coach_type=data.get('coach_type', 'any'),
+                    )
+                    return jsonify({'success': True, 'template': result.data[0] if result.data else None})
+                except Exception as sb_e:
+                    logger.error(f"Supabase template create error: {sb_e}")
+                    return jsonify({'success': False, 'error': str(sb_e)})
+            # Fallback to local
+            from enterprise.templates import get_template_manager
+            manager = get_template_manager()
             template = manager.create_template(
                 name=data.get('name', 'New Template'),
                 template_type=data.get('template_type', 'rc'),
                 subject=data.get('subject', ''),
                 body=data.get('body', '')
             )
-            # Sync to Supabase
-            if SUPABASE_AVAILABLE and _supabase_db:
-                try:
-                    _supabase_db.create_template(
-                        name=data.get('name', 'New Template'),
-                        body=data.get('body', ''),
-                        subject=data.get('subject'),
-                        template_type='email',
-                        coach_type=data.get('template_type', 'any'),
-                    )
-                except Exception as sb_e:
-                    logger.warning(f"Supabase template sync error: {sb_e}")
             return jsonify({'success': True, 'template': template.to_dict()})
 
+        # GET - Load templates from Supabase first
+        if _supabase_db:
+            try:
+                templates = _supabase_db.get_templates()
+                if templates:
+                    return jsonify({'success': True, 'templates': templates})
+            except Exception as sb_e:
+                logger.warning(f"Supabase templates load error: {sb_e}")
+
+        # Fallback to local templates
+        from enterprise.templates import get_template_manager
+        manager = get_template_manager()
         templates = manager.get_all_templates()
         return jsonify({'success': True, 'templates': templates})
     except Exception as e:
