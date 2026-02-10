@@ -44,8 +44,7 @@ from sheets.manager import SheetsManager
 
 logger = logging.getLogger(__name__)
 
-# Path to pregenerated AI emails
-PREGENERATED_EMAILS_FILE = Path.home() / '.coach_outreach' / 'pregenerated_emails.json'
+# Tracking file for email opens
 TRACKING_FILE = Path.home() / '.coach_outreach' / 'email_tracking.json'
 
 
@@ -132,69 +131,10 @@ def get_optimal_send_hour() -> int:
     return optimal_hour
 
 
-def load_pregenerated_emails() -> Dict[str, Any]:
-    """Load pregenerated AI emails from local cache or cloud."""
-    # Try local file first
-    if PREGENERATED_EMAILS_FILE.exists():
-        try:
-            with open(PREGENERATED_EMAILS_FILE, 'r') as f:
-                data = json.load(f)
-                if data:  # If local file has data, use it
-                    return data
-        except:
-            pass
-
-    # On Railway (no local file), try cloud storage
-    if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('GOOGLE_CREDENTIALS'):
-        try:
-            from sheets.cloud_emails import get_cloud_storage
-            storage = get_cloud_storage()
-            if storage.connect():
-                pending = storage.download_pending_emails()
-                # Convert to expected format
-                emails_by_school = {}
-                for email in pending:
-                    school = email['school']
-                    if school not in emails_by_school:
-                        emails_by_school[school] = []
-                    emails_by_school[school].append({
-                        'coach_name': email['coach_name'],
-                        'coach_email': email['coach_email'],
-                        'email_type': email['email_type'],
-                        'personalized_content': email['body'],
-                        'subject': email['subject']
-                    })
-                logger.info(f"Loaded {len(pending)} emails from cloud storage")
-                return emails_by_school
-        except Exception as e:
-            logger.error(f"Failed to load from cloud: {e}")
-    return {}
-
-
 def get_ai_email_for_school(school: str, coach_name: str, email_type: str = 'intro') -> Optional[Dict]:
     """
-    Get pregenerated AI email for a school/coach.
-    Returns dict with 'subject' and 'body' if found, None otherwise.
+    AI email generation has been removed. Always returns None - use templates instead.
     """
-    emails = load_pregenerated_emails()
-
-    # Try exact match first
-    school_lower = school.lower().strip()
-
-    for cached_school, email_list in emails.items():
-        if cached_school.lower().strip() == school_lower:
-            if isinstance(email_list, list):
-                for email in email_list:
-                    if email.get('email_type', 'intro') == email_type:
-                        content = email.get('personalized_content', '')
-                        if content and len(content) > 50:
-                            # Extract last name for subject
-                            last_name = coach_name.split()[-1] if coach_name else 'Coach'
-                            return {
-                                'subject': f"2026 OL - Keelan Underwood - {school}",
-                                'body': content,
-                                'is_ai': True
-                            }
     return None
 
 
