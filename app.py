@@ -2379,11 +2379,23 @@ HTML_TEMPLATE = '''
         async function loadDashboard() {
             try {
                 const res = await fetch('/api/stats');
+                if (!res.ok) {
+                    console.error('loadDashboard: API error', res.status);
+                    return;
+                }
                 const data = await res.json();
-                document.getElementById('stat-sent').textContent = data.emails_sent || 0;
-                document.getElementById('stat-responses').textContent = data.responses || 0;
-                document.getElementById('stat-rate').textContent = (data.response_rate || 0) + '%';
-                document.getElementById('stat-followups').textContent = data.followups_due || 0;
+                console.log('Dashboard data:', data);
+
+                // Safe DOM updates with null checks
+                const sentEl = document.getElementById('stat-sent');
+                const responsesEl = document.getElementById('stat-responses');
+                const rateEl = document.getElementById('stat-rate');
+                const followupsEl = document.getElementById('stat-followups');
+
+                if (sentEl) sentEl.textContent = data.emails_sent || 0;
+                if (responsesEl) responsesEl.textContent = data.responses || 0;
+                if (rateEl) rateEl.textContent = (data.response_rate || 0) + '%';
+                if (followupsEl) followupsEl.textContent = data.followups_due || 0;
 
                 // Load responses
                 loadRecentResponses();
@@ -2393,13 +2405,18 @@ HTML_TEMPLATE = '''
                 loadTomorrowPreview();
                 loadRepliedCount();
                 loadEmailModeStatus();  // Load email pause/holiday status for home banner
-            } catch(e) { console.error(e); }
+            } catch(e) { console.error('loadDashboard error:', e); }
         }
 
         async function loadTrackingStats() {
             try {
                 const res = await fetch('/api/tracking/stats');
+                if (!res.ok) {
+                    console.error('loadTrackingStats: API error', res.status);
+                    return;
+                }
                 const data = await res.json();
+                console.log('Tracking stats:', data);
 
                 // Show backfill notice if tracking is empty but sheet has contacts
                 const backfillNotice = document.getElementById('backfill-notice');
@@ -2409,57 +2426,68 @@ HTML_TEMPLATE = '''
                     backfillNotice.style.display = 'none';
                 }
 
-                // Update open rate stat
-                document.getElementById('stat-opens').textContent = (data.open_rate || 0) + '%';
+                // Update open rate stat with null check
+                const opensEl = document.getElementById('stat-opens');
+                if (opensEl) opensEl.textContent = (data.open_rate || 0) + '%';
 
-                // Update email performance stats
-                document.getElementById('perf-sent').textContent = data.total_sent || 0;
-                document.getElementById('perf-opened').textContent = data.total_opened || 0;
+                // Update email performance stats with null checks
+                const perfSentEl = document.getElementById('perf-sent');
+                const perfOpenedEl = document.getElementById('perf-opened');
+                if (perfSentEl) perfSentEl.textContent = data.total_sent || 0;
+                if (perfOpenedEl) perfOpenedEl.textContent = data.total_opened || 0;
 
-                // Update recent opens
+                // Update recent opens with null check
                 const el = document.getElementById('recent-opens');
-                if (data.recent_opens && data.recent_opens.length) {
-                    el.innerHTML = data.recent_opens.slice(0, 8).map(o => `
-                        <div style="padding:8px 0;border-bottom:1px solid var(--border);">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <div>
-                                    <strong style="color:var(--text);">${o.school || 'Unknown'}</strong>
-                                    <span class="text-muted"> - ${o.coach || ''}</span>
+                if (el) {
+                    if (data.recent_opens && data.recent_opens.length) {
+                        el.innerHTML = data.recent_opens.slice(0, 8).map(o => `
+                            <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <div>
+                                        <strong style="color:var(--text);">${o.school || 'Unknown'}</strong>
+                                        <span class="text-muted"> - ${o.coach || ''}</span>
+                                    </div>
+                                    <span class="text-muted text-sm">${new Date(o.opened_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                                 </div>
-                                <span class="text-muted text-sm">${new Date(o.opened_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                             </div>
-                        </div>
-                    `).join('');
-                } else {
-                    el.innerHTML = `
-                        <div class="empty-state" style="padding:24px;">
-                            <div class="empty-state-icon" style="font-size:32px;color:var(--accent);">—</div>
-                            <div class="empty-state-title">No opens yet</div>
-                            <div class="empty-state-text">When coaches open your emails, you'll see it here in real-time.</div>
-                        </div>
-                    `;
+                        `).join('');
+                    } else {
+                        el.innerHTML = `
+                            <div class="empty-state" style="padding:24px;">
+                                <div class="empty-state-icon" style="font-size:32px;color:var(--accent);">—</div>
+                                <div class="empty-state-title">No opens yet</div>
+                                <div class="empty-state-text">When coaches open your emails, you'll see it here in real-time.</div>
+                            </div>
+                        `;
+                    }
                 }
 
                 // Get smart times for best time display
                 const timesRes = await fetch('/api/tracking/smart-times');
-                const timesData = await timesRes.json();
-                const bestTimeEl = document.getElementById('perf-best-time');
-                if (timesData.best_hours && timesData.best_hours.length) {
-                    const times = timesData.best_hours.slice(0, 2).map(h => {
-                        const hour = h.hour;
-                        const ampm = hour >= 12 ? 'PM' : 'AM';
-                        const displayHour = hour % 12 || 12;
-                        return displayHour + ' ' + ampm;
-                    }).join(' & ');
-                    bestTimeEl.innerHTML = `Best send times: <strong style="color:var(--accent);">${times}</strong>`;
-                } else {
-                    bestTimeEl.innerHTML = '';
+                if (timesRes.ok) {
+                    const timesData = await timesRes.json();
+                    const bestTimeEl = document.getElementById('perf-best-time');
+                    if (bestTimeEl) {
+                        if (timesData.best_hours && timesData.best_hours.length) {
+                            const times = timesData.best_hours.slice(0, 2).map(h => {
+                                const hour = h.hour;
+                                const ampm = hour >= 12 ? 'PM' : 'AM';
+                                const displayHour = hour % 12 || 12;
+                                return displayHour + ' ' + ampm;
+                            }).join(' & ');
+                            bestTimeEl.innerHTML = `Best send times: <strong style="color:var(--accent);">${times}</strong>`;
+                        } else {
+                            bestTimeEl.innerHTML = '';
+                        }
+                    }
                 }
             } catch(e) {
                 console.error('loadTrackingStats error:', e);
                 // Show error states instead of staying at loading
-                document.getElementById('perf-sent').textContent = '—';
-                document.getElementById('perf-opened').textContent = '—';
+                const perfSent = document.getElementById('perf-sent');
+                const perfOpened = document.getElementById('perf-opened');
+                if (perfSent) perfSent.textContent = '—';
+                if (perfOpened) perfOpened.textContent = '—';
                 const el = document.getElementById('recent-opens');
                 if (el) el.innerHTML = '<div class="text-muted" style="padding:16px;">Could not load data</div>';
             }
@@ -3317,9 +3345,14 @@ HTML_TEMPLATE = '''
             } catch(e) { showToast('Failed to delete', 'error'); }
         }
         
-        document.getElementById('template-mode').addEventListener('change', (e) => {
-            document.getElementById('template-select-wrapper').style.display = e.target.value === 'manual' ? 'block' : 'none';
-        });
+        // Safe event listener - template-mode may not exist on all pages
+        const templateModeEl = document.getElementById('template-mode');
+        if (templateModeEl) {
+            templateModeEl.addEventListener('change', (e) => {
+                const wrapper = document.getElementById('template-select-wrapper');
+                if (wrapper) wrapper.style.display = e.target.value === 'manual' ? 'block' : 'none';
+            });
+        }
         
         async function sendEmails() {
             const limit = document.getElementById('email-limit').value;
@@ -3615,9 +3648,14 @@ HTML_TEMPLATE = '''
             modal.dataset.editId = '';
         }
         
-        document.getElementById('new-tpl-type').addEventListener('change', (e) => {
-            document.getElementById('tpl-subject-group').style.display = e.target.value === 'dm' ? 'none' : 'block';
-        });
+        // Safe event listener - new-tpl-type is in modal, may not be ready
+        const newTplTypeEl = document.getElementById('new-tpl-type');
+        if (newTplTypeEl) {
+            newTplTypeEl.addEventListener('change', (e) => {
+                const subjectGroup = document.getElementById('tpl-subject-group');
+                if (subjectGroup) subjectGroup.style.display = e.target.value === 'dm' ? 'none' : 'block';
+            });
+        }
         
         async function createTemplate() {
             const modal = document.getElementById('template-modal');
