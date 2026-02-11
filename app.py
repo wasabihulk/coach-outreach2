@@ -135,7 +135,7 @@ DEFAULT_SETTINGS = {
         'app_password': ENV_APP_PASSWORD,
         'max_per_day': 100,  # Gmail limit
         'delay_seconds': 5,
-        'days_between_emails': 4,  # Wait 4 days before next email (~2 emails per week max)
+        'days_between_emails': 3,  # Wait 3 days before next email
         'followup_sequence': ['intro', 'followup_1', 'followup_2'],  # Email sequence
         'auto_send_enabled': ENV_AUTO_SEND,
         'auto_send_count': 100,
@@ -2304,6 +2304,50 @@ HTML_TEMPLATE = '''
         </div>
     </div>
 
+    <!-- Coach Response Modal -->
+    <div class="modal-overlay" id="response-modal">
+        <div class="modal" style="max-width:600px;">
+            <div class="modal-header">
+                <span class="modal-title" id="response-modal-title">Coach Response</span>
+                <button class="modal-close" onclick="closeModal('response-modal')">&times;</button>
+            </div>
+            <div style="padding:16px;">
+                <div style="display:flex;gap:16px;margin-bottom:16px;">
+                    <div style="flex:1;">
+                        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">School</label>
+                        <div id="response-modal-school" style="font-weight:600;font-size:16px;"></div>
+                    </div>
+                    <div style="flex:1;">
+                        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">Coach</label>
+                        <div id="response-modal-coach" style="font-weight:500;"></div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:16px;margin-bottom:16px;">
+                    <div style="flex:1;">
+                        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">Email</label>
+                        <div id="response-modal-email" style="font-size:13px;color:var(--accent);"></div>
+                    </div>
+                    <div style="flex:1;">
+                        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">Responded</label>
+                        <div id="response-modal-date" style="font-size:13px;"></div>
+                    </div>
+                </div>
+                <div style="margin-bottom:16px;">
+                    <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">Sentiment</label>
+                    <div id="response-modal-sentiment" style="margin-top:4px;"></div>
+                </div>
+                <div>
+                    <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">Response</label>
+                    <div id="response-modal-body" style="background:var(--bg);border:1px solid var(--border);padding:16px;border-radius:8px;margin-top:8px;white-space:pre-wrap;font-size:14px;max-height:300px;overflow-y:auto;"></div>
+                </div>
+            </div>
+            <div style="padding:16px;border-top:1px solid var(--border);display:flex;gap:8px;">
+                <button class="btn btn-primary" onclick="replyToCoach()" style="flex:1;">Reply</button>
+                <button class="btn" onclick="closeModal('response-modal')" style="flex:1;">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast" style="display:none"></div>
 
     <script>
@@ -2680,8 +2724,10 @@ HTML_TEMPLATE = '''
                         }
                         const sentimentBadge = r.sentiment ?
                             `<span class="sentiment-badge" style="background:${r.sentiment.color};color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">${r.sentiment.label}</span>` : '';
+                        // Escape data for onclick handler
+                        const responseData = JSON.stringify(r).replace(/'/g, "\\'").replace(/"/g, "&quot;");
                         return `
-                            <div class="response-item">
+                            <div class="response-item" onclick="showResponseModal(${JSON.stringify(r).replace(/"/g, '&quot;')})" style="cursor:pointer;" title="Click to view full response">
                                 <div class="response-avatar" style="background:${r.sentiment?.color || 'var(--success)'};">${(r.school || '?')[0]}</div>
                                 <div class="response-content">
                                     <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -2914,8 +2960,8 @@ HTML_TEMPLATE = '''
         }
         
         async function toggleAutoSend(enabled) {
-            const count = parseInt(document.getElementById('auto-send-count').value) || 100;
-            
+            const count = parseInt(document.getElementById('email-limit')?.value) || 100;
+
             try {
                 const res = await fetch('/api/auto-send/toggle', {
                     method: 'POST',
@@ -2923,9 +2969,11 @@ HTML_TEMPLATE = '''
                     body: JSON.stringify({ enabled, count })
                 });
                 const data = await res.json();
-                
+
                 if (data.success) {
                     showToast(enabled ? 'Auto-send enabled - will send daily when app is running' : 'Auto-send disabled', 'success');
+                    // Refresh the auto-send status display
+                    setTimeout(loadAutoSendStatus, 500);
                 } else {
                     showToast('Failed to toggle auto-send', 'error');
                 }
@@ -3116,7 +3164,8 @@ HTML_TEMPLATE = '''
                 document.getElementById('email-ready').textContent = data.ready_to_send || 0;
                 document.getElementById('email-today').textContent = data.sent_today || 0;
                 document.getElementById('email-followups').textContent = data.followups_due || 0;
-            } catch(e) {}
+                document.getElementById('email-responded').textContent = data.responded || 0;
+            } catch(e) { console.error('loadEmailPage error:', e); }
             // Also load followup queue
             loadFollowupQueue();
             // Load email mode status
@@ -4409,11 +4458,11 @@ HTML_TEMPLATE = '''
             } catch(e) {}
         }
 
-        // Email Sequence Builder
+        // Email Sequence Builder - Default: Intro -> 3 days -> Follow-up 1 -> 3 days -> Follow-up 2
         let emailSequence = [
             { type: 'intro', target: 'both', wait_days: 0, template_id: null },
-            { type: 'followup', target: 'both', wait_days: 4, template_id: null },
-            { type: 'followup', target: 'both', wait_days: 4, template_id: null }
+            { type: 'followup', target: 'both', wait_days: 3, template_id: null },
+            { type: 'followup', target: 'both', wait_days: 3, template_id: null }
         ];
 
         function renderSequenceBuilder() {
@@ -4543,6 +4592,8 @@ HTML_TEMPLATE = '''
         // Check for responses after 3 seconds, then every 5 minutes
         setTimeout(autoCheckInbox, 3000);
         setInterval(autoCheckInbox, 5 * 60 * 1000);  // Check every 5 minutes
+        // Refresh auto-send status every minute
+        setInterval(loadAutoSendStatus, 60 * 1000);
 
         // Unregister service workers to fix caching issues
         if ('serviceWorker' in navigator) {
@@ -4558,8 +4609,63 @@ HTML_TEMPLATE = '''
         }
 
         // ========== MODAL HELPERS ==========
-        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        function closeModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) modal.classList.remove('active');
+        }
         function showCreateAthlete() { document.getElementById('create-athlete-modal').classList.add('active'); }
+
+        // Current response being viewed (for reply function)
+        let currentResponseData = null;
+
+        function showResponseModal(responseData) {
+            currentResponseData = responseData;
+            const modal = document.getElementById('response-modal');
+            if (!modal) return;
+
+            // Populate modal fields
+            document.getElementById('response-modal-title').textContent = `Response from ${responseData.school || 'Coach'}`;
+            document.getElementById('response-modal-school').textContent = responseData.school || 'Unknown';
+            document.getElementById('response-modal-coach').textContent = responseData.coach_name || responseData.email || 'Unknown';
+            document.getElementById('response-modal-email').textContent = responseData.email || '';
+
+            // Format date
+            let dateStr = 'Unknown';
+            if (responseData.replied_at) {
+                try {
+                    const d = new Date(responseData.replied_at);
+                    dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                } catch(e) {}
+            }
+            document.getElementById('response-modal-date').textContent = dateStr;
+
+            // Sentiment badge
+            const sentimentEl = document.getElementById('response-modal-sentiment');
+            if (responseData.sentiment) {
+                sentimentEl.innerHTML = `<span style="background:${responseData.sentiment.color};color:white;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">${responseData.sentiment.label}</span>`;
+            } else {
+                sentimentEl.innerHTML = '<span style="color:var(--muted);">Not analyzed</span>';
+            }
+
+            // Response body - use snippet or full body if available
+            const bodyEl = document.getElementById('response-modal-body');
+            bodyEl.textContent = responseData.full_body || responseData.snippet || responseData.subject || 'No content available';
+
+            // Show modal
+            modal.classList.add('active');
+        }
+
+        function replyToCoach() {
+            if (!currentResponseData || !currentResponseData.email) {
+                showToast('No email address available', 'error');
+                return;
+            }
+            // Open email client with reply
+            const email = currentResponseData.email;
+            const subject = encodeURIComponent('Re: ' + (currentResponseData.subject || 'Your email'));
+            window.open(`mailto:${email}?subject=${subject}`, '_blank');
+            closeModal('response-modal');
+        }
 
         // ========== ADMIN PANEL ==========
         async function loadAdminPanel() {
@@ -5749,10 +5855,11 @@ def api_add_schools_to_sheet():
 
 
 @app.route('/api/spreadsheet')
+@login_required
 def api_spreadsheet():
     """Get coach data with ready_to_send and sent_today stats."""
     if not _supabase_db:
-        return jsonify({'rows': [], 'ready_to_send': 0, 'sent_today': 0, 'followups_due': 0, 'error': 'Database not connected'})
+        return jsonify({'rows': [], 'ready_to_send': 0, 'sent_today': 0, 'followups_due': 0, 'responded': 0, 'error': 'Database not connected'})
 
     try:
         coaches = _supabase_db.get_all_coaches_with_schools()
@@ -5788,27 +5895,43 @@ def api_spreadsheet():
 
         result = list(seen_schools.values())
 
+        # Get sent_today and responded from Supabase with athlete filtering
         sent_today = 0
+        responded = 0
         followups_due = 0
         try:
-            from enterprise.responses import get_response_tracker
             from datetime import date
-            tracker = get_response_tracker()
-            today = date.today().isoformat()
-            sent_today = sum(1 for e in tracker.sent_emails if e.sent_at.startswith(today))
-        except: pass
+            today_str = date.today().isoformat()
+            athlete_id = g.athlete_id if hasattr(g, 'athlete_id') else None
+
+            # Query Supabase for emails sent today
+            query = _supabase_db.client.table('outreach').select('id', count='exact').eq('status', 'sent').gte('sent_at', f"{today_str}T00:00:00").lt('sent_at', f"{today_str}T23:59:59")
+            if athlete_id:
+                query = query.eq('athlete_id', athlete_id)
+            result_sent = query.execute()
+            sent_today = result_sent.count if result_sent.count else 0
+
+            # Query Supabase for coaches that have responded
+            query_responded = _supabase_db.client.table('outreach').select('id', count='exact').eq('replied', True)
+            if athlete_id:
+                query_responded = query_responded.eq('athlete_id', athlete_id)
+            result_responded = query_responded.execute()
+            responded = result_responded.count if result_responded.count else 0
+        except Exception as e:
+            logger.error(f"Error getting email stats: {e}")
 
         try:
             from enterprise.followups import get_followup_manager
             fm = get_followup_manager()
             followups_due = len(fm.get_due_followups())
         except: pass
-        
+
         return jsonify({
-            'rows': result, 
+            'rows': result,
             'ready_to_send': ready_to_send,
             'sent_today': sent_today,
-            'followups_due': followups_due
+            'followups_due': followups_due,
+            'responded': responded
         })
     except Exception as e:
         logger.error(f"Spreadsheet error: {e}")

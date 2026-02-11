@@ -879,7 +879,8 @@ class SupabaseDB:
 
     def get_coaches_for_athlete_schools(self, athlete_id, limit=25, days_between=7):
         """Get coaches due for outreach from athlete's selected schools.
-        Filters by coach_preference, athlete position, and outreach history."""
+        Filters by coach_preference, athlete position, and outreach history.
+        OPTIMIZED: Uses batch queries instead of N+1 queries."""
         athlete_schools = self.get_athlete_schools(athlete_id)
         if not athlete_schools:
             return []
@@ -889,77 +890,123 @@ class SupabaseDB:
         athlete_position = (athlete.get('position') or 'OL').upper() if athlete else 'OL'
 
         # Map athlete position to coach role
-        # OL->ol, WR->wr, QB->qb, RB->rb, TE->te, DL->dl, LB->lb, DB->db, K->k/st, P->p/st, LS->ls/st, ATH->ath
         position_to_role = {
             'OL': 'ol', 'WR': 'wr', 'QB': 'qb', 'RB': 'rb', 'TE': 'te',
             'DL': 'dl', 'LB': 'lb', 'DB': 'db', 'K': 'st', 'P': 'st', 'LS': 'st', 'ATH': 'ath'
         }
         position_role = position_to_role.get(athlete_position, 'ol')
 
-        results = []
+        # Build lookup of school_id -> (school_info, preference)
+        school_lookup = {}
+        school_ids = []
         for as_row in athlete_schools:
-            school_info = as_row.get('schools', {})
             school_id = as_row.get('school_id')
-            preference = as_row.get('coach_preference', 'both')
+            if school_id:
+                school_ids.append(school_id)
+                school_lookup[school_id] = {
+                    'info': as_row.get('schools', {}),
+                    'preference': as_row.get('coach_preference', 'both')
+                }
 
-            coaches = self.client.table('coaches').select('*').eq('school_id', school_id).execute().data
+        if not school_ids:
+            return []
 
-            for coach in coaches:
-                role = (coach.get('role') or '').lower()
-                # Filter by preference and athlete position
-                if preference == 'position_coach' and role != position_role:
-                    continue
-                if preference == 'rc' and role != 'rc':
-                    continue
-                if preference == 'both' and role not in ('rc', position_role):
-                    continue
-
-                if not coach.get('email'):
-                    continue
-
-                # Check outreach history
-                outreach = (self.client.table('outreach')
-                           .select('email_type, sent_at, replied, status')
-                           .eq('athlete_id', athlete_id)
-                           .eq('coach_email', coach['email'])
-                           .order('sent_at', desc=True)
-                           .limit(5)
+        # BATCH QUERY 1: Get all coaches for all schools at once
+        all_coaches = []
+        # Supabase .in_ filter has limits, batch in groups of 100
+        for i in range(0, len(school_ids), 100):
+            batch_ids = school_ids[i:i+100]
+            coaches_batch = (self.client.table('coaches')
+                           .select('*')
+                           .in_('school_id', batch_ids)
+                           .not_.is_('email', 'null')
                            .execute().data)
+            all_coaches.extend(coaches_batch or [])
 
-                stage = self._compute_email_stage(outreach)
-                if stage == 'done':
+        if not all_coaches:
+            return []
+
+        # Get unique coach emails for outreach lookup
+        coach_emails = list(set(c['email'] for c in all_coaches if c.get('email')))
+
+        # BATCH QUERY 2: Get all outreach history for this athlete in one query
+        outreach_by_email = {}
+        if coach_emails:
+            # Batch in groups of 200 emails
+            for i in range(0, len(coach_emails), 200):
+                batch_emails = coach_emails[i:i+200]
+                outreach_batch = (self.client.table('outreach')
+                                 .select('coach_email, email_type, sent_at, replied, status')
+                                 .eq('athlete_id', athlete_id)
+                                 .in_('coach_email', batch_emails)
+                                 .order('sent_at', desc=True)
+                                 .execute().data)
+                # Group by coach_email
+                for o in (outreach_batch or []):
+                    email = o.get('coach_email')
+                    if email not in outreach_by_email:
+                        outreach_by_email[email] = []
+                    outreach_by_email[email].append(o)
+
+        # Now process coaches in memory (fast)
+        results = []
+        for coach in all_coaches:
+            school_id = coach.get('school_id')
+            if school_id not in school_lookup:
+                continue
+
+            school_data = school_lookup[school_id]
+            school_info = school_data['info']
+            preference = school_data['preference']
+            role = (coach.get('role') or '').lower()
+
+            # Filter by preference and athlete position
+            if preference == 'position_coach' and role != position_role:
+                continue
+            if preference == 'rc' and role != 'rc':
+                continue
+            if preference == 'both' and role not in ('rc', position_role):
+                continue
+
+            email = coach.get('email')
+            if not email:
+                continue
+
+            # Get outreach history from pre-fetched data
+            outreach = outreach_by_email.get(email, [])[:5]  # Limit to 5 most recent
+
+            stage = self._compute_email_stage(outreach)
+            if stage == 'done':
+                continue
+
+            # Check timing
+            if outreach and stage != 'new':
+                latest = outreach[0]
+                if latest.get('replied'):
                     continue
+                sent_at = latest.get('sent_at')
+                if sent_at:
+                    try:
+                        from datetime import timedelta
+                        sent_dt = datetime.fromisoformat(sent_at.replace('Z', '+00:00'))
+                        if (datetime.now(timezone.utc) - sent_dt).days < days_between:
+                            continue
+                    except (ValueError, TypeError):
+                        pass
 
-                # Check timing
-                if outreach and stage != 'new':
-                    latest = outreach[0]
-                    if latest.get('replied'):
-                        continue
-                    sent_at = latest.get('sent_at')
-                    if sent_at:
-                        try:
-                            from datetime import timedelta
-                            sent_dt = datetime.fromisoformat(sent_at.replace('Z', '+00:00'))
-                            if (datetime.now(timezone.utc) - sent_dt).days < days_between:
-                                continue
-                        except (ValueError, TypeError):
-                            pass
+            results.append({
+                'coach_id': coach['id'],
+                'coach_name': coach.get('name', ''),
+                'coach_email': email,
+                'coach_role': coach.get('role', ''),
+                'school_name': school_info.get('name', ''),
+                'school_id': school_id,
+                'twitter': coach.get('twitter', ''),
+                'email_stage': stage,
+                'division': school_info.get('division'),
+                'conference': school_info.get('conference'),
+            })
 
-                results.append({
-                    'coach_id': coach['id'],
-                    'coach_name': coach.get('name', ''),
-                    'coach_email': coach['email'],
-                    'coach_role': coach.get('role', ''),
-                    'school_name': school_info.get('name', ''),
-                    'school_id': school_id,
-                    'twitter': coach.get('twitter', ''),
-                    'email_stage': stage,
-                    'division': school_info.get('division'),
-                    'conference': school_info.get('conference'),
-                })
-
-                if len(results) >= limit:
-                    break
             if len(results) >= limit:
                 break
 
