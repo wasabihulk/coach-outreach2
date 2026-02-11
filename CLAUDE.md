@@ -9,7 +9,7 @@ Sends template-based emails (customizable by athletes) to college football coach
 
 ### Database: Supabase (PostgreSQL)
 - **ALL data lives in Supabase** — Google Sheets was fully removed (Jan 2026)
-- Tables: `athletes`, `schools`, `coaches`, `outreach_tracking`, `email_templates`, `athlete_credentials`, `athlete_schools`, `settings`
+- Tables: `athletes`, `schools`, `coaches`, `outreach`, `templates`, `athlete_credentials`, `athlete_schools`, `settings`
 - Supabase URL: `https://sdugzlvnlfejiwmrrysf.supabase.co`
 
 ### Cloud (Railway)

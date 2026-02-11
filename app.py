@@ -852,6 +852,182 @@ def is_railway_deployment():
     """Check if we're running on Railway."""
     return bool(ENV_EMAIL_ADDRESS and ENV_APP_PASSWORD)
 
+
+# ============================================================================
+# AUTO-SCRAPE SCHOOL FUNCTION
+# ============================================================================
+
+def auto_scrape_school(school_name: str) -> dict:
+    """
+    Automatically find and scrape a school's football staff page.
+
+    Returns dict with:
+        - success: bool
+        - staff_url: discovered URL (if any)
+        - ol_coach: {name, email, twitter} (if found)
+        - rc: {name, email, twitter} (if found)
+        - error: error message (if failed)
+        - needs_manual: bool - whether admin needs to add manually
+    """
+    import requests as req_lib
+    from bs4 import BeautifulSoup
+    from urllib.parse import quote_plus, urljoin
+
+    result = {
+        'success': False,
+        'staff_url': None,
+        'ol_coach': None,
+        'rc': None,
+        'error': None,
+        'needs_manual': True,
+        'all_emails_found': []
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+
+    # Clean school name for search
+    clean_name = school_name.strip()
+
+    # Try to find staff page URL via Google search
+    staff_url = None
+    search_queries = [
+        f'{clean_name} football coaching staff',
+        f'{clean_name} football staff directory',
+        f'{clean_name} athletics football coaches',
+    ]
+
+    for query in search_queries:
+        if staff_url:
+            break
+        try:
+            # Use DuckDuckGo HTML search (more reliable than Google for scraping)
+            search_url = f'https://html.duckduckgo.com/html/?q={quote_plus(query)}'
+            resp = req_lib.get(search_url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                # Find result links
+                for link in soup.select('a.result__a'):
+                    href = link.get('href', '')
+                    # Look for athletics/sports sites
+                    if any(x in href.lower() for x in ['athletics', 'sports', 'football', 'staff', 'coaches', 'roster']):
+                        if '.edu' in href or 'athletics' in href:
+                            staff_url = href
+                            break
+        except Exception as e:
+            logger.warning(f"Search failed for '{query}': {e}")
+            continue
+
+    # If no URL found via search, try common patterns
+    if not staff_url:
+        # Try to construct URL from school name
+        slug = clean_name.lower().replace(' ', '').replace('university', '').replace('college', '').replace('of', '').replace('the', '')
+        common_patterns = [
+            f'https://{slug}athletics.com/sports/football/coaches',
+            f'https://athletics.{slug}.edu/sports/football/coaches',
+            f'https://{slug}sports.com/sports/football/coaches',
+        ]
+        for pattern_url in common_patterns:
+            try:
+                resp = req_lib.head(pattern_url, headers=headers, timeout=5, allow_redirects=True)
+                if resp.status_code == 200:
+                    staff_url = pattern_url
+                    break
+            except:
+                continue
+
+    if not staff_url:
+        result['error'] = 'Could not find staff page URL. Please provide manually.'
+        return result
+
+    result['staff_url'] = staff_url
+
+    # Now scrape the staff page
+    try:
+        resp = req_lib.get(staff_url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        html = resp.text
+    except Exception as e:
+        result['error'] = f'Failed to fetch staff page: {str(e)}'
+        return result
+
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # Extract all emails from page
+    all_emails = list(set(re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', html, re.IGNORECASE)))
+    result['all_emails_found'] = all_emails
+
+    # OL coach patterns
+    ol_patterns = ['offensive line', 'o-line', 'oline', 'ol coach', 'offensive line coach']
+    rc_patterns = ['recruiting coordinator', 'director of recruiting', 'recruiting director', 'director of player personnel']
+
+    ol_coach = None
+    ol_email = None
+    ol_twitter = None
+    rc_coach = None
+    rc_email = None
+    rc_twitter = None
+
+    # Find staff cards/sections
+    staff_cards = soup.find_all(['div', 'article', 'li', 'section'], class_=lambda x: x and any(
+        k in str(x).lower() for k in ['staff', 'coach', 'card', 'person', 'bio', 'member']
+    ))
+
+    # Also check all divs/sections for coach info
+    if not staff_cards:
+        staff_cards = soup.find_all(['div', 'article', 'li'])
+
+    for card in staff_cards:
+        card_text = card.get_text(' ', strip=True).lower()
+        card_html = str(card)
+
+        # Check for OL coach
+        if any(p in card_text for p in ol_patterns) and not ol_coach:
+            name_tag = card.find(['h2', 'h3', 'h4', 'h5', 'a', 'strong', 'b', 'span'])
+            if name_tag:
+                name = name_tag.get_text(strip=True)
+                # Validate it looks like a name
+                if 2 < len(name) < 50 and '@' not in name and not any(x in name.lower() for x in ['coach', 'offensive', 'line', 'staff']):
+                    ol_coach = name
+            # Find email
+            card_emails = re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', card_html, re.IGNORECASE)
+            if card_emails:
+                ol_email = card_emails[0]
+            # Find Twitter
+            twitter_match = re.search(r'(?:twitter\.com|x\.com)/([A-Za-z0-9_]+)', card_html, re.IGNORECASE)
+            if twitter_match:
+                ol_twitter = f'https://x.com/{twitter_match.group(1)}'
+
+        # Check for RC
+        if any(p in card_text for p in rc_patterns) and not rc_coach:
+            name_tag = card.find(['h2', 'h3', 'h4', 'h5', 'a', 'strong', 'b', 'span'])
+            if name_tag:
+                name = name_tag.get_text(strip=True)
+                if 2 < len(name) < 50 and '@' not in name and not any(x in name.lower() for x in ['coordinator', 'recruiting', 'director', 'staff']):
+                    rc_coach = name
+            card_emails = re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', card_html, re.IGNORECASE)
+            if card_emails:
+                rc_email = card_emails[0]
+            twitter_match = re.search(r'(?:twitter\.com|x\.com)/([A-Za-z0-9_]+)', card_html, re.IGNORECASE)
+            if twitter_match:
+                rc_twitter = f'https://x.com/{twitter_match.group(1)}'
+
+    # Build result
+    if ol_coach:
+        result['ol_coach'] = {'name': ol_coach, 'email': ol_email, 'twitter': ol_twitter}
+    if rc_coach:
+        result['rc'] = {'name': rc_coach, 'email': rc_email, 'twitter': rc_twitter}
+
+    if ol_coach or rc_coach:
+        result['success'] = True
+        result['needs_manual'] = False
+    else:
+        result['error'] = 'Could not identify OL coach or RC from page. Manual entry needed.'
+
+    return result
+
+
 # ============================================================================
 # LOGIN PAGE TEMPLATE
 # ============================================================================
@@ -4397,6 +4573,22 @@ HTML_TEMPLATE = '''
         }
 
         // School Requests Functions
+        function parseScrapedData(notes) {
+            // Extract scraped data from notes field
+            if (!notes) return null;
+            const match = notes.match(/\[SCRAPED_DATA\](.*?)\[\/SCRAPED_DATA\]/s);
+            if (match) {
+                try { return JSON.parse(match[1]); } catch(e) { return null; }
+            }
+            return null;
+        }
+
+        function getUserNotes(notes) {
+            // Get user notes without scraped data
+            if (!notes) return '';
+            return notes.replace(/\[SCRAPED_DATA\].*?\[\/SCRAPED_DATA\]/s, '').trim();
+        }
+
         async function loadSchoolRequests() {
             try {
                 const res = await fetch('/api/admin/school-requests');
@@ -4406,17 +4598,118 @@ HTML_TEMPLATE = '''
                     el.innerHTML = '<div style="color:var(--success);">No pending school requests.</div>';
                     return;
                 }
-                el.innerHTML = data.requests.map(r => `
-                    <div style="padding:12px;background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--warn);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
-                        <div>
-                            <strong>${r.school_name}</strong>
-                            <div style="font-size:12px;color:var(--muted);">Requested by ${r.athlete_name} • ${new Date(r.created_at).toLocaleDateString()}</div>
-                            ${r.notes ? `<div style="font-size:12px;font-style:italic;margin-top:4px;">"${r.notes}"</div>` : ''}
+                el.innerHTML = data.requests.map(r => {
+                    const scraped = parseScrapedData(r.notes);
+                    const userNotes = getUserNotes(r.notes);
+                    const hasScrapedData = scraped && scraped.success;
+
+                    let scrapedHtml = '';
+                    if (scraped) {
+                        if (scraped.success) {
+                            const ol = scraped.ol_coach;
+                            const rc = scraped.rc;
+                            scrapedHtml = `
+                                <div style="margin-top:8px;padding:8px;background:var(--bg2);border-radius:4px;border-left:3px solid var(--success);">
+                                    <div style="font-size:11px;color:var(--success);font-weight:bold;margin-bottom:4px;">✅ AUTO-SCRAPED</div>
+                                    ${ol ? `<div style="font-size:12px;"><strong>OL Coach:</strong> ${ol.name || '—'} ${ol.email ? `<span style="color:var(--primary);">${ol.email}</span>` : '<span style="color:var(--muted);">no email</span>'}</div>` : '<div style="font-size:12px;color:var(--muted);">No OL coach found</div>'}
+                                    ${rc ? `<div style="font-size:12px;"><strong>RC:</strong> ${rc.name || '—'} ${rc.email ? `<span style="color:var(--primary);">${rc.email}</span>` : '<span style="color:var(--muted);">no email</span>'}</div>` : '<div style="font-size:12px;color:var(--muted);">No RC found</div>'}
+                                    ${scraped.staff_url ? `<div style="font-size:11px;margin-top:4px;"><a href="${scraped.staff_url}" target="_blank" style="color:var(--primary);">View Staff Page →</a></div>` : ''}
+                                </div>
+                            `;
+                        } else {
+                            scrapedHtml = `
+                                <div style="margin-top:8px;padding:8px;background:var(--bg2);border-radius:4px;border-left:3px solid var(--warn);">
+                                    <div style="font-size:11px;color:var(--warn);font-weight:bold;">⚠️ SCRAPE FAILED</div>
+                                    <div style="font-size:12px;color:var(--muted);">${scraped.error || 'Unknown error'}</div>
+                                    ${scraped.staff_url ? `<div style="font-size:11px;margin-top:4px;"><a href="${scraped.staff_url}" target="_blank" style="color:var(--primary);">Try Staff URL →</a></div>` : ''}
+                                    ${scraped.all_emails_found && scraped.all_emails_found.length ? `<div style="font-size:11px;margin-top:4px;">Emails on page: ${scraped.all_emails_found.slice(0,3).join(', ')}${scraped.all_emails_found.length > 3 ? '...' : ''}</div>` : ''}
+                                </div>
+                            `;
+                        }
+                    }
+
+                    return `
+                        <div style="padding:12px;background:var(--bg3);border:1px solid var(--border);border-left:3px solid ${hasScrapedData ? 'var(--success)' : 'var(--warn)'};margin-bottom:8px;">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                                <div>
+                                    <strong>${r.school_name}</strong>
+                                    <div style="font-size:12px;color:var(--muted);">Requested by ${r.athlete_name} • ${new Date(r.created_at).toLocaleDateString()}</div>
+                                    ${userNotes ? `<div style="font-size:12px;font-style:italic;margin-top:4px;">"${userNotes}"</div>` : ''}
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    ${hasScrapedData ? `<button class="btn btn-sm" style="background:var(--success);" onclick="approveScrapedSchool('${r.school_name}', '${r.id}', ${JSON.stringify(scraped).replace(/"/g, '&quot;')})">✓ APPROVE</button>` : ''}
+                                    <button class="btn btn-primary btn-sm" onclick="addSchoolFromRequest('${r.school_name}', '${r.id}', ${scraped ? JSON.stringify(scraped).replace(/"/g, '&quot;') : 'null'})">${hasScrapedData ? 'EDIT' : 'ADD'}</button>
+                                </div>
+                            </div>
+                            ${scrapedHtml}
                         </div>
-                        <button class="btn btn-primary btn-sm" onclick="addSchoolFromRequest('${r.school_name}', '${r.id}')">ADD SCHOOL</button>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             } catch(e) { console.error(e); }
+        }
+
+        async function approveScrapedSchool(schoolName, requestId, scrapedData) {
+            // Quick approve - add school and coaches from scraped data
+            if (!scrapedData || !scrapedData.success) {
+                showToast('No scraped data to approve', 'error');
+                return;
+            }
+
+            try {
+                // Add the school first
+                const addRes = await fetch('/api/admin/add-school', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        school_name: schoolName,
+                        staff_url: scrapedData.staff_url || '',
+                        request_id: requestId
+                    })
+                });
+                const addData = await addRes.json();
+                if (!addData.success) {
+                    showToast(addData.error || 'Failed to add school', 'error');
+                    return;
+                }
+
+                // Add coaches
+                let coachesAdded = 0;
+                if (scrapedData.ol_coach && scrapedData.ol_coach.name) {
+                    const olRes = await fetch('/api/admin/add-coach', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            school_name: schoolName,
+                            coach_name: scrapedData.ol_coach.name,
+                            role: 'ol',
+                            email: scrapedData.ol_coach.email || '',
+                            twitter: scrapedData.ol_coach.twitter || ''
+                        })
+                    });
+                    if ((await olRes.json()).success) coachesAdded++;
+                }
+
+                if (scrapedData.rc && scrapedData.rc.name) {
+                    const rcRes = await fetch('/api/admin/add-coach', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            school_name: schoolName,
+                            coach_name: scrapedData.rc.name,
+                            role: 'rc',
+                            email: scrapedData.rc.email || '',
+                            twitter: scrapedData.rc.twitter || ''
+                        })
+                    });
+                    if ((await rcRes.json()).success) coachesAdded++;
+                }
+
+                showToast(`${schoolName} added with ${coachesAdded} coach(es)!`, 'success');
+                loadSchoolRequests();
+                loadMissingCoaches();
+            } catch(e) {
+                showToast('Error: ' + e.message, 'error');
+            }
         }
 
         function showAddSchool(schoolName = '') {
@@ -4430,9 +4723,40 @@ HTML_TEMPLATE = '''
             window.currentRequestId = null;
         }
 
-        function addSchoolFromRequest(schoolName, requestId) {
+        function addSchoolFromRequest(schoolName, requestId, scrapedData = null) {
             showAddSchool(schoolName);
             window.currentRequestId = requestId;
+            window.currentScrapedData = scrapedData;
+
+            // Pre-fill form with scraped data if available
+            if (scrapedData && scrapedData.staff_url) {
+                document.getElementById('as-url').value = scrapedData.staff_url;
+            }
+
+            // If scraped data available, show it in the scrape results section
+            if (scrapedData) {
+                document.getElementById('scrape-results').style.display = 'block';
+                if (scrapedData.success) {
+                    let coachesHtml = '';
+                    if (scrapedData.ol_coach) {
+                        coachesHtml += `<div><strong>OL:</strong> ${scrapedData.ol_coach.name || '—'} (${scrapedData.ol_coach.email || 'no email'})</div>`;
+                    }
+                    if (scrapedData.rc) {
+                        coachesHtml += `<div><strong>RC:</strong> ${scrapedData.rc.name || '—'} (${scrapedData.rc.email || 'no email'})</div>`;
+                    }
+                    document.getElementById('scrape-status').innerHTML = '<span style="color:var(--success);">✓ Auto-scraped data available</span>';
+                    document.getElementById('scrape-coaches').innerHTML = coachesHtml || '<div style="color:var(--muted);">No coaches found</div>';
+                    document.getElementById('scrape-coaches').style.display = 'block';
+                    document.getElementById('manual-entry').style.display = 'block';
+                } else {
+                    document.getElementById('scrape-status').innerHTML = `<span style="color:var(--warn);">⚠️ Scrape failed: ${scrapedData.error || 'unknown'}</span>`;
+                    document.getElementById('scrape-coaches').style.display = 'none';
+                    document.getElementById('manual-entry').style.display = 'block';
+                }
+                if (scrapedData.staff_url) {
+                    document.getElementById('staff-link').href = scrapedData.staff_url;
+                }
+            }
         }
 
         async function addSchoolOnly() {
@@ -8927,7 +9251,7 @@ def api_admin_missing_coaches():
 @app.route('/api/athlete/request-school', methods=['POST'])
 @login_required
 def api_athlete_request_school():
-    """Athlete requests a school that's not in the database."""
+    """Athlete requests a school that's not in the database. Auto-scrapes for coach info."""
     try:
         data = request.json or {}
         school_name = data.get('school_name', '').strip()
@@ -8945,12 +9269,29 @@ def api_athlete_request_school():
         athlete = _supabase_db.get_athlete_by_id(g.athlete_id)
         athlete_name = athlete.get('name', 'Unknown') if athlete else 'Unknown'
 
+        # AUTO-SCRAPE: Try to find coach info automatically
+        scrape_result = None
+        try:
+            logger.info(f"Auto-scraping school: {school_name}")
+            scrape_result = auto_scrape_school(school_name)
+            logger.info(f"Scrape result: {scrape_result}")
+        except Exception as scrape_err:
+            logger.warning(f"Auto-scrape failed for {school_name}: {scrape_err}")
+            scrape_result = {'success': False, 'error': str(scrape_err), 'needs_manual': True}
+
+        # Build notes with scraped data (JSON encoded)
+        scraped_data_json = json.dumps(scrape_result) if scrape_result else None
+        combined_notes = notes
+        if scraped_data_json:
+            # Store scraped data in notes as JSON block
+            combined_notes = f"[SCRAPED_DATA]{scraped_data_json}[/SCRAPED_DATA]\n{notes}" if notes else f"[SCRAPED_DATA]{scraped_data_json}[/SCRAPED_DATA]"
+
         # Create request record
         request_data = {
             'athlete_id': g.athlete_id,
             'athlete_name': athlete_name,
             'school_name': school_name,
-            'notes': notes,
+            'notes': combined_notes,
             'status': 'pending',
             'created_at': datetime.now(timezone.utc).isoformat(),
         }
@@ -8962,15 +9303,42 @@ def api_athlete_request_school():
             logger.error(f"School request DB error (table might not exist): {db_err}")
             return jsonify({'error': 'School request feature is being set up. Please try again later or contact admin.'}), 500
 
+        # Build notification message with scrape results
+        notification_msg = f"{athlete_name} requested: {school_name}"
+        if scrape_result:
+            if scrape_result.get('success'):
+                coaches_found = []
+                if scrape_result.get('ol_coach'):
+                    ol = scrape_result['ol_coach']
+                    coaches_found.append(f"OL: {ol.get('name', '?')} ({ol.get('email', 'no email')})")
+                if scrape_result.get('rc'):
+                    rc = scrape_result['rc']
+                    coaches_found.append(f"RC: {rc.get('name', '?')} ({rc.get('email', 'no email')})")
+                notification_msg += f"\n✅ AUTO-SCRAPED: {', '.join(coaches_found)}"
+            else:
+                notification_msg += f"\n⚠️ Scrape failed: {scrape_result.get('error', 'unknown')}"
+                if scrape_result.get('staff_url'):
+                    notification_msg += f"\nURL: {scrape_result['staff_url']}"
+
         # Send notification to admin
         current_settings = load_settings()
         if current_settings.get('notifications', {}).get('enabled'):
             send_phone_notification(
-                title="New School Request",
-                message=f"{athlete_name} requested: {school_name}"
+                title="New School Request" + (" ✅" if scrape_result and scrape_result.get('success') else " ⚠️"),
+                message=notification_msg
             )
 
-        return jsonify({'success': True, 'message': 'School request submitted. Admin will add it soon.'})
+        response_msg = 'School request submitted.'
+        if scrape_result and scrape_result.get('success'):
+            response_msg += ' Coach info was found automatically - admin will review and approve.'
+        else:
+            response_msg += ' Admin will add the school soon.'
+
+        return jsonify({
+            'success': True,
+            'message': response_msg,
+            'scraped': scrape_result.get('success', False) if scrape_result else False
+        })
     except Exception as e:
         logger.error(f"School request error: {e}")
         return jsonify({'error': str(e)}), 500
