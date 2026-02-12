@@ -7355,7 +7355,7 @@ def api_email_send():
                         'subject': subject,
                         'sent_at': datetime.now().isoformat(),
                         'template_id': tracking_template_id,
-                        'used_ai_email': used_ai_email
+                        'used_ai_email': False
                     }
                     email_tracking['opens'][tracking_id] = []
                     save_tracking()
@@ -8682,7 +8682,7 @@ def start_auto_send_scheduler():
                     last_reminder_date = today
                 
                 # Check for responses every hour
-                if last_response_check is None or (now - last_response_check).seconds >= 3600:
+                if last_response_check is None or (now - last_response_check).total_seconds() >= 3600:
                     if has_gmail_api() or (SUPABASE_AVAILABLE and _supabase_db):
                         logger.info("Hourly response check starting...")
                         try:

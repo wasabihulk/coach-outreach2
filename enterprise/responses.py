@@ -116,10 +116,14 @@ class GmailResponseChecker:
                             if isinstance(part, tuple):
                                 msg = email.message_from_bytes(part[1])
                                 
-                                # Get subject
-                                subject = decode_header(msg['Subject'])[0][0]
-                                if isinstance(subject, bytes):
-                                    subject = subject.decode('utf-8', errors='ignore')
+                                # Get subject (guard against missing Subject header)
+                                raw_subject = msg['Subject']
+                                if raw_subject:
+                                    subject = decode_header(raw_subject)[0][0]
+                                    if isinstance(subject, bytes):
+                                        subject = subject.decode('utf-8', errors='ignore')
+                                else:
+                                    subject = ''
                                 
                                 # Get date
                                 date_str = msg['Date']

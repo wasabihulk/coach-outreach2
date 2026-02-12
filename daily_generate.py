@@ -219,7 +219,7 @@ def main():
         'date': datetime.now().isoformat(),
         'emails_generated': generated,
         'emails_synced': uploaded,
-        'schools_processed': limit if not args.all else 'all'
+        'schools_processed': args.num if not args.all else 'all'
     })
 
     # Keep last 100 entries

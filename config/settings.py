@@ -153,14 +153,19 @@ class AppSettings:
         """Create from dictionary."""
         settings = cls()
         
+        def _filter_fields(cls, d):
+            """Filter dict to only keys that are valid dataclass fields."""
+            valid = {f for f in cls.__dataclass_fields__}
+            return {k: v for k, v in d.items() if k in valid}
+
         if 'athlete' in data:
-            settings.athlete = AthleteProfile(**data['athlete'])
+            settings.athlete = AthleteProfile(**_filter_fields(AthleteProfile, data['athlete']))
         if 'email' in data:
-            settings.email = EmailSettings(**data['email'])
+            settings.email = EmailSettings(**_filter_fields(EmailSettings, data['email']))
         if 'sheets' in data:
-            settings.sheets = SheetSettings(**data['sheets'])
+            settings.sheets = SheetSettings(**_filter_fields(SheetSettings, data['sheets']))
         if 'scraper' in data:
-            settings.scraper = ScraperSettings(**data['scraper'])
+            settings.scraper = ScraperSettings(**_filter_fields(ScraperSettings, data['scraper']))
         
         settings.setup_complete = data.get('setup_complete', False)
         settings.first_run = data.get('first_run', True)

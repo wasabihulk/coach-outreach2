@@ -25,14 +25,22 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 from urllib.parse import quote_plus
 
-# Browser manager for free Google scraping
+# BeautifulSoup for HTML parsing (used by free search)
+try:
+    from bs4 import BeautifulSoup
+    HAS_BS4 = True
+except ImportError:
+    HAS_BS4 = False
+
+# Browser manager for free Google scraping (requires selenium)
 try:
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from browser.manager import BrowserManager, BrowserConfig
-    from bs4 import BeautifulSoup
     HAS_BROWSER = True
 except ImportError:
+    BrowserManager = None
+    BrowserConfig = None
     HAS_BROWSER = False
 
 logger = logging.getLogger(__name__)
@@ -381,7 +389,7 @@ def google_search(query: str, num_results: int = 5) -> List[Dict]:
 
 
 # Global browser instance for reuse
-_browser_manager: Optional[BrowserManager] = None
+_browser_manager = None  # Optional[BrowserManager] — type annotation omitted to avoid NameError when selenium missing
 
 
 def bing_search_free(query: str, num_results: int = 5) -> List[Dict]:
@@ -389,6 +397,10 @@ def bing_search_free(query: str, num_results: int = 5) -> List[Dict]:
     Free search using Bing (no CAPTCHA, scraper-friendly).
     No API limits - can do unlimited searches.
     """
+    if not HAS_BS4:
+        logger.warning("BeautifulSoup not installed — bing_search_free unavailable")
+        return []
+
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -1462,7 +1474,7 @@ def batch_generate_from_sheet(sheet_data: List[List[str]], headers: List[str], l
                 ol_email = row[ol_email_col].strip()
                 ol_name = row[ol_name_col].strip() if ol_name_col >= 0 and ol_name_col < len(row) else 'Coach'
 
-                if ol_email and '@' in ol_email and ol_email != row[rc_email_col].strip() if rc_email_col >= 0 else True:
+                if ol_email and '@' in ol_email and (ol_email != row[rc_email_col].strip() if rc_email_col >= 0 else True):
                     existing = generator.get_pregenerated(school, 'intro')
                     if not existing:
                         generator.pregenerate_for_school(school, ol_name, ol_email, num_emails=2)
