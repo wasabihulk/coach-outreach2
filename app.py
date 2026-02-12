@@ -6276,7 +6276,11 @@ def api_email_tomorrow_preview():
         daily_limit = settings.get('email', {}).get('auto_send_count', 25)
         days_between = settings.get('email', {}).get('days_between_emails', 3)
 
-        coaches_ready = _supabase_db.get_coaches_to_email(limit=500, days_between=days_between)
+        athlete_id = getattr(g, 'athlete_id', None) or (_supabase_db._athlete_id if _supabase_db else None)
+        if athlete_id:
+            coaches_ready = _supabase_db.get_coaches_for_athlete_schools(athlete_id, limit=500, days_between=days_between)
+        else:
+            coaches_ready = _supabase_db.get_coaches_to_email(limit=500, days_between=days_between)
         total_ready = len(coaches_ready)
 
         will_send = min(total_ready, daily_limit)
@@ -7216,7 +7220,12 @@ def api_email_send():
         from datetime import date, datetime, timedelta
         today = date.today()
 
-        coaches_data = _supabase_db.get_coaches_to_email(limit=limit * 2, days_between=days_between)
+        # Use athlete-specific schools when logged in; fall back to legacy for auto-send (context set by scheduler)
+        athlete_id = getattr(g, 'athlete_id', None) or (_supabase_db._athlete_id if _supabase_db else None)
+        if athlete_id:
+            coaches_data = _supabase_db.get_coaches_for_athlete_schools(athlete_id, limit=limit * 2, days_between=days_between)
+        else:
+            coaches_data = _supabase_db.get_coaches_to_email(limit=limit * 2, days_between=days_between)
 
         logger.info(f"Found {len(coaches_data)} coaches to email from Supabase")
 
@@ -8295,7 +8304,7 @@ def auto_send_emails():
 
         limit = current_settings.get('email', {}).get('auto_send_count', 100)
 
-        # SAFETY CAP: Never send more than 25 emails in one auto-send run
+        # SAFETY CAP: Never send more than 100 emails in one auto-send run
         # This prevents runaway sends even if settings get corrupted
         MAX_SAFE_SEND = 100
         if limit > MAX_SAFE_SEND:

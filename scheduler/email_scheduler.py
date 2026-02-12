@@ -613,8 +613,8 @@ class EmailScheduler:
         optimal_hour = get_optimal_send_hour()
         send_time = f"{optimal_hour:02d}:00"
 
-        # Schedule daily job at optimal time
-        schedule.every().day.at(send_time).do(self._run_daily_job)
+        # Schedule daily job at optimal time (tagged for clean updates)
+        schedule.every().day.at(send_time).do(self._run_daily_job).tag('daily_email')
 
         # Also schedule a daily recalculation of optimal time at midnight
         schedule.every().day.at("00:01").do(self._update_schedule_time)
@@ -630,11 +630,10 @@ class EmailScheduler:
 
     def _update_schedule_time(self):
         """Recalculate optimal send time daily based on new tracking data."""
-        # Clear existing schedule and reschedule with updated optimal time
         optimal_hour = get_optimal_send_hour()
         new_send_time = f"{optimal_hour:02d}:00"
 
-        # Remove old job and add new one
+        # Remove old daily email job and add new one with updated time
         schedule.clear('daily_email')
         schedule.every().day.at(new_send_time).do(self._run_daily_job).tag('daily_email')
 

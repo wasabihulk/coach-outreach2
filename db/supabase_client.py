@@ -233,13 +233,13 @@ class SupabaseDB:
             school_info = coach.get('schools') or {}
             school_name = school_info.get('name', '') if isinstance(school_info, dict) else ''
 
-            # Get latest outreach for this coach
-            outreach = (self.client.table('outreach')
-                        .select('email_type, sent_at, replied, status')
-                        .eq('coach_email', email)
-                        .order('sent_at', desc=True)
-                        .limit(5)
-                        .execute().data)
+            # Get latest outreach for this coach (filter by athlete when context is set)
+            outreach_q = (self.client.table('outreach')
+                         .select('email_type, sent_at, replied, status')
+                         .eq('coach_email', email))
+            if self._athlete_id:
+                outreach_q = outreach_q.eq('athlete_id', self._athlete_id)
+            outreach = outreach_q.order('sent_at', desc=True).limit(5).execute().data
 
             # Determine stage
             stage = self._compute_email_stage(outreach)
@@ -301,12 +301,12 @@ class SupabaseDB:
         if not coach.data or not coach.data[0].get('email'):
             return 'no_email'
         email = coach.data[0]['email']
-        outreach = (self.client.table('outreach')
-                    .select('email_type, sent_at, replied, status')
-                    .eq('coach_email', email)
-                    .order('sent_at', desc=True)
-                    .limit(5)
-                    .execute().data)
+        outreach_q = (self.client.table('outreach')
+                     .select('email_type, sent_at, replied, status')
+                     .eq('coach_email', email))
+        if self._athlete_id:
+            outreach_q = outreach_q.eq('athlete_id', self._athlete_id)
+        outreach = outreach_q.order('sent_at', desc=True).limit(5).execute().data
         return self._compute_email_stage(outreach)
 
     def mark_coach_contacted(self, coach_id, date=None, notes=None):
@@ -1007,6 +1007,15 @@ class SupabaseDB:
         athlete_schools = self.get_athlete_schools(athlete_id)
         alerts = []
 
+        # Get athlete's position to determine which position coach they need
+        athlete = self.get_athlete_by_id(athlete_id)
+        athlete_position = (athlete.get('positions') or athlete.get('position') or 'OL').upper()
+        position_to_role = {
+            'OL': 'ol', 'WR': 'wr', 'QB': 'qb', 'RB': 'rb', 'TE': 'te',
+            'DL': 'dl', 'LB': 'lb', 'DB': 'db', 'K': 'st', 'P': 'st', 'LS': 'st', 'ATH': 'ath'
+        }
+        position_role = position_to_role.get(athlete_position, 'ol')
+
         for as_row in athlete_schools:
             school_info = as_row.get('schools', {})
             school_id = as_row.get('school_id')
@@ -1016,8 +1025,8 @@ class SupabaseDB:
             roles_with_email = [c['role'] for c in coaches if c.get('email')]
 
             missing = []
-            if preference in ('position_coach', 'both') and 'ol' not in roles_with_email:
-                missing.append('Position Coach (OL)')
+            if preference in ('position_coach', 'both') and position_role not in roles_with_email:
+                missing.append(f'Position Coach ({position_role.upper()})')
             if preference in ('rc', 'both') and 'rc' not in roles_with_email:
                 missing.append('Recruiting Coordinator')
 
