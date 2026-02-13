@@ -302,27 +302,8 @@ def _run_startup_tasks():
     except Exception as e:
         logger.warning(f"Email cleanup failed: {e}")
 
-    # Auto-sync templates from TemplateManager → Supabase
-    try:
-        from enterprise.templates import get_template_manager
-        tm = get_template_manager()
-        existing_sb = _supabase_db.get_templates()
-        existing_names = {t['name'] for t in existing_sb}
-        synced = 0
-        for t in tm.templates.values():
-            if t.name not in existing_names:
-                _supabase_db.create_template(
-                    name=t.name,
-                    body=t.body,
-                    subject=t.subject,
-                    template_type=t.template_type if t.template_type in ('email', 'dm', 'followup') else 'email',
-                    coach_type=t.template_type if t.template_type in ('rc', 'ol', 'any') else 'any',
-                )
-                synced += 1
-        if synced:
-            logger.info(f"Synced {synced} templates to Supabase")
-    except Exception as te:
-        logger.warning(f"Template sync to Supabase failed: {te}")
+    # Templates now live in Supabase per-athlete. Default templates are
+    # auto-seeded when get_templates_for_athlete() is called and finds none.
 
     # Auto-sync settings → Supabase
     try:
@@ -1168,6 +1149,10 @@ HTML_TEMPLATE = '''
         .template-info { flex: 1; }
         .template-name { font-weight: 500; }
         .template-type { font-size: 12px; color: var(--muted); }
+        .template-desc { font-size: 11px; color: var(--muted); margin-top:2px; }
+        .tone-btn { padding:8px 14px; border:1px solid var(--border); border-radius:20px; background:var(--bg2); color:var(--text); font-size:12px; cursor:pointer; transition:all .2s; }
+        .tone-btn:hover { border-color:var(--accent); color:var(--accent); }
+        .tone-btn.active { background:var(--accent); color:white; border-color:var(--accent); }
         .toggle { position: relative; width: 44px; height: 24px; }
         .toggle input { opacity: 0; width: 0; height: 0; }
         .toggle-slider { position: absolute; inset: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 24px; cursor: pointer; transition: 0.2s; }
@@ -2232,45 +2217,129 @@ HTML_TEMPLATE = '''
         </div>
     </div>
 
-    <!-- Create Template Modal -->
+    <!-- Template Builder Modal -->
     <div class="modal-overlay" id="template-modal">
-        <div class="modal">
+        <div class="modal" style="max-width:640px;">
             <div class="modal-header">
-                <span class="modal-title">Email Template</span>
+                <span class="modal-title">Create Template</span>
                 <button class="modal-close" onclick="closeTemplateModal()">&times;</button>
             </div>
-            <div class="form-group">
-                <label>Template Type</label>
-                <select id="new-tpl-type">
-                    <option value="rc">Recruiting Coordinator</option>
-                    <option value="ol">OL - Offensive Line Coach</option>
-                    <option value="wr">WR - Wide Receivers Coach</option>
-                    <option value="qb">QB - Quarterbacks Coach</option>
-                    <option value="rb">RB - Running Backs Coach</option>
-                    <option value="te">TE - Tight Ends Coach</option>
-                    <option value="dl">DL - Defensive Line Coach</option>
-                    <option value="lb">LB - Linebackers Coach</option>
-                    <option value="db">DB - Defensive Backs Coach</option>
-                    <option value="st">ST - Special Teams Coach (K/P/LS)</option>
-                    <option value="followup">Follow-up</option>
-                    <option value="dm">Twitter DM</option>
-                </select>
+
+            <!-- Mode Toggle -->
+            <div style="display:flex;gap:0;margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+                <button id="tpl-mode-easy" onclick="setTemplateMode('easy')" style="flex:1;padding:10px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:var(--accent);color:white;transition:all .2s;">Easy Mode</button>
+                <button id="tpl-mode-advanced" onclick="setTemplateMode('advanced')" style="flex:1;padding:10px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:var(--bg2);color:var(--muted);transition:all .2s;">Advanced Mode</button>
             </div>
-            <div class="form-group"><label>Template Name</label><input type="text" id="new-tpl-name" placeholder="My Template"></div>
-            <div class="form-group" id="tpl-subject-group">
-                <label>Subject Line</label>
-                <input type="text" id="new-tpl-subject" placeholder="{grad_year} {position} - {athlete_name}">
-                <div id="subject-variable-chips" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;"></div>
-            </div>
-            <div class="form-group">
-                <label>Body</label>
-                <textarea id="new-tpl-body" rows="10" placeholder="Coach {coach_name},..."></textarea>
-                <div style="background:var(--bg3);border:1px solid var(--border);padding:10px;margin-top:8px;border-radius:6px;">
-                    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;"><strong style="color:var(--accent);">Click to insert:</strong></div>
-                    <div id="body-variable-chips" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+
+            <!-- EASY MODE -->
+            <div id="tpl-easy-panel">
+                <div class="form-group">
+                    <label>What kind of template?</label>
+                    <select id="easy-tpl-kind" onchange="easyKindChanged()">
+                        <option value="intro">Introduction Email</option>
+                        <option value="followup">Follow-up Email</option>
+                        <option value="dm">Twitter DM</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Who is it for?</label>
+                    <select id="easy-tpl-coach">
+                        <option value="any">Any Coach</option>
+                        <option value="rc">Recruiting Coordinator</option>
+                        <option value="ol">Position Coach (OL)</option>
+                        <option value="hc">Head Coach</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tone</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;" id="easy-tone-btns">
+                        <button class="tone-btn active" data-tone="professional" onclick="selectTone(this)">Professional</button>
+                        <button class="tone-btn" data-tone="casual" onclick="selectTone(this)">Casual</button>
+                        <button class="tone-btn" data-tone="enthusiastic" onclick="selectTone(this)">Enthusiastic</button>
+                        <button class="tone-btn" data-tone="confident" onclick="selectTone(this)">Confident</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Template Name</label>
+                    <input type="text" id="easy-tpl-name" placeholder="e.g. My Intro Email">
+                </div>
+                <div class="form-group" id="easy-subject-group">
+                    <label>Subject Line <span style="color:var(--muted);font-size:11px;">(your info auto-fills)</span></label>
+                    <input type="text" id="easy-tpl-subject" placeholder="Interested in {school} - {athlete_name}">
+                </div>
+                <div class="form-group">
+                    <label>Body <span style="color:var(--muted);font-size:11px;">(use {variables} — they auto-fill when sending)</span></label>
+                    <textarea id="easy-tpl-body" rows="8" placeholder="Coach {coach_name},
+
+My name is {athlete_name} and I am a {grad_year} {position} from {high_school} in {state}.
+
+..."></textarea>
+                </div>
+                <div style="background:var(--bg3);border:1px solid var(--border);padding:10px;border-radius:8px;margin-bottom:12px;">
+                    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600;">Tap to insert variables:</div>
+                    <div id="easy-body-chips" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
                 </div>
             </div>
-            <button class="btn btn-primary" id="tpl-save-btn" onclick="createTemplate()">SAVE TEMPLATE</button>
+
+            <!-- ADVANCED MODE -->
+            <div id="tpl-advanced-panel" style="display:none;">
+                <div style="display:flex;gap:10px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>Template Type</label>
+                        <select id="adv-tpl-type">
+                            <option value="email">Email</option>
+                            <option value="followup">Follow-up</option>
+                            <option value="dm">Twitter DM</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Coach Type</label>
+                        <select id="adv-tpl-coach">
+                            <option value="any">Any</option>
+                            <option value="rc">RC</option>
+                            <option value="ol">OL</option>
+                            <option value="wr">WR</option>
+                            <option value="qb">QB</option>
+                            <option value="rb">RB</option>
+                            <option value="te">TE</option>
+                            <option value="dl">DL</option>
+                            <option value="lb">LB</option>
+                            <option value="db">DB</option>
+                            <option value="st">ST</option>
+                            <option value="hc">HC</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Template Name</label>
+                    <input type="text" id="adv-tpl-name" placeholder="My Custom Template">
+                </div>
+                <div class="form-group" id="adv-subject-group">
+                    <label>Subject Line</label>
+                    <input type="text" id="adv-tpl-subject" placeholder="{grad_year} {position} - {athlete_name}">
+                    <div id="adv-subject-chips" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;"></div>
+                </div>
+                <div class="form-group">
+                    <label>Body</label>
+                    <textarea id="adv-tpl-body" rows="12" placeholder="Coach {coach_name},&#10;&#10;..."></textarea>
+                </div>
+                <div style="background:var(--bg3);border:1px solid var(--border);padding:10px;border-radius:8px;margin-bottom:12px;">
+                    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600;">Click to insert:</div>
+                    <div id="adv-body-chips" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+                </div>
+                <div class="form-group">
+                    <label>Description <span style="color:var(--muted);font-size:11px;">(optional note for yourself)</span></label>
+                    <input type="text" id="adv-tpl-desc" placeholder="e.g. My best-performing intro">
+                </div>
+            </div>
+
+            <!-- Preview -->
+            <details style="margin-bottom:12px;">
+                <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent);">Preview with sample data</summary>
+                <div id="tpl-preview" style="background:var(--bg2);border:1px solid var(--border);padding:12px;border-radius:8px;margin-top:8px;font-size:13px;white-space:pre-wrap;line-height:1.5;"></div>
+            </details>
+
+            <button class="btn btn-primary" id="tpl-save-btn" onclick="saveTemplate()" style="width:100%;padding:12px;font-size:14px;">SAVE TEMPLATE</button>
         </div>
     </div>
 
@@ -2337,22 +2406,25 @@ HTML_TEMPLATE = '''
             '{hudl_link}', '{phone}', '{email}'
         ];
 
-        function initVariableChips() {
+        function buildChips(containerId, variables, targetId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
             const chipStyle = 'background:var(--bg2);border:1px solid var(--border);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:monospace;transition:all 0.15s;';
-            const subjectContainer = document.getElementById('subject-variable-chips');
-            const bodyContainer = document.getElementById('body-variable-chips');
-
-            if (subjectContainer) {
-                subjectContainer.innerHTML = subjectVariables.map(v =>
-                    `<span onclick="insertVariable('${v}', 'new-tpl-subject')" style="${chipStyle}" onmouseover="this.style.background='var(--accent)';this.style.color='white';this.style.borderColor='var(--accent)';" onmouseout="this.style.background='var(--bg2)';this.style.color='inherit';this.style.borderColor='var(--border)';">${v}</span>`
-                ).join('');
-            }
-            if (bodyContainer) {
-                bodyContainer.innerHTML = bodyVariables.map(v =>
-                    `<span onclick="insertVariable('${v}', 'new-tpl-body')" style="${chipStyle}" onmouseover="this.style.background='var(--accent)';this.style.color='white';this.style.borderColor='var(--accent)';" onmouseout="this.style.background='var(--bg2)';this.style.color='inherit';this.style.borderColor='var(--border)';">${v}</span>`
-                ).join('');
-            }
+            container.innerHTML = variables.map(v =>
+                `<span onclick="insertVariable('${v}', '${targetId}')" style="${chipStyle}" onmouseover="this.style.background='var(--accent)';this.style.color='white';this.style.borderColor='var(--accent)';" onmouseout="this.style.background='var(--bg2)';this.style.color='inherit';this.style.borderColor='var(--border)';">${v}</span>`
+            ).join('');
         }
+
+        function initAllVariableChips() {
+            // Easy mode body chips
+            buildChips('easy-body-chips', bodyVariables.concat(['{high_school}', '{state}']), 'easy-tpl-body');
+            // Advanced mode chips
+            buildChips('adv-subject-chips', subjectVariables, 'adv-tpl-subject');
+            buildChips('adv-body-chips', bodyVariables.concat(['{high_school}', '{state}']), 'adv-tpl-body');
+        }
+
+        // Legacy alias
+        function initVariableChips() { initAllVariableChips(); }
 
         function insertVariable(varText, targetId) {
             const el = document.getElementById(targetId);
@@ -2363,10 +2435,11 @@ HTML_TEMPLATE = '''
             el.value = text.substring(0, start) + varText + text.substring(end);
             el.selectionStart = el.selectionEnd = start + varText.length;
             el.focus();
+            updatePreview();
         }
 
         // Initialize variable chips when DOM is ready
-        document.addEventListener('DOMContentLoaded', initVariableChips);
+        document.addEventListener('DOMContentLoaded', initAllVariableChips);
         
         // Tab switching
         document.querySelectorAll('.tab').forEach(tab => {
@@ -3297,52 +3370,69 @@ HTML_TEMPLATE = '''
                 const data = await res.json();
                 templates = data.templates || [];
                 
-                const emailTypes = ['rc', 'ol', 'followup'];
+                const emailTypes = ['email', 'followup', 'intro', 'followup_1', 'followup_2', 'rc', 'ol'];
                 const dmTypes = ['dm'];
                 const filterTypes = type === 'dm' ? dmTypes : emailTypes;
                 
                 const filtered = templates.filter(t => filterTypes.includes(t.template_type));
                 const container = document.getElementById(type === 'dm' ? 'dm-templates' : 'email-templates');
                 
-                container.innerHTML = filtered.map(t => `
+                container.innerHTML = filtered.length ? filtered.map(t => `
                     <div class="template-item">
                         <div class="template-info">
                             <div class="template-name">${t.name}</div>
-                            <div class="template-type">${t.template_type.toUpperCase()} ${t.category === 'user' ? '(Custom)' : ''}</div>
+                            <div class="template-type">${(t.template_type || 'email').toUpperCase()}${t.coach_type && t.coach_type !== 'any' ? ' / ' + t.coach_type.toUpperCase() : ''}${t.tone ? ' · ' + t.tone : ''}</div>
+                            ${t.description ? `<div class="template-desc">${t.description}</div>` : ''}
                         </div>
                         <label class="toggle">
-                            <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="toggleTemplate('${t.id}', this.checked)">
+                            <input type="checkbox" ${t.is_active ? 'checked' : ''} onchange="toggleTemplate('${t.id}', this.checked)">
                             <span class="toggle-slider"></span>
                         </label>
-                        <button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="editTemplate('${t.id}')">✎</button>
-                        ${t.category === 'user' ? `<button class="btn btn-sm btn-outline" style="margin-left:4px" onclick="deleteTemplate('${t.id}')">×</button>` : ''}
+                        <button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="editTemplate('${t.id}')">Edit</button>
+                        <button class="btn btn-sm btn-outline" style="margin-left:4px;color:var(--err);" onclick="deleteTemplate('${t.id}')">Del</button>
                     </div>
-                `).join('');
+                `).join('') : '<p class="text-muted text-sm" style="padding:12px;">No templates yet. Click + New Template to get started!</p>';
                 
-                // Populate template select
+                // Populate template select if it exists
                 const sel = document.getElementById('template-select');
-                sel.innerHTML = filtered.filter(t => t.enabled).map(t => `<option value="${t.id}">${t.name}</option>`).join('');
-            } catch(e) { console.error(e); }
+                if (sel) sel.innerHTML = filtered.filter(t => t.is_active).map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+            } catch(e) { console.error('loadTemplates error:', e); }
         }
         
         async function editTemplate(id) {
             const t = templates.find(x => x.id === id);
             if (!t) return;
 
-            document.getElementById('template-modal').classList.add('active');
-            document.getElementById('new-tpl-type').value = t.template_type;
-            document.getElementById('new-tpl-name').value = t.name;
-            document.getElementById('new-tpl-subject').value = t.subject || '';
-            document.getElementById('new-tpl-body').value = t.body || '';
-
-            // Store editing ID
-            document.getElementById('template-modal').dataset.editId = id;
+            const modal = document.getElementById('template-modal');
+            modal.classList.add('active');
+            modal.dataset.editId = id;
             document.querySelector('#template-modal .modal-title').textContent = 'Edit Template';
             document.getElementById('tpl-save-btn').textContent = 'Save Changes';
 
-            // Show/hide subject based on type
-            document.getElementById('tpl-subject-group').style.display = t.template_type === 'dm' ? 'none' : 'block';
-            initVariableChips();  // Populate clickable variable chips
+            // Determine which mode to open in
+            const mode = t.mode || 'advanced';
+            setTemplateMode(mode);
+
+            if (mode === 'easy') {
+                document.getElementById('easy-tpl-kind').value = t.template_type === 'dm' ? 'dm' : (t.template_type === 'followup' ? 'followup' : 'intro');
+                document.getElementById('easy-tpl-coach').value = t.coach_type || 'any';
+                document.getElementById('easy-tpl-name').value = t.name || '';
+                document.getElementById('easy-tpl-subject').value = t.subject || '';
+                document.getElementById('easy-tpl-body').value = t.body || '';
+                // Set tone
+                document.querySelectorAll('.tone-btn').forEach(b => b.classList.toggle('active', b.dataset.tone === (t.tone || 'professional')));
+                easyKindChanged();
+            } else {
+                document.getElementById('adv-tpl-type').value = t.template_type || 'email';
+                document.getElementById('adv-tpl-coach').value = t.coach_type || 'any';
+                document.getElementById('adv-tpl-name').value = t.name || '';
+                document.getElementById('adv-tpl-subject').value = t.subject || '';
+                document.getElementById('adv-tpl-body').value = t.body || '';
+                document.getElementById('adv-tpl-desc').value = t.description || '';
+                document.getElementById('adv-subject-group').style.display = t.template_type === 'dm' ? 'none' : 'block';
+            }
+            initAllVariableChips();
+            updatePreview();
         }
         
         async function toggleTemplate(id, enabled) {
@@ -3360,7 +3450,8 @@ HTML_TEMPLATE = '''
             try {
                 await fetch('/api/templates/' + id, { method: 'DELETE' });
                 loadTemplates('email');
-                showToast('Deleted', 'success');
+                loadTemplates('dm');
+                showToast('Template deleted', 'success');
             } catch(e) { showToast('Failed to delete', 'error'); }
         }
         
@@ -3647,67 +3738,151 @@ HTML_TEMPLATE = '''
             } catch(e) { console.error(e); }
         }
         
-        // Template modal
+        // ========== TEMPLATE BUILDER ==========
+        let currentTemplateMode = 'easy';
+        
+        function setTemplateMode(mode) {
+            currentTemplateMode = mode;
+            document.getElementById('tpl-easy-panel').style.display = mode === 'easy' ? 'block' : 'none';
+            document.getElementById('tpl-advanced-panel').style.display = mode === 'advanced' ? 'block' : 'none';
+            document.getElementById('tpl-mode-easy').style.background = mode === 'easy' ? 'var(--accent)' : 'var(--bg2)';
+            document.getElementById('tpl-mode-easy').style.color = mode === 'easy' ? 'white' : 'var(--muted)';
+            document.getElementById('tpl-mode-advanced').style.background = mode === 'advanced' ? 'var(--accent)' : 'var(--bg2)';
+            document.getElementById('tpl-mode-advanced').style.color = mode === 'advanced' ? 'white' : 'var(--muted)';
+            initAllVariableChips();
+        }
+
+        function selectTone(btn) {
+            document.querySelectorAll('.tone-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        function easyKindChanged() {
+            const kind = document.getElementById('easy-tpl-kind').value;
+            const subjGroup = document.getElementById('easy-subject-group');
+            if (subjGroup) subjGroup.style.display = kind === 'dm' ? 'none' : 'block';
+        }
+
         function openCreateTemplate(type) {
             const modal = document.getElementById('template-modal');
             modal.classList.add('active');
-            modal.dataset.editId = '';  // Clear edit state
+            modal.dataset.editId = '';
             document.querySelector('#template-modal .modal-title').textContent = 'Create Template';
             document.getElementById('tpl-save-btn').textContent = 'Create Template';
-            document.getElementById('new-tpl-type').value = type === 'dm' ? 'dm' : 'rc';
-            document.getElementById('new-tpl-name').value = '';
-            document.getElementById('new-tpl-subject').value = '';
-            document.getElementById('new-tpl-body').value = '';
-            document.getElementById('tpl-subject-group').style.display = type === 'dm' ? 'none' : 'block';
-            initVariableChips();  // Populate clickable variable chips
+
+            setTemplateMode('easy');
+
+            // Reset easy mode fields
+            document.getElementById('easy-tpl-kind').value = type === 'dm' ? 'dm' : 'intro';
+            document.getElementById('easy-tpl-coach').value = 'any';
+            document.getElementById('easy-tpl-name').value = '';
+            document.getElementById('easy-tpl-subject').value = '';
+            document.getElementById('easy-tpl-body').value = '';
+            document.querySelectorAll('.tone-btn').forEach(b => b.classList.toggle('active', b.dataset.tone === 'professional'));
+
+            // Reset advanced mode fields
+            document.getElementById('adv-tpl-type').value = type === 'dm' ? 'dm' : 'email';
+            document.getElementById('adv-tpl-coach').value = 'any';
+            document.getElementById('adv-tpl-name').value = '';
+            document.getElementById('adv-tpl-subject').value = '';
+            document.getElementById('adv-tpl-body').value = '';
+            document.getElementById('adv-tpl-desc').value = '';
+
+            easyKindChanged();
+            initAllVariableChips();
         }
+
         function closeTemplateModal() { 
-            const modal = document.getElementById('template-modal');
-            modal.classList.remove('active'); 
-            modal.dataset.editId = '';
+            document.getElementById('template-modal').classList.remove('active');
+            document.getElementById('template-modal').dataset.editId = '';
         }
-        
-        // Safe event listener - new-tpl-type is in modal, may not be ready
-        const newTplTypeEl = document.getElementById('new-tpl-type');
-        if (newTplTypeEl) {
-            newTplTypeEl.addEventListener('change', (e) => {
-                const subjectGroup = document.getElementById('tpl-subject-group');
-                if (subjectGroup) subjectGroup.style.display = e.target.value === 'dm' ? 'none' : 'block';
+
+        // Listen for type changes in advanced mode
+        const advTplTypeEl = document.getElementById('adv-tpl-type');
+        if (advTplTypeEl) {
+            advTplTypeEl.addEventListener('change', (e) => {
+                const sg = document.getElementById('adv-subject-group');
+                if (sg) sg.style.display = e.target.value === 'dm' ? 'none' : 'block';
             });
         }
-        
-        async function createTemplate() {
+
+        function getTemplateData() {
+            if (currentTemplateMode === 'easy') {
+                const kind = document.getElementById('easy-tpl-kind').value;
+                const toneBtn = document.querySelector('.tone-btn.active');
+                return {
+                    name: document.getElementById('easy-tpl-name').value,
+                    subject: document.getElementById('easy-tpl-subject').value,
+                    body: document.getElementById('easy-tpl-body').value,
+                    template_type: kind === 'intro' ? 'email' : kind,
+                    coach_type: document.getElementById('easy-tpl-coach').value,
+                    tone: toneBtn ? toneBtn.dataset.tone : 'professional',
+                    mode: 'easy',
+                };
+            } else {
+                return {
+                    name: document.getElementById('adv-tpl-name').value,
+                    subject: document.getElementById('adv-tpl-subject').value,
+                    body: document.getElementById('adv-tpl-body').value,
+                    template_type: document.getElementById('adv-tpl-type').value,
+                    coach_type: document.getElementById('adv-tpl-coach').value,
+                    description: document.getElementById('adv-tpl-desc').value,
+                    mode: 'advanced',
+                };
+            }
+        }
+
+        async function saveTemplate() {
             const modal = document.getElementById('template-modal');
             const editId = modal.dataset.editId;
-            const type = document.getElementById('new-tpl-type').value;
-            const name = document.getElementById('new-tpl-name').value;
-            const subject = document.getElementById('new-tpl-subject').value;
-            const body = document.getElementById('new-tpl-body').value;
+            const data = getTemplateData();
             
-            if (!name || !body) { showToast('Name and body required', 'error'); return; }
+            if (!data.name || !data.body) { showToast('Name and body are required', 'error'); return; }
             
             try {
                 if (editId) {
-                    // Update existing template
                     await fetch('/api/templates/' + editId, {
                         method: 'PUT',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ name, subject, body })
+                        body: JSON.stringify(data)
                     });
-                    showToast('Template updated', 'success');
+                    showToast('Template updated!', 'success');
                 } else {
-                    // Create new template
                     await fetch('/api/templates', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ template_type: type, name, subject, body })
+                        body: JSON.stringify(data)
                     });
-                    showToast('Template created', 'success');
+                    showToast('Template created!', 'success');
                 }
                 closeTemplateModal();
-                loadTemplates(type === 'dm' ? 'dm' : 'email');
-            } catch(e) { showToast('Failed to save', 'error'); }
+                loadTemplates('email');
+                loadTemplates('dm');
+            } catch(e) { showToast('Failed to save template', 'error'); }
         }
+
+        // Preview with sample data
+        function updatePreview() {
+            const data = getTemplateData();
+            const sampleVars = {
+                '{coach_name}': 'Smith', '{school}': 'State University', '{athlete_name}': 'John Doe',
+                '{position}': 'OL', '{grad_year}': '2026', '{height}': "6'3", '{weight}': '295',
+                '{gpa}': '3.5', '{hudl_link}': 'https://hudl.com/...', '{phone}': '555-555-5555',
+                '{email}': 'athlete@email.com', '{high_school}': 'Lincoln HS', '{state}': 'FL',
+            };
+            let preview = '';
+            if (data.subject) preview += '<strong>Subject:</strong> ' + data.subject + '<br><br>';
+            preview += (data.body || '(empty body)');
+            Object.entries(sampleVars).forEach(([k, v]) => { preview = preview.split(k).join(`<span style="color:var(--accent);font-weight:600;">${v}</span>`); });
+            const el = document.getElementById('tpl-preview');
+            if (el) el.innerHTML = preview;
+        }
+
+        // Auto-update preview on input
+        ['easy-tpl-subject','easy-tpl-body','adv-tpl-subject','adv-tpl-body'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', updatePreview);
+        });
         
         // Find coaches for a school
         async function findCoaches(schoolName) {
@@ -5899,115 +6074,94 @@ def api_record_response():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@app.route('/api/templates', methods=['GET', 'POST'])
-def api_templates():
-    """Get all templates or create new user template."""
+@app.route('/api/templates')
+@login_required
+def api_templates_list():
+    """Get all templates for the logged-in athlete."""
+    if not _supabase_db:
+        return jsonify({'success': False, 'error': 'Database not connected', 'templates': []})
     try:
-        if request.method == 'POST':
-            data = request.get_json()
-            # Create in Supabase
-            if _supabase_db:
-                try:
-                    result = _supabase_db.create_template(
-                        name=data.get('name', 'New Template'),
-                        body=data.get('body', ''),
-                        subject=data.get('subject'),
-                        template_type=data.get('template_type', 'email'),
-                        coach_type=data.get('coach_type', 'any'),
-                    )
-                    return jsonify({'success': True, 'template': result.data[0] if result.data else None})
-                except Exception as sb_e:
-                    logger.error(f"Supabase template create error: {sb_e}")
-                    return jsonify({'success': False, 'error': str(sb_e)})
-            # Fallback to local
-            from enterprise.templates import get_template_manager
-            manager = get_template_manager()
-            template = manager.create_template(
-                name=data.get('name', 'New Template'),
-                template_type=data.get('template_type', 'rc'),
-                subject=data.get('subject', ''),
-                body=data.get('body', '')
-            )
-            return jsonify({'success': True, 'template': template.to_dict()})
-
-        # GET - Load templates from Supabase first
-        if _supabase_db:
-            try:
-                templates = _supabase_db.get_templates()
-                if templates:
-                    return jsonify({'success': True, 'templates': templates})
-            except Exception as sb_e:
-                logger.warning(f"Supabase templates load error: {sb_e}")
-
-        # Fallback to local templates
-        from enterprise.templates import get_template_manager
-        manager = get_template_manager()
-        templates = manager.get_all_templates()
+        template_type = request.args.get('type')
+        templates = _supabase_db.get_templates_for_athlete(g.athlete_id, template_type=template_type)
         return jsonify({'success': True, 'templates': templates})
     except Exception as e:
+        logger.error(f"Get templates error: {e}")
         return jsonify({'success': False, 'error': str(e), 'templates': []})
 
 
-@app.route('/api/templates/<template_id>', methods=['GET', 'PUT', 'DELETE'])
-def api_template_single(template_id):
-    """Get, update, or delete a single template."""
+@app.route('/api/templates', methods=['POST'])
+@login_required
+def api_templates_create():
+    """Create a new template for the logged-in athlete."""
+    if not _supabase_db:
+        return jsonify({'success': False, 'error': 'Database not connected'})
     try:
-        from enterprise.templates import get_template_manager
-        manager = get_template_manager()
-        
-        if request.method == 'GET':
-            template = manager.get_template(template_id)
-            if template:
-                return jsonify({'success': True, 'template': template.to_dict()})
-            return jsonify({'success': False, 'error': 'Template not found'})
-        
-        elif request.method == 'PUT':
-            data = request.get_json() or {}
-            success = manager.update_template(
-                template_id,
-                name=data.get('name'),
-                subject=data.get('subject'),
-                body=data.get('body')
-            )
-            if success:
-                template = manager.get_template(template_id)
-                # Sync update to Supabase
-                if SUPABASE_AVAILABLE and _supabase_db:
-                    try:
-                        sb_templates = _supabase_db.get_templates()
-                        for sbt in sb_templates:
-                            if sbt['name'] == template.name:
-                                update_fields = {}
-                                if data.get('name'):
-                                    update_fields['name'] = data['name']
-                                if data.get('subject') is not None:
-                                    update_fields['subject'] = data['subject']
-                                if data.get('body') is not None:
-                                    update_fields['body'] = data['body']
-                                if update_fields:
-                                    _supabase_db.update_template(sbt['id'], **update_fields)
-                                break
-                    except Exception as sb_e:
-                        logger.warning(f"Supabase template update sync error: {sb_e}")
-                return jsonify({'success': True, 'template': template.to_dict()})
-            return jsonify({'success': False, 'error': 'Failed to update template'})
+        data = request.get_json()
+        # Temporarily set athlete_id for the create operation
+        old_athlete = _supabase_db._athlete_id
+        _supabase_db._athlete_id = g.athlete_id
+        result = _supabase_db.create_template(
+            name=data.get('name', 'Untitled Template'),
+            body=data.get('body', ''),
+            subject=data.get('subject'),
+            template_type=data.get('template_type', 'email'),
+            coach_type=data.get('coach_type', 'any'),
+            tone=data.get('tone', 'professional'),
+            mode=data.get('mode', 'advanced'),
+            description=data.get('description'),
+        )
+        _supabase_db._athlete_id = old_athlete
+        template = result.data[0] if result.data else None
+        return jsonify({'success': True, 'template': template})
+    except Exception as e:
+        logger.error(f"Create template error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
-        elif request.method == 'DELETE':
-            # Get template name before deleting for Supabase sync
-            template = manager.get_template(template_id)
-            template_name = template.name if template else None
-            success = manager.delete_template(template_id)
-            if success and SUPABASE_AVAILABLE and _supabase_db and template_name:
-                try:
-                    sb_templates = _supabase_db.get_templates()
-                    for sbt in sb_templates:
-                        if sbt['name'] == template_name:
-                            _supabase_db.delete_template(sbt['id'])
-                            break
-                except Exception as sb_e:
-                    logger.warning(f"Supabase template delete sync error: {sb_e}")
-            return jsonify({'success': success})
-            
+
+@app.route('/api/templates/<template_id>', methods=['GET'])
+@login_required
+def api_templates_get(template_id):
+    """Get a single template."""
+    if not _supabase_db:
+        return jsonify({'success': False, 'error': 'Database not connected'})
+    try:
+        result = _supabase_db.client.table('templates').select('*').eq('id', template_id).execute()
+        if not result.data:
+            return jsonify({'success': False, 'error': 'Template not found'}), 404
+        return jsonify({'success': True, 'template': result.data[0]})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/templates/<template_id>', methods=['PUT'])
+@login_required
+def api_templates_update(template_id):
+    """Update an existing template."""
+    if not _supabase_db:
+        return jsonify({'success': False, 'error': 'Database not connected'})
+    try:
+        data = request.get_json()
+        allowed = ['name', 'subject', 'body', 'template_type', 'coach_type', 'is_active', 'tone', 'mode', 'description']
+        fields = {k: v for k, v in data.items() if k in allowed}
+        if not fields:
+            return jsonify({'success': False, 'error': 'No valid fields to update'})
+        result = _supabase_db.update_template(template_id, **fields)
+        template = result.data[0] if result.data else None
+        return jsonify({'success': True, 'template': template})
+    except Exception as e:
+        logger.error(f"Update template error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/templates/<template_id>', methods=['DELETE'])
+@login_required
+def api_templates_delete(template_id):
+    """Delete a template."""
+    if not _supabase_db:
+        return jsonify({'success': False, 'error': 'Database not connected'})
+    try:
+        _supabase_db.delete_template(template_id)
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -6192,6 +6346,74 @@ def clean_school_name(school):
     # Remove (STATE) or (State Name) suffix
     import re
     return re.sub(r'\s*\([^)]+\)\s*$', '', school).strip()
+
+
+def render_template_dict(template_dict, variables):
+    """Render a Supabase template dict with variable substitution.
+    
+    Supports both {var} and {{var}} formats. Returns (subject, body).
+    """
+    subject = template_dict.get('subject', '') or ''
+    body = template_dict.get('body', '') or ''
+    
+    for key, val in variables.items():
+        clean_key = key.strip('{}')
+        subject = subject.replace(f'{{{clean_key}}}', str(val))
+        subject = subject.replace(f'{{{{{clean_key}}}}}', str(val))
+        body = body.replace(f'{{{clean_key}}}', str(val))
+        body = body.replace(f'{{{{{clean_key}}}}}', str(val))
+    
+    return subject, body
+
+
+def pick_template_for_coach(templates_list, coach_type, email_type):
+    """Pick the best template from a list of Supabase template dicts.
+    
+    Matches by template_type and coach_type, with fallbacks.
+    Uses round-robin via usage_count for A/B rotation.
+    """
+    if not templates_list:
+        return None
+    
+    # Only consider active templates
+    active = [t for t in templates_list if t.get('is_active', True)]
+    if not active:
+        return None
+    
+    # Map email_type to template_type
+    type_map = {
+        'intro': 'email',
+        'new': 'email',
+        'followup_1': 'followup',
+        'followup_2': 'followup',
+        'followup': 'followup',
+        'dm': 'dm',
+    }
+    target_type = type_map.get(email_type, 'email')
+    
+    # Try exact match: template_type + coach_type
+    exact = [t for t in active if t.get('template_type') == target_type and t.get('coach_type') == coach_type]
+    if exact:
+        # Pick the one with lowest usage_count (round-robin)
+        return min(exact, key=lambda t: t.get('usage_count', 0))
+    
+    # Try type match with 'any' coach_type
+    any_coach = [t for t in active if t.get('template_type') == target_type and t.get('coach_type') in ('any', None)]
+    if any_coach:
+        return min(any_coach, key=lambda t: t.get('usage_count', 0))
+    
+    # Try just type match regardless of coach_type
+    type_match = [t for t in active if t.get('template_type') == target_type]
+    if type_match:
+        return min(type_match, key=lambda t: t.get('usage_count', 0))
+    
+    # Fallback: any active email template
+    email_templates = [t for t in active if t.get('template_type') in ('email', 'intro')]
+    if email_templates:
+        return min(email_templates, key=lambda t: t.get('usage_count', 0))
+    
+    # Last resort: any active template
+    return min(active, key=lambda t: t.get('usage_count', 0))
 
 
 @app.route('/api/dm/message', methods=['POST'])
@@ -7107,6 +7329,7 @@ def api_analyze_sentiment():
 
 
 @app.route('/api/templates/performance')
+@login_required
 def api_templates_performance():
     """Get A/B testing performance stats for templates."""
     try:
@@ -7163,93 +7386,16 @@ def api_templates_performance():
 
 
 @app.route('/api/templates/toggle', methods=['POST'])
+@login_required
 def api_templates_toggle():
-    """Toggle template enabled/disabled."""
+    """Toggle template active/inactive."""
+    if not _supabase_db:
+        return jsonify({'success': False, 'error': 'Database not connected'})
     try:
-        from enterprise.templates import get_template_manager
         data = request.get_json()
-        manager = get_template_manager()
-        success = manager.toggle_template(data['id'], data['enabled'])
-        # Sync toggle to Supabase
-        if success and SUPABASE_AVAILABLE and _supabase_db:
-            try:
-                t = manager.get_template(data['id'])
-                if t:
-                    sb_templates = _supabase_db.get_templates()
-                    for sbt in sb_templates:
-                        if sbt['name'] == t.name:
-                            _supabase_db.toggle_template(sbt['id'], data['enabled'])
-                            break
-            except Exception as sb_e:
-                logger.warning(f"Supabase template toggle sync error: {sb_e}")
-        return jsonify({'success': success})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
-
-@app.route('/api/templates/<template_id>', methods=['DELETE'])
-def api_templates_delete(template_id):
-    """Delete a user template."""
-    try:
-        from enterprise.templates import get_template_manager
-        manager = get_template_manager()
-        t = manager.get_template(template_id)
-        t_name = t.name if t else None
-        success = manager.delete_template(template_id)
-        if success and SUPABASE_AVAILABLE and _supabase_db and t_name:
-            try:
-                sb_templates = _supabase_db.get_templates()
-                for sbt in sb_templates:
-                    if sbt['name'] == t_name:
-                        _supabase_db.delete_template(sbt['id'])
-                        break
-            except Exception as sb_e:
-                logger.warning(f"Supabase template delete sync error: {sb_e}")
-        return jsonify({'success': success})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
-
-@app.route('/api/templates/<template_id>', methods=['PUT'])
-def api_templates_update(template_id):
-    """Update a template."""
-    try:
-        from enterprise.templates import get_template_manager
-        manager = get_template_manager()
-        data = request.get_json() or {}
-        
-        template = manager.get_template(template_id)
-        if not template:
-            return jsonify({'success': False, 'error': 'Template not found'})
-        
-        # Update the template
-        if data.get('name'):
-            template.name = data['name']
-        if 'subject' in data:
-            template.subject = data['subject']
-        if data.get('body'):
-            template.body = data['body']
-        
-        manager._save()
-        # Sync to Supabase
-        if SUPABASE_AVAILABLE and _supabase_db:
-            try:
-                sb_templates = _supabase_db.get_templates()
-                old_name = template.name  # name before update
-                for sbt in sb_templates:
-                    if sbt['name'] == old_name or sbt['name'] == data.get('name', old_name):
-                        update_fields = {}
-                        if data.get('name'):
-                            update_fields['name'] = data['name']
-                        if 'subject' in data:
-                            update_fields['subject'] = data['subject']
-                        if data.get('body'):
-                            update_fields['body'] = data['body']
-                        if update_fields:
-                            _supabase_db.update_template(sbt['id'], **update_fields)
-                        break
-            except Exception as sb_e:
-                logger.warning(f"Supabase template update sync error: {sb_e}")
+        template_id = data.get('id')
+        active = data.get('enabled', True)
+        _supabase_db.toggle_template(template_id, active)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -7347,7 +7493,6 @@ def api_email_send():
             return jsonify({'success': True, 'sent': 0, 'errors': 0,
                            'message': 'No coaches to email right now - all either replied, recently contacted, or no valid emails'})
         
-        from enterprise.templates import get_template_manager
         from enterprise.responses import get_response_tracker
 
         sent = 0
@@ -7356,7 +7501,8 @@ def api_email_send():
         followup1_count = 0
         followup2_count = 0
 
-        template_mgr = get_template_manager()
+        # Load athlete's templates from Supabase
+        athlete_templates = _supabase_db.get_templates_for_athlete(athlete_id)
         response_tracker = get_response_tracker()
 
         # Base variables (coach-specific ones added in loop)
@@ -7402,22 +7548,18 @@ def api_email_send():
                 if email_type == 'new':
                     email_type = 'intro'
 
-                # Get appropriate template
-                if email_type == 'followup_1':
-                    template = template_mgr.get_followup_template(1)
-                elif email_type == 'followup_2':
-                    template = template_mgr.get_followup_template(2)
-                else:
-                    template = template_mgr.get_next_template(coach.get('coach_role', 'ol'), coach.get('school_name', ''))
+                # Pick a template from the athlete's Supabase templates
+                template = pick_template_for_coach(athlete_templates, coach.get('coach_role', 'ol'), email_type)
 
                 if not template:
+                    logger.warning(f"No template found for {coach.get('school_name')} ({email_type})")
                     errors += 1
                     continue
 
                 variables['personalized_hook'] = f"I am very interested in {variables['school']}'s program."
 
-                subject, body = template.render(variables)
-                logger.info(f"Using template for {coach.get('school_name')} ({email_type})")
+                subject, body = render_template_dict(template, variables)
+                logger.info(f"Using template '{template.get('name')}' for {coach.get('school_name')} ({email_type})")
 
                 coach_email = coach['coach_email'].strip() if coach.get('coach_email') else ''
                 # Validate email before sending
@@ -7426,7 +7568,7 @@ def api_email_send():
                     logger.warning(f"Skipping invalid email for {coach.get('school_name', '?')}: '{coach_email}'")
                     errors += 1
                     continue
-                tracking_template_id = template.id if template else 'unknown'
+                tracking_template_id = template.get('id', 'unknown') if template else 'unknown'
 
                 if use_gmail_api:
                     success = send_email_gmail_api(coach_email, subject, body, email_addr, school=coach.get('school_name', ''), coach_name=coach_name, template_id=tracking_template_id)
@@ -7637,10 +7779,16 @@ def api_email_preview():
     template_id = data.get('template_id')
     
     try:
-        from enterprise.templates import get_template_manager
-        manager = get_template_manager()
+        # Get template from Supabase
+        template = None
+        if template_id and _supabase_db:
+            result = _supabase_db.client.table('templates').select('*').eq('id', template_id).execute()
+            template = result.data[0] if result.data else None
         
-        template = manager.get_template(template_id) if template_id else manager.get_next_template('rc')
+        if not template and _supabase_db:
+            athlete_templates = _supabase_db.get_templates_for_athlete(g.athlete_id)
+            template = pick_template_for_coach(athlete_templates, 'rc', 'intro')
+        
         if not template:
             return jsonify({'success': False, 'error': 'No template found'})
         
@@ -7669,8 +7817,8 @@ def api_email_preview():
             'personalized_hook': sample_hook,
         }
 
-        subject, body = template.render(variables)
-        return jsonify({'success': True, 'subject': subject, 'body': body, 'template_name': template.name, 'hook': sample_hook})
+        subject, body = render_template_dict(template, variables)
+        return jsonify({'success': True, 'subject': subject, 'body': body, 'template_name': template.get('name', ''), 'hook': sample_hook})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -7869,13 +8017,18 @@ def api_email_test():
         return jsonify({'success': False, 'error': 'No email credentials - set GMAIL_REFRESH_TOKEN or APP_PASSWORD'})
     
     try:
-        from enterprise.templates import get_template_manager
+        # Get template from Supabase
+        template = None
+        if template_id and _supabase_db:
+            result = _supabase_db.client.table('templates').select('*').eq('id', template_id).execute()
+            template = result.data[0] if result.data else None
         
-        manager = get_template_manager()
-        template = manager.get_template(template_id) if template_id else manager.get_next_template('rc')
+        if not template and _supabase_db:
+            athlete_templates = _supabase_db.get_templates_for_athlete(g.athlete_id)
+            template = pick_template_for_coach(athlete_templates, 'rc', 'intro')
         
         if not template:
-            return jsonify({'success': False, 'error': 'No template found'})
+            return jsonify({'success': False, 'error': 'No template found. Create a template first.'})
         
         variables = {
             'athlete_name': athlete.get('name', 'Test'),
@@ -7892,7 +8045,7 @@ def api_email_test():
             'school': 'Test University',
         }
         
-        subject, body = template.render(variables)
+        subject, body = render_template_dict(template, variables)
         subject = '[TEST] ' + subject
         
         # Use auto method (Gmail API or SMTP)

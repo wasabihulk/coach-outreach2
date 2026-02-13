@@ -362,7 +362,7 @@ class SupabaseDB:
 
         # Get athlete's position to filter position coaches
         athlete = self.get_athlete_by_id(self._athlete_id)
-        athlete_position = (athlete.get('position') or 'OL').upper() if athlete else 'OL'
+        athlete_position = (athlete.get('positions') or athlete.get('position') or 'OL').upper() if athlete else 'OL'
 
         # Map athlete position to coach role
         position_to_role = {
@@ -708,7 +708,8 @@ class SupabaseDB:
             q = q.eq('template_type', template_type)
         return q.order('created_at').execute().data
 
-    def create_template(self, name, body, subject=None, template_type='email', coach_type='any'):
+    def create_template(self, name, body, subject=None, template_type='email', coach_type='any',
+                        tone='professional', mode='advanced', description=None):
         data = {
             'athlete_id': self._athlete_id,
             'name': name,
@@ -716,7 +717,12 @@ class SupabaseDB:
             'subject': subject,
             'template_type': template_type,
             'coach_type': coach_type,
+            'tone': tone,
+            'mode': mode,
+            'description': description,
         }
+        # Remove None values so DB defaults apply
+        data = {k: v for k, v in data.items() if v is not None}
         return self.client.table('templates').insert(data).execute()
 
     def update_template(self, template_id, **fields):
@@ -727,6 +733,83 @@ class SupabaseDB:
 
     def toggle_template(self, template_id, active):
         return self.client.table('templates').update({'is_active': active}).eq('id', template_id).execute()
+
+    def get_templates_for_athlete(self, athlete_id, template_type=None):
+        """Get templates for a specific athlete, seeding defaults if none exist."""
+        q = self.client.table('templates').select('*').eq('athlete_id', athlete_id)
+        if template_type:
+            q = q.eq('template_type', template_type)
+        result = q.order('created_at').execute().data
+
+        # Auto-seed defaults if athlete has no templates at all
+        if not result and not template_type:
+            self.seed_default_templates(athlete_id)
+            result = (self.client.table('templates').select('*')
+                      .eq('athlete_id', athlete_id)
+                      .order('created_at').execute().data)
+
+        return result
+
+    def seed_default_templates(self, athlete_id):
+        """Create default starter templates for a new athlete."""
+        defaults = [
+            {
+                'athlete_id': athlete_id,
+                'name': 'Introduction Email',
+                'template_type': 'email',
+                'coach_type': 'any',
+                'tone': 'professional',
+                'mode': 'easy',
+                'subject': 'Interested in {school} - {athlete_name}, {grad_year} {position}',
+                'body': ('Coach {coach_name},\n\n'
+                         'My name is {athlete_name} and I am a {grad_year} {position} from {high_school} in {state}. '
+                         'I am very interested in {school} and would love the opportunity to be a part of your program.\n\n'
+                         'Here are my stats:\n'
+                         '- Height: {height}\n'
+                         '- Weight: {weight}\n'
+                         '- GPA: {gpa}\n\n'
+                         'You can view my highlight film here: {hudl_link}\n\n'
+                         'I would love to learn more about your program. Thank you for your time, Coach.\n\n'
+                         'Best regards,\n{athlete_name}\n{phone}\n{email}'),
+                'is_active': True,
+                'description': 'Standard intro email for coaches',
+            },
+            {
+                'athlete_id': athlete_id,
+                'name': 'Follow-up Email',
+                'template_type': 'followup',
+                'coach_type': 'any',
+                'tone': 'professional',
+                'mode': 'easy',
+                'subject': 'Following Up - {athlete_name}, {grad_year} {position}',
+                'body': ('Coach {coach_name},\n\n'
+                         'I wanted to follow up on my previous email. I remain very interested in {school} and your program.\n\n'
+                         'I have been working hard this offseason and would love the chance to show you what I can bring to your team.\n\n'
+                         'Highlight film: {hudl_link}\n\n'
+                         'Thank you for your time.\n\n'
+                         'Best regards,\n{athlete_name}\n{phone}'),
+                'is_active': True,
+                'description': 'Follow-up for coaches who have not responded',
+            },
+            {
+                'athlete_id': athlete_id,
+                'name': 'Twitter DM',
+                'template_type': 'dm',
+                'coach_type': 'any',
+                'tone': 'casual',
+                'mode': 'easy',
+                'subject': '',
+                'body': ('Coach {coach_name}, my name is {athlete_name}, {grad_year} {position} from {high_school} ({state}). '
+                         'Very interested in {school}. Here is my film: {hudl_link}. Would love to connect!'),
+                'is_active': True,
+                'description': 'Short DM for Twitter outreach',
+            },
+        ]
+        for tpl in defaults:
+            try:
+                self.client.table('templates').insert(tpl).execute()
+            except Exception as e:
+                logger.warning(f"Failed to seed template '{tpl['name']}': {e}")
 
     # ==========================================
     # SETTINGS
@@ -887,7 +970,7 @@ class SupabaseDB:
 
         # Get athlete's position to filter position coaches
         athlete = self.get_athlete_by_id(athlete_id)
-        athlete_position = (athlete.get('position') or 'OL').upper() if athlete else 'OL'
+        athlete_position = (athlete.get('positions') or athlete.get('position') or 'OL').upper() if athlete else 'OL'
 
         # Map athlete position to coach role
         position_to_role = {
