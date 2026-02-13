@@ -1179,6 +1179,47 @@ HTML_TEMPLATE = '''
         .tone-btn { padding:8px 14px; border:1px solid var(--border); border-radius:20px; background:var(--bg2); color:var(--text); font-size:12px; cursor:pointer; transition:all .2s; }
         .tone-btn:hover { border-color:var(--accent); color:var(--accent); }
         .tone-btn.active { background:var(--accent); color:white; border-color:var(--accent); }
+
+        /* Scratch-style block builder */
+        .block-palette { display:flex; flex-wrap:wrap; gap:6px; padding:10px; background:var(--bg3); border:1px solid var(--border); border-radius:8px; margin-bottom:12px; }
+        .block-palette-item { padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:grab; user-select:none; transition:all .15s; border:2px solid transparent; }
+        .block-palette-item:hover { transform:scale(1.05); box-shadow:0 2px 8px rgba(0,0,0,0.2); }
+        .block-palette-item:active { cursor:grabbing; }
+        .block-palette-item.cat-greeting { background:#4CAF50; color:white; }
+        .block-palette-item.cat-intro { background:#2196F3; color:white; }
+        .block-palette-item.cat-stats { background:#FF9800; color:white; }
+        .block-palette-item.cat-film { background:#9C27B0; color:white; }
+        .block-palette-item.cat-interest { background:#E91E63; color:white; }
+        .block-palette-item.cat-closing { background:#607D8B; color:white; }
+        .block-palette-item.cat-custom { background:var(--bg2); color:var(--text); border:2px dashed var(--border); }
+
+        .block-canvas { min-height:120px; border:2px dashed var(--border); border-radius:8px; padding:8px; background:var(--bg); transition:border-color .2s; }
+        .block-canvas.drag-over { border-color:var(--accent); background:rgba(99,102,241,0.05); }
+        .block-canvas-empty { text-align:center; padding:30px; color:var(--muted); font-size:13px; }
+
+        .tpl-block { display:flex; align-items:center; gap:8px; padding:10px 12px; margin-bottom:6px; border-radius:8px; cursor:grab; user-select:none; position:relative; transition:all .15s; }
+        .tpl-block:hover { box-shadow:0 2px 8px rgba(0,0,0,0.15); }
+        .tpl-block:active { cursor:grabbing; opacity:0.8; }
+        .tpl-block.dragging { opacity:0.4; }
+        .tpl-block .block-icon { font-size:16px; flex-shrink:0; }
+        .tpl-block .block-content { flex:1; font-size:13px; line-height:1.4; }
+        .tpl-block .block-content .var-pill { display:inline-block; background:rgba(255,255,255,0.25); padding:1px 6px; border-radius:4px; font-size:11px; font-weight:600; margin:0 1px; }
+        .tpl-block .block-remove { opacity:0; cursor:pointer; padding:4px; font-size:14px; transition:opacity .15s; flex-shrink:0; }
+        .tpl-block:hover .block-remove { opacity:0.7; }
+        .tpl-block .block-remove:hover { opacity:1; }
+        .tpl-block .block-edit-btn { opacity:0; cursor:pointer; padding:4px; font-size:12px; transition:opacity .15s; flex-shrink:0; }
+        .tpl-block:hover .block-edit-btn { opacity:0.7; }
+        .tpl-block .block-edit-btn:hover { opacity:1; }
+
+        .tpl-block.cat-greeting { background:#4CAF50; color:white; }
+        .tpl-block.cat-intro { background:#2196F3; color:white; }
+        .tpl-block.cat-stats { background:#FF9800; color:white; }
+        .tpl-block.cat-film { background:#9C27B0; color:white; }
+        .tpl-block.cat-interest { background:#E91E63; color:white; }
+        .tpl-block.cat-closing { background:#607D8B; color:white; }
+        .tpl-block.cat-custom { background:var(--bg2); color:var(--text); border:1px solid var(--border); }
+
+        .block-drop-indicator { height:3px; background:var(--accent); border-radius:2px; margin:2px 0; transition:all .15s; }
         .toggle { position: relative; width: 44px; height: 24px; }
         .toggle input { opacity: 0; width: 0; height: 0; }
         .toggle-slider { position: absolute; inset: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 24px; cursor: pointer; transition: 0.2s; }
@@ -2257,32 +2298,25 @@ HTML_TEMPLATE = '''
                 <button id="tpl-mode-advanced" onclick="setTemplateMode('advanced')" style="flex:1;padding:10px;font-size:13px;font-weight:600;border:none;cursor:pointer;background:var(--bg2);color:var(--muted);transition:all .2s;">Advanced Mode</button>
             </div>
 
-            <!-- EASY MODE -->
+            <!-- EASY MODE — Scratch-style Block Builder -->
             <div id="tpl-easy-panel">
-                <div class="form-group">
-                    <label>What kind of template?</label>
-                    <select id="easy-tpl-kind" onchange="easyKindChanged()">
-                        <option value="intro">Introduction Email</option>
-                        <option value="followup">Follow-up Email</option>
-                        <option value="dm">Twitter DM</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Who is it for?</label>
-                    <select id="easy-tpl-coach">
-                        <option value="any">Any Coach</option>
-                        <option value="rc">Recruiting Coordinator</option>
-                        <option value="ol">Position Coach (OL)</option>
-                        <option value="hc">Head Coach</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Tone</label>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;" id="easy-tone-btns">
-                        <button class="tone-btn active" data-tone="professional" onclick="selectTone(this)">Professional</button>
-                        <button class="tone-btn" data-tone="casual" onclick="selectTone(this)">Casual</button>
-                        <button class="tone-btn" data-tone="enthusiastic" onclick="selectTone(this)">Enthusiastic</button>
-                        <button class="tone-btn" data-tone="confident" onclick="selectTone(this)">Confident</button>
+                <div style="display:flex;gap:10px;margin-bottom:12px;">
+                    <div class="form-group" style="flex:1;margin-bottom:0;">
+                        <label>Template Type</label>
+                        <select id="easy-tpl-kind" onchange="easyKindChanged()">
+                            <option value="intro">Introduction Email</option>
+                            <option value="followup">Follow-up Email</option>
+                            <option value="dm">Twitter DM</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex:1;margin-bottom:0;">
+                        <label>For Which Coach?</label>
+                        <select id="easy-tpl-coach">
+                            <option value="any">Any Coach</option>
+                            <option value="rc">Recruiting Coordinator</option>
+                            <option value="ol">Position Coach</option>
+                            <option value="hc">Head Coach</option>
+                        </select>
                     </div>
                 </div>
                 <div class="form-group">
@@ -2290,21 +2324,35 @@ HTML_TEMPLATE = '''
                     <input type="text" id="easy-tpl-name" placeholder="e.g. My Intro Email">
                 </div>
                 <div class="form-group" id="easy-subject-group">
-                    <label>Subject Line <span style="color:var(--muted);font-size:11px;">(your info auto-fills)</span></label>
-                    <input type="text" id="easy-tpl-subject" placeholder="Interested in {school} - {athlete_name}">
+                    <label>Subject Line</label>
+                    <input type="text" id="easy-tpl-subject" value="Interested in {school} - {athlete_name}, {grad_year} {position}">
                 </div>
-                <div class="form-group">
-                    <label>Body <span style="color:var(--muted);font-size:11px;">(use {variables} — they auto-fill when sending)</span></label>
-                    <textarea id="easy-tpl-body" rows="8" placeholder="Coach {coach_name},
 
-My name is {athlete_name} and I am a {grad_year} {position} from {high_school} in {state}.
+                <!-- Block Palette — drag these into the canvas -->
+                <label>Drag blocks to build your email:</label>
+                <div class="block-palette" id="block-palette">
+                    <div class="block-palette-item cat-greeting" draggable="true" data-block="greeting">Greeting</div>
+                    <div class="block-palette-item cat-intro" draggable="true" data-block="intro">My Introduction</div>
+                    <div class="block-palette-item cat-stats" draggable="true" data-block="stats">My Stats</div>
+                    <div class="block-palette-item cat-film" draggable="true" data-block="film">Film Link</div>
+                    <div class="block-palette-item cat-interest" draggable="true" data-block="interest">Why This School</div>
+                    <div class="block-palette-item cat-closing" draggable="true" data-block="closing">Closing + Contact</div>
+                    <div class="block-palette-item cat-custom" draggable="true" data-block="custom">+ Custom Block</div>
+                </div>
 
-..."></textarea>
+                <!-- Canvas — blocks snap here -->
+                <div class="block-canvas" id="block-canvas">
+                    <div class="block-canvas-empty" id="canvas-empty">Drag blocks here to build your email</div>
                 </div>
-                <div style="background:var(--bg3);border:1px solid var(--border);padding:10px;border-radius:8px;margin-bottom:12px;">
-                    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600;">Tap to insert variables:</div>
-                    <div id="easy-body-chips" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
-                </div>
+
+                <!-- Live Preview -->
+                <details style="margin-top:12px;" open>
+                    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent);">Live Preview</summary>
+                    <div id="easy-preview" style="background:var(--bg2);border:1px solid var(--border);padding:14px;border-radius:8px;margin-top:8px;font-size:13px;white-space:pre-wrap;line-height:1.6;min-height:60px;color:var(--text);"></div>
+                </details>
+
+                <!-- Hidden textarea that stores the compiled body -->
+                <textarea id="easy-tpl-body" style="display:none;"></textarea>
             </div>
 
             <!-- ADVANCED MODE -->
@@ -2442,9 +2490,7 @@ My name is {athlete_name} and I am a {grad_year} {position} from {high_school} i
         }
 
         function initAllVariableChips() {
-            // Easy mode body chips
-            buildChips('easy-body-chips', bodyVariables.concat(['{high_school}', '{state}']), 'easy-tpl-body');
-            // Advanced mode chips
+            // Advanced mode chips only (easy mode uses block builder)
             buildChips('adv-subject-chips', subjectVariables, 'adv-tpl-subject');
             buildChips('adv-body-chips', bodyVariables.concat(['{high_school}', '{state}']), 'adv-tpl-body');
         }
@@ -2453,19 +2499,22 @@ My name is {athlete_name} and I am a {grad_year} {position} from {high_school} i
         function initVariableChips() { initAllVariableChips(); }
 
         function insertVariable(varText, targetId) {
-            const el = document.getElementById(targetId);
+            var el = document.getElementById(targetId);
             if (!el) return;
-            const start = el.selectionStart || el.value.length;
-            const end = el.selectionEnd || el.value.length;
-            const text = el.value;
+            var start = el.selectionStart || el.value.length;
+            var end = el.selectionEnd || el.value.length;
+            var text = el.value;
             el.value = text.substring(0, start) + varText + text.substring(end);
             el.selectionStart = el.selectionEnd = start + varText.length;
             el.focus();
             updatePreview();
         }
 
-        // Initialize variable chips when DOM is ready
-        document.addEventListener('DOMContentLoaded', initAllVariableChips);
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            initAllVariableChips();
+            initBlockPalette();
+        });
         
         // Tab switching
         document.querySelectorAll('.tab').forEach(tab => {
@@ -3426,17 +3475,17 @@ My name is {athlete_name} and I am a {grad_year} {position} from {high_school} i
         }
         
         async function editTemplate(id) {
-            const t = templates.find(x => x.id === id);
+            var t = templates.find(function(x) { return x.id === id; });
             if (!t) return;
 
-            const modal = document.getElementById('template-modal');
+            var modal = document.getElementById('template-modal');
             modal.classList.add('active');
             modal.dataset.editId = id;
             document.querySelector('#template-modal .modal-title').textContent = 'Edit Template';
             document.getElementById('tpl-save-btn').textContent = 'Save Changes';
 
             // Determine which mode to open in
-            const mode = t.mode || 'advanced';
+            var mode = t.mode || 'advanced';
             setTemplateMode(mode);
 
             if (mode === 'easy') {
@@ -3444,9 +3493,9 @@ My name is {athlete_name} and I am a {grad_year} {position} from {high_school} i
                 document.getElementById('easy-tpl-coach').value = t.coach_type || 'any';
                 document.getElementById('easy-tpl-name').value = t.name || '';
                 document.getElementById('easy-tpl-subject').value = t.subject || '';
-                document.getElementById('easy-tpl-body').value = t.body || '';
-                // Set tone
-                document.querySelectorAll('.tone-btn').forEach(b => b.classList.toggle('active', b.dataset.tone === (t.tone || 'professional')));
+                // Parse body text back into drag-and-drop blocks
+                _parseBodyToBlocks(t.body || '');
+                renderCanvas();
                 easyKindChanged();
             } else {
                 document.getElementById('adv-tpl-type').value = t.template_type || 'email';
@@ -3766,31 +3815,232 @@ My name is {athlete_name} and I am a {grad_year} {position} from {high_school} i
         
         // ========== TEMPLATE BUILDER ==========
         let currentTemplateMode = 'easy';
-        
-        function setTemplateMode(mode) {
-            currentTemplateMode = mode;
-            document.getElementById('tpl-easy-panel').style.display = mode === 'easy' ? 'block' : 'none';
-            document.getElementById('tpl-advanced-panel').style.display = mode === 'advanced' ? 'block' : 'none';
-            document.getElementById('tpl-mode-easy').style.background = mode === 'easy' ? 'var(--accent)' : 'var(--bg2)';
-            document.getElementById('tpl-mode-easy').style.color = mode === 'easy' ? 'white' : 'var(--muted)';
-            document.getElementById('tpl-mode-advanced').style.background = mode === 'advanced' ? 'var(--accent)' : 'var(--bg2)';
-            document.getElementById('tpl-mode-advanced').style.color = mode === 'advanced' ? 'white' : 'var(--muted)';
-            initAllVariableChips();
+
+        // ---------- Scratch-style Block Definitions ----------
+        const BLOCK_DEFS = {
+            greeting: {
+                cat: 'cat-greeting', icon: '\ud83d\udc4b', label: 'Greeting',
+                defaultText: 'Coach {coach_name},',
+            },
+            intro: {
+                cat: 'cat-intro', icon: '\ud83d\udcdd', label: 'My Introduction',
+                defaultText: 'My name is {athlete_name} and I am a {grad_year} {position} from {high_school} in {state}.',
+            },
+            stats: {
+                cat: 'cat-stats', icon: '\ud83d\udcca', label: 'My Stats',
+                defaultText: 'I am {height}, {weight} lbs with a {gpa} GPA.',
+            },
+            film: {
+                cat: 'cat-film', icon: '\ud83c\udfac', label: 'Film Link',
+                defaultText: 'Here is a link to my film: {hudl_link}',
+            },
+            interest: {
+                cat: 'cat-interest', icon: '\ud83c\udfdf\ufe0f', label: 'Why This School',
+                defaultText: 'I am very interested in {school} and believe I would be a great fit for the program.',
+            },
+            closing: {
+                cat: 'cat-closing', icon: '\u2709\ufe0f', label: 'Closing + Contact',
+                defaultText: 'Thank you for your time. You can reach me at {phone} or {email}.\n\nSincerely,\n{athlete_name}',
+            },
+            custom: {
+                cat: 'cat-custom', icon: '\u270f\ufe0f', label: 'Custom Block',
+                defaultText: '',
+            },
+        };
+
+        let canvasBlocks = [];   // [{id, type, text}]
+        let _dragPaletteType = null;
+        let _dragCanvasIdx  = null;
+
+        const SAMPLE_VARS = {
+            '{coach_name}': 'Smith', '{school}': 'State University', '{athlete_name}': 'John Doe',
+            '{position}': 'OL', '{grad_year}': '2026', '{height}': "6'3", '{weight}': '295',
+            '{gpa}': '3.5', '{hudl_link}': 'https://hudl.com/...', '{phone}': '555-555-5555',
+            '{email}': 'athlete@email.com', '{high_school}': 'Lincoln HS', '{state}': 'FL',
+        };
+
+        function _uid() { return 'b_' + Date.now() + '_' + Math.random().toString(36).substr(2,5); }
+
+        // ---- Render one block element ----
+        function _makeBlockEl(block, idx) {
+            const def = BLOCK_DEFS[block.type] || BLOCK_DEFS.custom;
+            const div = document.createElement('div');
+            div.className = 'tpl-block ' + def.cat;
+            div.draggable = true;
+            div.dataset.idx = idx;
+
+            let html = (block.text || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            html = html.replace(/\{(\w+)\}/g, '<span class="var-pill">{$1}</span>');
+            if (!html) html = '<em style="opacity:0.6">Click pencil to add text\u2026</em>';
+
+            div.innerHTML =
+                '<span class="block-icon">' + def.icon + '</span>' +
+                '<div class="block-content">' + html + '</div>' +
+                '<span class="block-edit-btn" onclick="editBlock(' + idx + ')" title="Edit">\u270f\ufe0f</span>' +
+                '<span class="block-remove" onclick="removeBlock(' + idx + ')" title="Remove">&times;</span>';
+
+            div.addEventListener('dragstart', function(e) {
+                _dragCanvasIdx = idx; _dragPaletteType = null;
+                div.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            div.addEventListener('dragend', function() { div.classList.remove('dragging'); _dragCanvasIdx = null; });
+            div.addEventListener('dragover', function(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+            div.addEventListener('drop', function(e) {
+                e.preventDefault(); e.stopPropagation();
+                if (_dragCanvasIdx !== null && _dragCanvasIdx !== idx) {
+                    var moved = canvasBlocks.splice(_dragCanvasIdx, 1)[0];
+                    canvasBlocks.splice(idx, 0, moved);
+                    renderCanvas();
+                }
+            });
+            return div;
         }
 
-        function selectTone(btn) {
-            document.querySelectorAll('.tone-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+        // ---- Render the whole canvas ----
+        function renderCanvas() {
+            var canvas = document.getElementById('block-canvas');
+            var empty  = document.getElementById('canvas-empty');
+            if (!canvas) return;
+            canvas.querySelectorAll('.tpl-block').forEach(function(el) { el.remove(); });
+
+            if (canvasBlocks.length === 0) {
+                if (empty) empty.style.display = 'block';
+            } else {
+                if (empty) empty.style.display = 'none';
+                canvasBlocks.forEach(function(block, idx) {
+                    canvas.appendChild(_makeBlockEl(block, idx));
+                });
+            }
+            _compileBlocksToBody();
+            _updateEasyPreview();
+        }
+
+        function addBlockToCanvas(type) {
+            var def = BLOCK_DEFS[type] || BLOCK_DEFS.custom;
+            if (type === 'custom') {
+                var text = prompt('Enter your custom text (use {variable_name} for auto-fill):');
+                if (text === null) return;
+                canvasBlocks.push({ id: _uid(), type: type, text: text });
+            } else {
+                canvasBlocks.push({ id: _uid(), type: type, text: def.defaultText });
+            }
+            renderCanvas();
+        }
+
+        function removeBlock(idx) { canvasBlocks.splice(idx, 1); renderCanvas(); }
+
+        function editBlock(idx) {
+            var block = canvasBlocks[idx]; if (!block) return;
+            var newText = prompt('Edit this block (use {variable_name} for auto-fill):', block.text);
+            if (newText !== null) { block.text = newText; renderCanvas(); }
+        }
+
+        function _compileBlocksToBody() {
+            var body = canvasBlocks.map(function(b) { return b.text; }).join('\\n\\n');
+            var el = document.getElementById('easy-tpl-body');
+            if (el) el.value = body;
+        }
+
+        function _replaceVarsForPreview(text) {
+            var out = text.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            Object.entries(SAMPLE_VARS).forEach(function(kv) {
+                out = out.split(kv[0]).join('<span style="color:var(--accent);font-weight:600;">' + kv[1] + '</span>');
+            });
+            return out;
+        }
+
+        function _updateEasyPreview() {
+            var subjectEl = document.getElementById('easy-tpl-subject');
+            var subject = subjectEl ? subjectEl.value : '';
+            var html = '';
+            if (subject) html += '<strong>Subject:</strong> ' + _replaceVarsForPreview(subject) + '<br><br>';
+            if (canvasBlocks.length) {
+                canvasBlocks.forEach(function(b) { html += _replaceVarsForPreview(b.text) + '<br><br>'; });
+            } else {
+                html += '<em style="opacity:0.5">Drag blocks above to see your email here\u2026</em>';
+            }
+            var el = document.getElementById('easy-preview');
+            if (el) el.innerHTML = html;
+        }
+
+        // ---- Parse existing body text back into blocks (for editing) ----
+        function _parseBodyToBlocks(body) {
+            canvasBlocks = [];
+            if (!body) return;
+            var paragraphs = body.split(/\\n\\n+|\n\n+/);
+            paragraphs.forEach(function(p) {
+                var t = p.trim(); if (!t) return;
+                // Try to detect block type from content
+                if (t.match(/^(Coach|Dear|Hello|Hey)\s/i)) {
+                    canvasBlocks.push({ id: _uid(), type:'greeting', text: t });
+                } else if (t.includes('{hudl_link}') || t.toLowerCase().includes('film')) {
+                    canvasBlocks.push({ id: _uid(), type:'film', text: t });
+                } else if (t.includes('{height}') || t.includes('{weight}') || t.includes('{gpa}')) {
+                    canvasBlocks.push({ id: _uid(), type:'stats', text: t });
+                } else if (t.includes('Sincerely') || t.includes('Thank') || t.includes('{phone}')) {
+                    canvasBlocks.push({ id: _uid(), type:'closing', text: t });
+                } else if ((t.includes('{athlete_name}') && (t.includes('{position}') || t.includes('{grad_year}') || t.includes('{high_school}')))) {
+                    canvasBlocks.push({ id: _uid(), type:'intro', text: t });
+                } else if (t.includes('{school}') || t.toLowerCase().includes('interested') || t.toLowerCase().includes('program')) {
+                    canvasBlocks.push({ id: _uid(), type:'interest', text: t });
+                } else {
+                    canvasBlocks.push({ id: _uid(), type:'custom', text: t });
+                }
+            });
+        }
+
+        // ---- Wire up palette drag -> canvas drop ----
+        function initBlockPalette() {
+            document.querySelectorAll('.block-palette-item').forEach(function(item) {
+                item.addEventListener('dragstart', function(e) {
+                    _dragPaletteType = item.dataset.block;
+                    _dragCanvasIdx = null;
+                    e.dataTransfer.effectAllowed = 'copy';
+                });
+                // Also support click-to-add as fallback (mobile, etc.)
+                item.addEventListener('click', function() { addBlockToCanvas(item.dataset.block); });
+            });
+
+            var canvas = document.getElementById('block-canvas');
+            if (canvas) {
+                canvas.addEventListener('dragover', function(e) { e.preventDefault(); canvas.classList.add('drag-over'); });
+                canvas.addEventListener('dragleave', function()  { canvas.classList.remove('drag-over'); });
+                canvas.addEventListener('drop', function(e) {
+                    e.preventDefault(); canvas.classList.remove('drag-over');
+                    if (_dragPaletteType) { addBlockToCanvas(_dragPaletteType); _dragPaletteType = null; }
+                });
+            }
+        }
+
+        // ---------- Mode Toggle ----------
+        function setTemplateMode(mode) {
+            currentTemplateMode = mode;
+            document.getElementById('tpl-easy-panel').style.display    = mode === 'easy' ? 'block' : 'none';
+            document.getElementById('tpl-advanced-panel').style.display = mode === 'advanced' ? 'block' : 'none';
+            document.getElementById('tpl-mode-easy').style.background    = mode === 'easy' ? 'var(--accent)' : 'var(--bg2)';
+            document.getElementById('tpl-mode-easy').style.color         = mode === 'easy' ? 'white' : 'var(--muted)';
+            document.getElementById('tpl-mode-advanced').style.background = mode === 'advanced' ? 'var(--accent)' : 'var(--bg2)';
+            document.getElementById('tpl-mode-advanced').style.color      = mode === 'advanced' ? 'white' : 'var(--muted)';
+
+            if (mode === 'easy') { initBlockPalette(); renderCanvas(); }
+            initAdvancedChips();
+        }
+
+        function initAdvancedChips() {
+            buildChips('adv-subject-chips', subjectVariables, 'adv-tpl-subject');
+            buildChips('adv-body-chips', bodyVariables.concat(['{high_school}', '{state}']), 'adv-tpl-body');
         }
 
         function easyKindChanged() {
-            const kind = document.getElementById('easy-tpl-kind').value;
-            const subjGroup = document.getElementById('easy-subject-group');
+            var kind = document.getElementById('easy-tpl-kind').value;
+            var subjGroup = document.getElementById('easy-subject-group');
             if (subjGroup) subjGroup.style.display = kind === 'dm' ? 'none' : 'block';
         }
 
+        // ---------- Open / Close ----------
         function openCreateTemplate(type) {
-            const modal = document.getElementById('template-modal');
+            var modal = document.getElementById('template-modal');
             modal.classList.add('active');
             modal.dataset.editId = '';
             document.querySelector('#template-modal .modal-title').textContent = 'Create Template';
@@ -3798,24 +4048,42 @@ My name is {athlete_name} and I am a {grad_year} {position} from {high_school} i
 
             setTemplateMode('easy');
 
-            // Reset easy mode fields
+            // Reset easy mode
             document.getElementById('easy-tpl-kind').value = type === 'dm' ? 'dm' : 'intro';
             document.getElementById('easy-tpl-coach').value = 'any';
             document.getElementById('easy-tpl-name').value = '';
-            document.getElementById('easy-tpl-subject').value = '';
+            document.getElementById('easy-tpl-subject').value = 'Interested in {school} - {athlete_name}, {grad_year} {position}';
             document.getElementById('easy-tpl-body').value = '';
-            document.querySelectorAll('.tone-btn').forEach(b => b.classList.toggle('active', b.dataset.tone === 'professional'));
+            canvasBlocks = [];
 
-            // Reset advanced mode fields
+            // Pre-populate canvas with starter blocks for intro email
+            if (type !== 'dm') {
+                canvasBlocks = [
+                    { id: _uid(), type:'greeting', text: BLOCK_DEFS.greeting.defaultText },
+                    { id: _uid(), type:'intro',    text: BLOCK_DEFS.intro.defaultText },
+                    { id: _uid(), type:'stats',    text: BLOCK_DEFS.stats.defaultText },
+                    { id: _uid(), type:'interest', text: BLOCK_DEFS.interest.defaultText },
+                    { id: _uid(), type:'film',     text: BLOCK_DEFS.film.defaultText },
+                    { id: _uid(), type:'closing',  text: BLOCK_DEFS.closing.defaultText },
+                ];
+            } else {
+                canvasBlocks = [
+                    { id: _uid(), type:'greeting', text: 'Hey Coach {coach_name},' },
+                    { id: _uid(), type:'intro',    text: BLOCK_DEFS.intro.defaultText },
+                    { id: _uid(), type:'film',     text: BLOCK_DEFS.film.defaultText },
+                ];
+            }
+            renderCanvas();
+            easyKindChanged();
+
+            // Reset advanced mode
             document.getElementById('adv-tpl-type').value = type === 'dm' ? 'dm' : 'email';
             document.getElementById('adv-tpl-coach').value = 'any';
             document.getElementById('adv-tpl-name').value = '';
             document.getElementById('adv-tpl-subject').value = '';
             document.getElementById('adv-tpl-body').value = '';
             document.getElementById('adv-tpl-desc').value = '';
-
-            easyKindChanged();
-            initAllVariableChips();
+            initAdvancedChips();
         }
 
         function closeTemplateModal() { 
@@ -3824,25 +4092,29 @@ My name is {athlete_name} and I am a {grad_year} {position} from {high_school} i
         }
 
         // Listen for type changes in advanced mode
-        const advTplTypeEl = document.getElementById('adv-tpl-type');
+        var advTplTypeEl = document.getElementById('adv-tpl-type');
         if (advTplTypeEl) {
-            advTplTypeEl.addEventListener('change', (e) => {
-                const sg = document.getElementById('adv-subject-group');
+            advTplTypeEl.addEventListener('change', function(e) {
+                var sg = document.getElementById('adv-subject-group');
                 if (sg) sg.style.display = e.target.value === 'dm' ? 'none' : 'block';
             });
         }
+        // Update easy preview when subject changes
+        var easySubjEl = document.getElementById('easy-tpl-subject');
+        if (easySubjEl) easySubjEl.addEventListener('input', _updateEasyPreview);
 
+        // ---------- Get / Save ----------
         function getTemplateData() {
             if (currentTemplateMode === 'easy') {
-                const kind = document.getElementById('easy-tpl-kind').value;
-                const toneBtn = document.querySelector('.tone-btn.active');
+                _compileBlocksToBody();
+                var kind = document.getElementById('easy-tpl-kind').value;
                 return {
                     name: document.getElementById('easy-tpl-name').value,
                     subject: document.getElementById('easy-tpl-subject').value,
                     body: document.getElementById('easy-tpl-body').value,
                     template_type: kind === 'intro' ? 'email' : kind,
                     coach_type: document.getElementById('easy-tpl-coach').value,
-                    tone: toneBtn ? toneBtn.dataset.tone : 'professional',
+                    tone: 'professional',
                     mode: 'easy',
                 };
             } else {
@@ -3859,9 +4131,9 @@ My name is {athlete_name} and I am a {grad_year} {position} from {high_school} i
         }
 
         async function saveTemplate() {
-            const modal = document.getElementById('template-modal');
-            const editId = modal.dataset.editId;
-            const data = getTemplateData();
+            var modal = document.getElementById('template-modal');
+            var editId = modal.dataset.editId;
+            var data = getTemplateData();
             
             if (!data.name || !data.body) { showToast('Name and body are required', 'error'); return; }
             
@@ -3887,26 +4159,21 @@ My name is {athlete_name} and I am a {grad_year} {position} from {high_school} i
             } catch(e) { showToast('Failed to save template', 'error'); }
         }
 
-        // Preview with sample data
+        // Advanced-mode preview
         function updatePreview() {
-            const data = getTemplateData();
-            const sampleVars = {
-                '{coach_name}': 'Smith', '{school}': 'State University', '{athlete_name}': 'John Doe',
-                '{position}': 'OL', '{grad_year}': '2026', '{height}': "6'3", '{weight}': '295',
-                '{gpa}': '3.5', '{hudl_link}': 'https://hudl.com/...', '{phone}': '555-555-5555',
-                '{email}': 'athlete@email.com', '{high_school}': 'Lincoln HS', '{state}': 'FL',
-            };
-            let preview = '';
+            if (currentTemplateMode === 'easy') { _updateEasyPreview(); return; }
+            var data = getTemplateData();
+            var preview = '';
             if (data.subject) preview += '<strong>Subject:</strong> ' + data.subject + '<br><br>';
             preview += (data.body || '(empty body)');
-            Object.entries(sampleVars).forEach(([k, v]) => { preview = preview.split(k).join(`<span style="color:var(--accent);font-weight:600;">${v}</span>`); });
-            const el = document.getElementById('tpl-preview');
+            Object.entries(SAMPLE_VARS).forEach(function(kv) { preview = preview.split(kv[0]).join('<span style="color:var(--accent);font-weight:600;">' + kv[1] + '</span>'); });
+            var el = document.getElementById('tpl-preview');
             if (el) el.innerHTML = preview;
         }
 
-        // Auto-update preview on input
-        ['easy-tpl-subject','easy-tpl-body','adv-tpl-subject','adv-tpl-body'].forEach(id => {
-            const el = document.getElementById(id);
+        // Auto-update advanced preview on input
+        ['adv-tpl-subject','adv-tpl-body'].forEach(function(id) {
+            var el = document.getElementById(id);
             if (el) el.addEventListener('input', updatePreview);
         });
         
