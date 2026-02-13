@@ -135,7 +135,7 @@ DEFAULT_SETTINGS = {
         'app_password': ENV_APP_PASSWORD,
         'max_per_day': 100,  # Gmail limit
         'delay_seconds': 5,
-        'days_between_emails': 4,  # Wait 4 days before next email (~2 emails per week max)
+        'days_between_emails': 3,  # Wait 3 days before next email
         'followup_sequence': ['intro', 'followup_1', 'followup_2'],  # Email sequence
         'auto_send_enabled': ENV_AUTO_SEND,
         'auto_send_count': 100,
@@ -386,6 +386,20 @@ def load_athlete_context():
     g.athlete_id = session.get('athlete_id')
     g.is_admin = session.get('is_admin', False)
     g.athlete_name = session.get('athlete_name', '')
+
+    # Fallback: If no session but only one athlete, use that athlete
+    # This helps when sessions aren't working or for single-user setups
+    if not g.athlete_id and _supabase_db:
+        try:
+            athletes = _supabase_db.client.table('athletes').select('id,name,is_admin').eq('is_admin', True).limit(1).execute()
+            if athletes.data:
+                g.athlete_id = athletes.data[0]['id']
+                g.is_admin = athletes.data[0].get('is_admin', False)
+                g.athlete_name = athletes.data[0].get('name', '')
+                logger.debug(f"Using fallback athlete_id: {g.athlete_id}")
+        except Exception as e:
+            logger.warning(f"Fallback athlete lookup failed: {e}")
+
     if g.athlete_id and _supabase_db:
         _supabase_db.set_context_athlete(g.athlete_id)
 
@@ -807,6 +821,182 @@ def send_email_auto(to_email: str, subject: str, body: str, from_email: str = No
 def is_railway_deployment():
     """Check if we're running on Railway."""
     return bool(ENV_EMAIL_ADDRESS and ENV_APP_PASSWORD)
+
+
+# ============================================================================
+# AUTO-SCRAPE SCHOOL FUNCTION
+# ============================================================================
+
+def auto_scrape_school(school_name: str) -> dict:
+    """
+    Automatically find and scrape a school's football staff page.
+
+    Returns dict with:
+        - success: bool
+        - staff_url: discovered URL (if any)
+        - ol_coach: {name, email, twitter} (if found)
+        - rc: {name, email, twitter} (if found)
+        - error: error message (if failed)
+        - needs_manual: bool - whether admin needs to add manually
+    """
+    import requests as req_lib
+    from bs4 import BeautifulSoup
+    from urllib.parse import quote_plus, urljoin
+
+    result = {
+        'success': False,
+        'staff_url': None,
+        'ol_coach': None,
+        'rc': None,
+        'error': None,
+        'needs_manual': True,
+        'all_emails_found': []
+    }
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+
+    # Clean school name for search
+    clean_name = school_name.strip()
+
+    # Try to find staff page URL via Google search
+    staff_url = None
+    search_queries = [
+        f'{clean_name} football coaching staff',
+        f'{clean_name} football staff directory',
+        f'{clean_name} athletics football coaches',
+    ]
+
+    for query in search_queries:
+        if staff_url:
+            break
+        try:
+            # Use DuckDuckGo HTML search (more reliable than Google for scraping)
+            search_url = f'https://html.duckduckgo.com/html/?q={quote_plus(query)}'
+            resp = req_lib.get(search_url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                # Find result links
+                for link in soup.select('a.result__a'):
+                    href = link.get('href', '')
+                    # Look for athletics/sports sites
+                    if any(x in href.lower() for x in ['athletics', 'sports', 'football', 'staff', 'coaches', 'roster']):
+                        if '.edu' in href or 'athletics' in href:
+                            staff_url = href
+                            break
+        except Exception as e:
+            logger.warning(f"Search failed for '{query}': {e}")
+            continue
+
+    # If no URL found via search, try common patterns
+    if not staff_url:
+        # Try to construct URL from school name
+        slug = clean_name.lower().replace(' ', '').replace('university', '').replace('college', '').replace('of', '').replace('the', '')
+        common_patterns = [
+            f'https://{slug}athletics.com/sports/football/coaches',
+            f'https://athletics.{slug}.edu/sports/football/coaches',
+            f'https://{slug}sports.com/sports/football/coaches',
+        ]
+        for pattern_url in common_patterns:
+            try:
+                resp = req_lib.head(pattern_url, headers=headers, timeout=5, allow_redirects=True)
+                if resp.status_code == 200:
+                    staff_url = pattern_url
+                    break
+            except:
+                continue
+
+    if not staff_url:
+        result['error'] = 'Could not find staff page URL. Please provide manually.'
+        return result
+
+    result['staff_url'] = staff_url
+
+    # Now scrape the staff page
+    try:
+        resp = req_lib.get(staff_url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        html = resp.text
+    except Exception as e:
+        result['error'] = f'Failed to fetch staff page: {str(e)}'
+        return result
+
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # Extract all emails from page
+    all_emails = list(set(re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', html, re.IGNORECASE)))
+    result['all_emails_found'] = all_emails
+
+    # OL coach patterns
+    ol_patterns = ['offensive line', 'o-line', 'oline', 'ol coach', 'offensive line coach']
+    rc_patterns = ['recruiting coordinator', 'director of recruiting', 'recruiting director', 'director of player personnel']
+
+    ol_coach = None
+    ol_email = None
+    ol_twitter = None
+    rc_coach = None
+    rc_email = None
+    rc_twitter = None
+
+    # Find staff cards/sections
+    staff_cards = soup.find_all(['div', 'article', 'li', 'section'], class_=lambda x: x and any(
+        k in str(x).lower() for k in ['staff', 'coach', 'card', 'person', 'bio', 'member']
+    ))
+
+    # Also check all divs/sections for coach info
+    if not staff_cards:
+        staff_cards = soup.find_all(['div', 'article', 'li'])
+
+    for card in staff_cards:
+        card_text = card.get_text(' ', strip=True).lower()
+        card_html = str(card)
+
+        # Check for OL coach
+        if any(p in card_text for p in ol_patterns) and not ol_coach:
+            name_tag = card.find(['h2', 'h3', 'h4', 'h5', 'a', 'strong', 'b', 'span'])
+            if name_tag:
+                name = name_tag.get_text(strip=True)
+                # Validate it looks like a name
+                if 2 < len(name) < 50 and '@' not in name and not any(x in name.lower() for x in ['coach', 'offensive', 'line', 'staff']):
+                    ol_coach = name
+            # Find email
+            card_emails = re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', card_html, re.IGNORECASE)
+            if card_emails:
+                ol_email = card_emails[0]
+            # Find Twitter
+            twitter_match = re.search(r'(?:twitter\.com|x\.com)/([A-Za-z0-9_]+)', card_html, re.IGNORECASE)
+            if twitter_match:
+                ol_twitter = f'https://x.com/{twitter_match.group(1)}'
+
+        # Check for RC
+        if any(p in card_text for p in rc_patterns) and not rc_coach:
+            name_tag = card.find(['h2', 'h3', 'h4', 'h5', 'a', 'strong', 'b', 'span'])
+            if name_tag:
+                name = name_tag.get_text(strip=True)
+                if 2 < len(name) < 50 and '@' not in name and not any(x in name.lower() for x in ['coordinator', 'recruiting', 'director', 'staff']):
+                    rc_coach = name
+            card_emails = re.findall(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}', card_html, re.IGNORECASE)
+            if card_emails:
+                rc_email = card_emails[0]
+            twitter_match = re.search(r'(?:twitter\.com|x\.com)/([A-Za-z0-9_]+)', card_html, re.IGNORECASE)
+            if twitter_match:
+                rc_twitter = f'https://x.com/{twitter_match.group(1)}'
+
+    # Build result
+    if ol_coach:
+        result['ol_coach'] = {'name': ol_coach, 'email': ol_email, 'twitter': ol_twitter}
+    if rc_coach:
+        result['rc'] = {'name': rc_coach, 'email': rc_email, 'twitter': rc_twitter}
+
+    if ol_coach or rc_coach:
+        result['success'] = True
+        result['needs_manual'] = False
+    else:
+        result['error'] = 'Could not identify OL coach or RC from page. Manual entry needed.'
+
+    return result
+
 
 # ============================================================================
 # LOGIN PAGE TEMPLATE
@@ -2084,6 +2274,50 @@ HTML_TEMPLATE = '''
         </div>
     </div>
 
+    <!-- Coach Response Modal -->
+    <div class="modal-overlay" id="response-modal">
+        <div class="modal" style="max-width:600px;">
+            <div class="modal-header">
+                <span class="modal-title" id="response-modal-title">Coach Response</span>
+                <button class="modal-close" onclick="closeModal('response-modal')">&times;</button>
+            </div>
+            <div style="padding:16px;">
+                <div style="display:flex;gap:16px;margin-bottom:16px;">
+                    <div style="flex:1;">
+                        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">School</label>
+                        <div id="response-modal-school" style="font-weight:600;font-size:16px;"></div>
+                    </div>
+                    <div style="flex:1;">
+                        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">Coach</label>
+                        <div id="response-modal-coach" style="font-weight:500;"></div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:16px;margin-bottom:16px;">
+                    <div style="flex:1;">
+                        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">Email</label>
+                        <div id="response-modal-email" style="font-size:13px;color:var(--accent);"></div>
+                    </div>
+                    <div style="flex:1;">
+                        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">Responded</label>
+                        <div id="response-modal-date" style="font-size:13px;"></div>
+                    </div>
+                </div>
+                <div style="margin-bottom:16px;">
+                    <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">Sentiment</label>
+                    <div id="response-modal-sentiment" style="margin-top:4px;"></div>
+                </div>
+                <div>
+                    <label style="font-size:11px;color:var(--muted);text-transform:uppercase;">Response</label>
+                    <div id="response-modal-body" style="background:var(--bg);border:1px solid var(--border);padding:16px;border-radius:8px;margin-top:8px;white-space:pre-wrap;font-size:14px;max-height:300px;overflow-y:auto;"></div>
+                </div>
+            </div>
+            <div style="padding:16px;border-top:1px solid var(--border);display:flex;gap:8px;">
+                <button class="btn btn-primary" onclick="replyToCoach()" style="flex:1;">Reply</button>
+                <button class="btn" onclick="closeModal('response-modal')" style="flex:1;">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast" style="display:none"></div>
 
     <script>
@@ -2159,11 +2393,23 @@ HTML_TEMPLATE = '''
         async function loadDashboard() {
             try {
                 const res = await fetch('/api/stats');
+                if (!res.ok) {
+                    console.error('loadDashboard: API error', res.status);
+                    return;
+                }
                 const data = await res.json();
-                document.getElementById('stat-sent').textContent = data.emails_sent || 0;
-                document.getElementById('stat-responses').textContent = data.responses || 0;
-                document.getElementById('stat-rate').textContent = (data.response_rate || 0) + '%';
-                document.getElementById('stat-followups').textContent = data.followups_due || 0;
+                console.log('Dashboard data:', data);
+
+                // Safe DOM updates with null checks
+                const sentEl = document.getElementById('stat-sent');
+                const responsesEl = document.getElementById('stat-responses');
+                const rateEl = document.getElementById('stat-rate');
+                const followupsEl = document.getElementById('stat-followups');
+
+                if (sentEl) sentEl.textContent = data.emails_sent || 0;
+                if (responsesEl) responsesEl.textContent = data.responses || 0;
+                if (rateEl) rateEl.textContent = (data.response_rate || 0) + '%';
+                if (followupsEl) followupsEl.textContent = data.followups_due || 0;
 
                 // Load responses
                 loadRecentResponses();
@@ -2173,13 +2419,18 @@ HTML_TEMPLATE = '''
                 loadTomorrowPreview();
                 loadRepliedCount();
                 loadEmailModeStatus();  // Load email pause/holiday status for home banner
-            } catch(e) { console.error(e); }
+            } catch(e) { console.error('loadDashboard error:', e); }
         }
 
         async function loadTrackingStats() {
             try {
                 const res = await fetch('/api/tracking/stats');
+                if (!res.ok) {
+                    console.error('loadTrackingStats: API error', res.status);
+                    return;
+                }
                 const data = await res.json();
+                console.log('Tracking stats:', data);
 
                 // Show backfill notice if tracking is empty but sheet has contacts
                 const backfillNotice = document.getElementById('backfill-notice');
@@ -2189,57 +2440,68 @@ HTML_TEMPLATE = '''
                     backfillNotice.style.display = 'none';
                 }
 
-                // Update open rate stat
-                document.getElementById('stat-opens').textContent = (data.open_rate || 0) + '%';
+                // Update open rate stat with null check
+                const opensEl = document.getElementById('stat-opens');
+                if (opensEl) opensEl.textContent = (data.open_rate || 0) + '%';
 
-                // Update email performance stats
-                document.getElementById('perf-sent').textContent = data.total_sent || 0;
-                document.getElementById('perf-opened').textContent = data.total_opened || 0;
+                // Update email performance stats with null checks
+                const perfSentEl = document.getElementById('perf-sent');
+                const perfOpenedEl = document.getElementById('perf-opened');
+                if (perfSentEl) perfSentEl.textContent = data.total_sent || 0;
+                if (perfOpenedEl) perfOpenedEl.textContent = data.total_opened || 0;
 
-                // Update recent opens
+                // Update recent opens with null check
                 const el = document.getElementById('recent-opens');
-                if (data.recent_opens && data.recent_opens.length) {
-                    el.innerHTML = data.recent_opens.slice(0, 8).map(o => `
-                        <div style="padding:8px 0;border-bottom:1px solid var(--border);">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <div>
-                                    <strong style="color:var(--text);">${o.school || 'Unknown'}</strong>
-                                    <span class="text-muted"> - ${o.coach || ''}</span>
+                if (el) {
+                    if (data.recent_opens && data.recent_opens.length) {
+                        el.innerHTML = data.recent_opens.slice(0, 8).map(o => `
+                            <div style="padding:8px 0;border-bottom:1px solid var(--border);">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <div>
+                                        <strong style="color:var(--text);">${o.school || 'Unknown'}</strong>
+                                        <span class="text-muted"> - ${o.coach || ''}</span>
+                                    </div>
+                                    <span class="text-muted text-sm">${new Date(o.opened_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                                 </div>
-                                <span class="text-muted text-sm">${new Date(o.opened_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                             </div>
-                        </div>
-                    `).join('');
-                } else {
-                    el.innerHTML = `
-                        <div class="empty-state" style="padding:24px;">
-                            <div class="empty-state-icon" style="font-size:32px;color:var(--accent);">—</div>
-                            <div class="empty-state-title">No opens yet</div>
-                            <div class="empty-state-text">When coaches open your emails, you'll see it here in real-time.</div>
-                        </div>
-                    `;
+                        `).join('');
+                    } else {
+                        el.innerHTML = `
+                            <div class="empty-state" style="padding:24px;">
+                                <div class="empty-state-icon" style="font-size:32px;color:var(--accent);">—</div>
+                                <div class="empty-state-title">No opens yet</div>
+                                <div class="empty-state-text">When coaches open your emails, you'll see it here in real-time.</div>
+                            </div>
+                        `;
+                    }
                 }
 
                 // Get smart times for best time display
                 const timesRes = await fetch('/api/tracking/smart-times');
-                const timesData = await timesRes.json();
-                const bestTimeEl = document.getElementById('perf-best-time');
-                if (timesData.best_hours && timesData.best_hours.length) {
-                    const times = timesData.best_hours.slice(0, 2).map(h => {
-                        const hour = h.hour;
-                        const ampm = hour >= 12 ? 'PM' : 'AM';
-                        const displayHour = hour % 12 || 12;
-                        return displayHour + ' ' + ampm;
-                    }).join(' & ');
-                    bestTimeEl.innerHTML = `Best send times: <strong style="color:var(--accent);">${times}</strong>`;
-                } else {
-                    bestTimeEl.innerHTML = '';
+                if (timesRes.ok) {
+                    const timesData = await timesRes.json();
+                    const bestTimeEl = document.getElementById('perf-best-time');
+                    if (bestTimeEl) {
+                        if (timesData.best_hours && timesData.best_hours.length) {
+                            const times = timesData.best_hours.slice(0, 2).map(h => {
+                                const hour = h.hour;
+                                const ampm = hour >= 12 ? 'PM' : 'AM';
+                                const displayHour = hour % 12 || 12;
+                                return displayHour + ' ' + ampm;
+                            }).join(' & ');
+                            bestTimeEl.innerHTML = `Best send times: <strong style="color:var(--accent);">${times}</strong>`;
+                        } else {
+                            bestTimeEl.innerHTML = '';
+                        }
+                    }
                 }
             } catch(e) {
                 console.error('loadTrackingStats error:', e);
                 // Show error states instead of staying at loading
-                document.getElementById('perf-sent').textContent = '—';
-                document.getElementById('perf-opened').textContent = '—';
+                const perfSent = document.getElementById('perf-sent');
+                const perfOpened = document.getElementById('perf-opened');
+                if (perfSent) perfSent.textContent = '—';
+                if (perfOpened) perfOpened.textContent = '—';
                 const el = document.getElementById('recent-opens');
                 if (el) el.innerHTML = '<div class="text-muted" style="padding:16px;">Could not load data</div>';
             }
@@ -2432,8 +2694,10 @@ HTML_TEMPLATE = '''
                         }
                         const sentimentBadge = r.sentiment ?
                             `<span class="sentiment-badge" style="background:${r.sentiment.color};color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">${r.sentiment.label}</span>` : '';
+                        // Escape data for onclick handler
+                        const responseData = JSON.stringify(r).replace(/'/g, "\\'").replace(/"/g, "&quot;");
                         return `
-                            <div class="response-item">
+                            <div class="response-item" onclick="showResponseModal(${JSON.stringify(r).replace(/"/g, '&quot;')})" style="cursor:pointer;" title="Click to view full response">
                                 <div class="response-avatar" style="background:${r.sentiment?.color || 'var(--success)'};">${(r.school || '?')[0]}</div>
                                 <div class="response-content">
                                     <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -2666,8 +2930,8 @@ HTML_TEMPLATE = '''
         }
         
         async function toggleAutoSend(enabled) {
-            const count = parseInt(document.getElementById('auto-send-count').value) || 100;
-            
+            const count = parseInt(document.getElementById('email-limit')?.value) || 100;
+
             try {
                 const res = await fetch('/api/auto-send/toggle', {
                     method: 'POST',
@@ -2675,9 +2939,11 @@ HTML_TEMPLATE = '''
                     body: JSON.stringify({ enabled, count })
                 });
                 const data = await res.json();
-                
+
                 if (data.success) {
                     showToast(enabled ? 'Auto-send enabled - will send daily when app is running' : 'Auto-send disabled', 'success');
+                    // Refresh the auto-send status display
+                    setTimeout(loadAutoSendStatus, 500);
                 } else {
                     showToast('Failed to toggle auto-send', 'error');
                 }
@@ -2868,7 +3134,8 @@ HTML_TEMPLATE = '''
                 document.getElementById('email-ready').textContent = data.ready_to_send || 0;
                 document.getElementById('email-today').textContent = data.sent_today || 0;
                 document.getElementById('email-followups').textContent = data.followups_due || 0;
-            } catch(e) {}
+                document.getElementById('email-responded').textContent = data.responded || 0;
+            } catch(e) { console.error('loadEmailPage error:', e); }
             // Also load followup queue
             loadFollowupQueue();
             // Load email mode status
@@ -3097,9 +3364,14 @@ HTML_TEMPLATE = '''
             } catch(e) { showToast('Failed to delete', 'error'); }
         }
         
-        document.getElementById('template-mode').addEventListener('change', (e) => {
-            document.getElementById('template-select-wrapper').style.display = e.target.value === 'manual' ? 'block' : 'none';
-        });
+        // Safe event listener - template-mode may not exist on all pages
+        const templateModeEl = document.getElementById('template-mode');
+        if (templateModeEl) {
+            templateModeEl.addEventListener('change', (e) => {
+                const wrapper = document.getElementById('template-select-wrapper');
+                if (wrapper) wrapper.style.display = e.target.value === 'manual' ? 'block' : 'none';
+            });
+        }
         
         async function sendEmails() {
             const limit = document.getElementById('email-limit').value;
@@ -3395,9 +3667,14 @@ HTML_TEMPLATE = '''
             modal.dataset.editId = '';
         }
         
-        document.getElementById('new-tpl-type').addEventListener('change', (e) => {
-            document.getElementById('tpl-subject-group').style.display = e.target.value === 'dm' ? 'none' : 'block';
-        });
+        // Safe event listener - new-tpl-type is in modal, may not be ready
+        const newTplTypeEl = document.getElementById('new-tpl-type');
+        if (newTplTypeEl) {
+            newTplTypeEl.addEventListener('change', (e) => {
+                const subjectGroup = document.getElementById('tpl-subject-group');
+                if (subjectGroup) subjectGroup.style.display = e.target.value === 'dm' ? 'none' : 'block';
+            });
+        }
         
         async function createTemplate() {
             const modal = document.getElementById('template-modal');
@@ -4109,11 +4386,11 @@ HTML_TEMPLATE = '''
             } catch(e) {}
         }
 
-        // Email Sequence Builder
+        // Email Sequence Builder - Default: Intro -> 3 days -> Follow-up 1 -> 3 days -> Follow-up 2
         let emailSequence = [
             { type: 'intro', target: 'both', wait_days: 0, template_id: null },
-            { type: 'followup', target: 'both', wait_days: 4, template_id: null },
-            { type: 'followup', target: 'both', wait_days: 4, template_id: null }
+            { type: 'followup', target: 'both', wait_days: 3, template_id: null },
+            { type: 'followup', target: 'both', wait_days: 3, template_id: null }
         ];
 
         function renderSequenceBuilder() {
@@ -4243,6 +4520,8 @@ HTML_TEMPLATE = '''
         // Check for responses after 3 seconds, then every 5 minutes
         setTimeout(autoCheckInbox, 3000);
         setInterval(autoCheckInbox, 5 * 60 * 1000);  // Check every 5 minutes
+        // Refresh auto-send status every minute
+        setInterval(loadAutoSendStatus, 60 * 1000);
 
         // Unregister service workers to fix caching issues
         if ('serviceWorker' in navigator) {
@@ -4258,8 +4537,63 @@ HTML_TEMPLATE = '''
         }
 
         // ========== MODAL HELPERS ==========
-        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        function closeModal(id) {
+            const modal = document.getElementById(id);
+            if (modal) modal.classList.remove('active');
+        }
         function showCreateAthlete() { document.getElementById('create-athlete-modal').classList.add('active'); }
+
+        // Current response being viewed (for reply function)
+        let currentResponseData = null;
+
+        function showResponseModal(responseData) {
+            currentResponseData = responseData;
+            const modal = document.getElementById('response-modal');
+            if (!modal) return;
+
+            // Populate modal fields
+            document.getElementById('response-modal-title').textContent = `Response from ${responseData.school || 'Coach'}`;
+            document.getElementById('response-modal-school').textContent = responseData.school || 'Unknown';
+            document.getElementById('response-modal-coach').textContent = responseData.coach_name || responseData.email || 'Unknown';
+            document.getElementById('response-modal-email').textContent = responseData.email || '';
+
+            // Format date
+            let dateStr = 'Unknown';
+            if (responseData.replied_at) {
+                try {
+                    const d = new Date(responseData.replied_at);
+                    dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                } catch(e) {}
+            }
+            document.getElementById('response-modal-date').textContent = dateStr;
+
+            // Sentiment badge
+            const sentimentEl = document.getElementById('response-modal-sentiment');
+            if (responseData.sentiment) {
+                sentimentEl.innerHTML = `<span style="background:${responseData.sentiment.color};color:white;padding:4px 12px;border-radius:4px;font-size:12px;font-weight:600;">${responseData.sentiment.label}</span>`;
+            } else {
+                sentimentEl.innerHTML = '<span style="color:var(--muted);">Not analyzed</span>';
+            }
+
+            // Response body - use snippet or full body if available
+            const bodyEl = document.getElementById('response-modal-body');
+            bodyEl.textContent = responseData.full_body || responseData.snippet || responseData.subject || 'No content available';
+
+            // Show modal
+            modal.classList.add('active');
+        }
+
+        function replyToCoach() {
+            if (!currentResponseData || !currentResponseData.email) {
+                showToast('No email address available', 'error');
+                return;
+            }
+            // Open email client with reply
+            const email = currentResponseData.email;
+            const subject = encodeURIComponent('Re: ' + (currentResponseData.subject || 'Your email'));
+            window.open(`mailto:${email}?subject=${subject}`, '_blank');
+            closeModal('response-modal');
+        }
 
         // ========== ADMIN PANEL ==========
         async function loadAdminPanel() {
@@ -4311,6 +4645,22 @@ HTML_TEMPLATE = '''
         }
 
         // School Requests Functions
+        function parseScrapedData(notes) {
+            // Extract scraped data from notes field
+            if (!notes) return null;
+            const match = notes.match(/\[SCRAPED_DATA\](.*?)\[\/SCRAPED_DATA\]/s);
+            if (match) {
+                try { return JSON.parse(match[1]); } catch(e) { return null; }
+            }
+            return null;
+        }
+
+        function getUserNotes(notes) {
+            // Get user notes without scraped data
+            if (!notes) return '';
+            return notes.replace(/\[SCRAPED_DATA\].*?\[\/SCRAPED_DATA\]/s, '').trim();
+        }
+
         async function loadSchoolRequests() {
             try {
                 const res = await fetch('/api/admin/school-requests');
@@ -4320,17 +4670,118 @@ HTML_TEMPLATE = '''
                     el.innerHTML = '<div style="color:var(--success);">No pending school requests.</div>';
                     return;
                 }
-                el.innerHTML = data.requests.map(r => `
-                    <div style="padding:12px;background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--warn);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
-                        <div>
-                            <strong>${r.school_name}</strong>
-                            <div style="font-size:12px;color:var(--muted);">Requested by ${r.athlete_name} • ${new Date(r.created_at).toLocaleDateString()}</div>
-                            ${r.notes ? `<div style="font-size:12px;font-style:italic;margin-top:4px;">"${r.notes}"</div>` : ''}
+                el.innerHTML = data.requests.map(r => {
+                    const scraped = parseScrapedData(r.notes);
+                    const userNotes = getUserNotes(r.notes);
+                    const hasScrapedData = scraped && scraped.success;
+
+                    let scrapedHtml = '';
+                    if (scraped) {
+                        if (scraped.success) {
+                            const ol = scraped.ol_coach;
+                            const rc = scraped.rc;
+                            scrapedHtml = `
+                                <div style="margin-top:8px;padding:8px;background:var(--bg2);border-radius:4px;border-left:3px solid var(--success);">
+                                    <div style="font-size:11px;color:var(--success);font-weight:bold;margin-bottom:4px;">✅ AUTO-SCRAPED</div>
+                                    ${ol ? `<div style="font-size:12px;"><strong>OL Coach:</strong> ${ol.name || '—'} ${ol.email ? `<span style="color:var(--primary);">${ol.email}</span>` : '<span style="color:var(--muted);">no email</span>'}</div>` : '<div style="font-size:12px;color:var(--muted);">No OL coach found</div>'}
+                                    ${rc ? `<div style="font-size:12px;"><strong>RC:</strong> ${rc.name || '—'} ${rc.email ? `<span style="color:var(--primary);">${rc.email}</span>` : '<span style="color:var(--muted);">no email</span>'}</div>` : '<div style="font-size:12px;color:var(--muted);">No RC found</div>'}
+                                    ${scraped.staff_url ? `<div style="font-size:11px;margin-top:4px;"><a href="${scraped.staff_url}" target="_blank" style="color:var(--primary);">View Staff Page →</a></div>` : ''}
+                                </div>
+                            `;
+                        } else {
+                            scrapedHtml = `
+                                <div style="margin-top:8px;padding:8px;background:var(--bg2);border-radius:4px;border-left:3px solid var(--warn);">
+                                    <div style="font-size:11px;color:var(--warn);font-weight:bold;">⚠️ SCRAPE FAILED</div>
+                                    <div style="font-size:12px;color:var(--muted);">${scraped.error || 'Unknown error'}</div>
+                                    ${scraped.staff_url ? `<div style="font-size:11px;margin-top:4px;"><a href="${scraped.staff_url}" target="_blank" style="color:var(--primary);">Try Staff URL →</a></div>` : ''}
+                                    ${scraped.all_emails_found && scraped.all_emails_found.length ? `<div style="font-size:11px;margin-top:4px;">Emails on page: ${scraped.all_emails_found.slice(0,3).join(', ')}${scraped.all_emails_found.length > 3 ? '...' : ''}</div>` : ''}
+                                </div>
+                            `;
+                        }
+                    }
+
+                    return `
+                        <div style="padding:12px;background:var(--bg3);border:1px solid var(--border);border-left:3px solid ${hasScrapedData ? 'var(--success)' : 'var(--warn)'};margin-bottom:8px;">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                                <div>
+                                    <strong>${r.school_name}</strong>
+                                    <div style="font-size:12px;color:var(--muted);">Requested by ${r.athlete_name} • ${new Date(r.created_at).toLocaleDateString()}</div>
+                                    ${userNotes ? `<div style="font-size:12px;font-style:italic;margin-top:4px;">"${userNotes}"</div>` : ''}
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    ${hasScrapedData ? `<button class="btn btn-sm" style="background:var(--success);" onclick="approveScrapedSchool('${r.school_name}', '${r.id}', ${JSON.stringify(scraped).replace(/"/g, '&quot;')})">✓ APPROVE</button>` : ''}
+                                    <button class="btn btn-primary btn-sm" onclick="addSchoolFromRequest('${r.school_name}', '${r.id}', ${scraped ? JSON.stringify(scraped).replace(/"/g, '&quot;') : 'null'})">${hasScrapedData ? 'EDIT' : 'ADD'}</button>
+                                </div>
+                            </div>
+                            ${scrapedHtml}
                         </div>
-                        <button class="btn btn-primary btn-sm" onclick="addSchoolFromRequest('${r.school_name}', '${r.id}')">ADD SCHOOL</button>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             } catch(e) { console.error(e); }
+        }
+
+        async function approveScrapedSchool(schoolName, requestId, scrapedData) {
+            // Quick approve - add school and coaches from scraped data
+            if (!scrapedData || !scrapedData.success) {
+                showToast('No scraped data to approve', 'error');
+                return;
+            }
+
+            try {
+                // Add the school first
+                const addRes = await fetch('/api/admin/add-school', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        school_name: schoolName,
+                        staff_url: scrapedData.staff_url || '',
+                        request_id: requestId
+                    })
+                });
+                const addData = await addRes.json();
+                if (!addData.success) {
+                    showToast(addData.error || 'Failed to add school', 'error');
+                    return;
+                }
+
+                // Add coaches
+                let coachesAdded = 0;
+                if (scrapedData.ol_coach && scrapedData.ol_coach.name) {
+                    const olRes = await fetch('/api/admin/add-coach', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            school_name: schoolName,
+                            coach_name: scrapedData.ol_coach.name,
+                            role: 'ol',
+                            email: scrapedData.ol_coach.email || '',
+                            twitter: scrapedData.ol_coach.twitter || ''
+                        })
+                    });
+                    if ((await olRes.json()).success) coachesAdded++;
+                }
+
+                if (scrapedData.rc && scrapedData.rc.name) {
+                    const rcRes = await fetch('/api/admin/add-coach', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            school_name: schoolName,
+                            coach_name: scrapedData.rc.name,
+                            role: 'rc',
+                            email: scrapedData.rc.email || '',
+                            twitter: scrapedData.rc.twitter || ''
+                        })
+                    });
+                    if ((await rcRes.json()).success) coachesAdded++;
+                }
+
+                showToast(`${schoolName} added with ${coachesAdded} coach(es)!`, 'success');
+                loadSchoolRequests();
+                loadMissingCoaches();
+            } catch(e) {
+                showToast('Error: ' + e.message, 'error');
+            }
         }
 
         function showAddSchool(schoolName = '') {
@@ -4344,9 +4795,40 @@ HTML_TEMPLATE = '''
             window.currentRequestId = null;
         }
 
-        function addSchoolFromRequest(schoolName, requestId) {
+        function addSchoolFromRequest(schoolName, requestId, scrapedData = null) {
             showAddSchool(schoolName);
             window.currentRequestId = requestId;
+            window.currentScrapedData = scrapedData;
+
+            // Pre-fill form with scraped data if available
+            if (scrapedData && scrapedData.staff_url) {
+                document.getElementById('as-url').value = scrapedData.staff_url;
+            }
+
+            // If scraped data available, show it in the scrape results section
+            if (scrapedData) {
+                document.getElementById('scrape-results').style.display = 'block';
+                if (scrapedData.success) {
+                    let coachesHtml = '';
+                    if (scrapedData.ol_coach) {
+                        coachesHtml += `<div><strong>OL:</strong> ${scrapedData.ol_coach.name || '—'} (${scrapedData.ol_coach.email || 'no email'})</div>`;
+                    }
+                    if (scrapedData.rc) {
+                        coachesHtml += `<div><strong>RC:</strong> ${scrapedData.rc.name || '—'} (${scrapedData.rc.email || 'no email'})</div>`;
+                    }
+                    document.getElementById('scrape-status').innerHTML = '<span style="color:var(--success);">✓ Auto-scraped data available</span>';
+                    document.getElementById('scrape-coaches').innerHTML = coachesHtml || '<div style="color:var(--muted);">No coaches found</div>';
+                    document.getElementById('scrape-coaches').style.display = 'block';
+                    document.getElementById('manual-entry').style.display = 'block';
+                } else {
+                    document.getElementById('scrape-status').innerHTML = `<span style="color:var(--warn);">⚠️ Scrape failed: ${scrapedData.error || 'unknown'}</span>`;
+                    document.getElementById('scrape-coaches').style.display = 'none';
+                    document.getElementById('manual-entry').style.display = 'block';
+                }
+                if (scrapedData.staff_url) {
+                    document.getElementById('staff-link').href = scrapedData.staff_url;
+                }
+            }
         }
 
         async function addSchoolOnly() {
@@ -5150,6 +5632,8 @@ def api_stats():
         'emails_sent': 0,
         'responses': 0,
         'response_rate': 0,
+        'open_rate': 0,
+        'opened': 0,
         'followups_due': 0,
         'dms_sent': 0
     }
@@ -5169,6 +5653,8 @@ def api_stats():
             stats['emails_sent'] = outreach_stats.get('sent', 0)
             stats['responses'] = outreach_stats.get('replied', 0)
             stats['response_rate'] = outreach_stats.get('response_rate', 0)
+            stats['open_rate'] = outreach_stats.get('open_rate', 0)
+            stats['opened'] = outreach_stats.get('opened', 0)
 
             # DM stats
             dm_stats = _supabase_db.get_dm_stats()
@@ -5297,10 +5783,11 @@ def api_add_schools_to_sheet():
 
 
 @app.route('/api/spreadsheet')
+@login_required
 def api_spreadsheet():
     """Get coach data with ready_to_send and sent_today stats."""
     if not _supabase_db:
-        return jsonify({'rows': [], 'ready_to_send': 0, 'sent_today': 0, 'followups_due': 0, 'error': 'Database not connected'})
+        return jsonify({'rows': [], 'ready_to_send': 0, 'sent_today': 0, 'followups_due': 0, 'responded': 0, 'error': 'Database not connected'})
 
     try:
         coaches = _supabase_db.get_all_coaches_with_schools()
@@ -5336,27 +5823,43 @@ def api_spreadsheet():
 
         result = list(seen_schools.values())
 
+        # Get sent_today and responded from Supabase with athlete filtering
         sent_today = 0
+        responded = 0
         followups_due = 0
         try:
-            from enterprise.responses import get_response_tracker
             from datetime import date
-            tracker = get_response_tracker()
-            today = date.today().isoformat()
-            sent_today = sum(1 for e in tracker.sent_emails if e.sent_at.startswith(today))
-        except: pass
+            today_str = date.today().isoformat()
+            athlete_id = g.athlete_id if hasattr(g, 'athlete_id') else None
+
+            # Query Supabase for emails sent today
+            query = _supabase_db.client.table('outreach').select('id', count='exact').eq('status', 'sent').gte('sent_at', f"{today_str}T00:00:00").lt('sent_at', f"{today_str}T23:59:59")
+            if athlete_id:
+                query = query.eq('athlete_id', athlete_id)
+            result_sent = query.execute()
+            sent_today = result_sent.count if result_sent.count else 0
+
+            # Query Supabase for coaches that have responded
+            query_responded = _supabase_db.client.table('outreach').select('id', count='exact').eq('replied', True)
+            if athlete_id:
+                query_responded = query_responded.eq('athlete_id', athlete_id)
+            result_responded = query_responded.execute()
+            responded = result_responded.count if result_responded.count else 0
+        except Exception as e:
+            logger.error(f"Error getting email stats: {e}")
 
         try:
             from enterprise.followups import get_followup_manager
             fm = get_followup_manager()
             followups_due = len(fm.get_due_followups())
         except: pass
-        
+
         return jsonify({
-            'rows': result, 
+            'rows': result,
             'ready_to_send': ready_to_send,
             'sent_today': sent_today,
-            'followups_due': followups_due
+            'followups_due': followups_due,
+            'responded': responded
         })
     except Exception as e:
         logger.error(f"Spreadsheet error: {e}")
@@ -5400,31 +5903,45 @@ def api_record_response():
 def api_templates():
     """Get all templates or create new user template."""
     try:
-        from enterprise.templates import get_template_manager
-        manager = get_template_manager()
-        
         if request.method == 'POST':
             data = request.get_json()
+            # Create in Supabase
+            if _supabase_db:
+                try:
+                    result = _supabase_db.create_template(
+                        name=data.get('name', 'New Template'),
+                        body=data.get('body', ''),
+                        subject=data.get('subject'),
+                        template_type=data.get('template_type', 'email'),
+                        coach_type=data.get('coach_type', 'any'),
+                    )
+                    return jsonify({'success': True, 'template': result.data[0] if result.data else None})
+                except Exception as sb_e:
+                    logger.error(f"Supabase template create error: {sb_e}")
+                    return jsonify({'success': False, 'error': str(sb_e)})
+            # Fallback to local
+            from enterprise.templates import get_template_manager
+            manager = get_template_manager()
             template = manager.create_template(
                 name=data.get('name', 'New Template'),
                 template_type=data.get('template_type', 'rc'),
                 subject=data.get('subject', ''),
                 body=data.get('body', '')
             )
-            # Sync to Supabase
-            if SUPABASE_AVAILABLE and _supabase_db:
-                try:
-                    _supabase_db.create_template(
-                        name=data.get('name', 'New Template'),
-                        body=data.get('body', ''),
-                        subject=data.get('subject'),
-                        template_type='email',
-                        coach_type=data.get('template_type', 'any'),
-                    )
-                except Exception as sb_e:
-                    logger.warning(f"Supabase template sync error: {sb_e}")
             return jsonify({'success': True, 'template': template.to_dict()})
 
+        # GET - Load templates from Supabase first
+        if _supabase_db:
+            try:
+                templates = _supabase_db.get_templates()
+                if templates:
+                    return jsonify({'success': True, 'templates': templates})
+            except Exception as sb_e:
+                logger.warning(f"Supabase templates load error: {sb_e}")
+
+        # Fallback to local templates
+        from enterprise.templates import get_template_manager
+        manager = get_template_manager()
         templates = manager.get_all_templates()
         return jsonify({'success': True, 'templates': templates})
     except Exception as e:
@@ -6833,14 +7350,6 @@ def api_email_send():
         from enterprise.templates import get_template_manager
         from enterprise.responses import get_response_tracker
 
-        # Import AI hooks for personalized emails
-        try:
-            from enterprise.ai_hooks import generate_personalized_hook
-            ai_hooks_available = True
-        except ImportError:
-            ai_hooks_available = False
-            logger.warning("AI hooks not available - using generic templates")
-
         sent = 0
         errors = 0
         intro_count = 0
@@ -7138,14 +7647,11 @@ def api_email_preview():
         athlete = settings.get('athlete', {})
         school_name = data.get('school', '[School Name]')
 
-        # Generate a sample personalized hook for preview
-        sample_hook = "[AI-generated personalized reason for interest in this school]"
+        # Generate sample personalized hook for preview
         if school_name != '[School Name]':
-            try:
-                from enterprise.ai_hooks import generate_personalized_hook
-                sample_hook = generate_personalized_hook(school_name, email_type='intro', use_ai=True)
-            except:
-                sample_hook = f"I am very interested in {school_name}'s program and what you are building there."
+            sample_hook = f"I am very interested in {school_name}'s program and what you are building there."
+        else:
+            sample_hook = "[Your personalized reason for interest in this school]"
 
         variables = {
             'athlete_name': athlete.get('name', '[Your Name]'),
@@ -7165,319 +7671,6 @@ def api_email_preview():
 
         subject, body = template.render(variables)
         return jsonify({'success': True, 'subject': subject, 'body': body, 'template_name': template.name, 'hook': sample_hook})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
-
-@app.route('/api/hooks/stats')
-def api_hooks_stats():
-    """Get AI hooks statistics."""
-    try:
-        from enterprise.ai_hooks import get_hook_database
-        db = get_hook_database()
-        stats = db.get_stats()
-        return jsonify({'success': True, 'stats': stats})
-    except ImportError:
-        return jsonify({'success': True, 'stats': {'total_hooks_generated': 0, 'schools_with_hooks': 0, 'avg_hooks_per_school': 0}, 'note': 'AI hooks module not available'})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
-
-@app.route('/api/hooks/generate', methods=['POST'])
-def api_generate_hook():
-    """Generate a test personalized hook for a school."""
-    data = request.get_json() or {}
-    school = data.get('school', '')
-
-    if not school:
-        return jsonify({'success': False, 'error': 'School name required'})
-
-    try:
-        from enterprise.ai_hooks import generate_personalized_hook, get_hook_database
-
-        hook = generate_personalized_hook(
-            school=school,
-            division=data.get('division', ''),
-            conference=data.get('conference', ''),
-            email_type=data.get('email_type', 'intro'),
-            use_ai=data.get('use_ai', True)
-        )
-
-        db = get_hook_database()
-        used_hooks = db.get_used_hooks(school)
-
-        return jsonify({
-            'success': True,
-            'hook': hook,
-            'school': school,
-            'total_hooks_for_school': len(used_hooks)
-        })
-    except ImportError:
-        # Fallback when AI hooks not available
-        hook = f"I am very interested in {school}'s football program and what you are building there."
-        return jsonify({'success': True, 'hook': hook, 'school': school, 'note': 'AI hooks not available, using fallback'})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
-
-@app.route('/api/hooks/school/<school>')
-def api_hooks_for_school(school):
-    """Get all hooks used for a specific school."""
-    try:
-        from enterprise.ai_hooks import get_hook_database
-        db = get_hook_database()
-        used_hooks = db.get_used_hooks(school)
-        used_categories = db.get_used_categories(school)
-        return jsonify({
-            'success': True,
-            'school': school,
-            'hooks': used_hooks,
-            'categories': used_categories,
-            'count': len(used_hooks)
-        })
-    except ImportError:
-        return jsonify({'success': True, 'school': school, 'hooks': [], 'categories': [], 'count': 0, 'note': 'AI hooks module not available'})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
-
-# ============================================================================
-# AI EMAIL GENERATION FROM SPREADSHEET
-# ============================================================================
-
-@app.route('/api/ai-emails/schools')
-def api_ai_emails_schools():
-    """Get schools that can have AI emails generated."""
-    if not SUPABASE_AVAILABLE or not _supabase_db:
-        return jsonify({'success': False, 'error': 'Database not connected'})
-
-    try:
-        all_coaches = _supabase_db.get_all_coaches_with_schools()
-
-        # Check which schools already have AI emails
-        existing_schools = set()
-        try:
-            from enterprise.email_generator import get_email_generator
-            generator = get_email_generator()
-            existing_schools = set(s.lower() for s in generator.pregenerated.keys())
-        except:
-            pass
-
-        # Group coaches by school
-        school_map = {}
-        for c in all_coaches:
-            school = c.get('school_name', '')
-            if not school:
-                continue
-            if school not in school_map:
-                school_map[school] = {'rc_name': 'Coach', 'rc_email': '', 'ol_name': 'Coach', 'ol_email': ''}
-            role = (c.get('role') or '').lower()
-            if role == 'rc':
-                school_map[school]['rc_name'] = c.get('name', 'Coach')
-                school_map[school]['rc_email'] = c.get('email', '')
-            elif role == 'ol':
-                school_map[school]['ol_name'] = c.get('name', 'Coach')
-                school_map[school]['ol_email'] = c.get('email', '')
-
-        schools = []
-        for school, info in school_map.items():
-            has_email = (info['rc_email'] and '@' in info['rc_email']) or (info['ol_email'] and '@' in info['ol_email'])
-            if has_email:
-                has_ai_email = school.lower() in existing_schools
-                schools.append({
-                    'school': school,
-                    'rc_name': info['rc_name'],
-                    'rc_email': info['rc_email'],
-                    'ol_name': info['ol_name'],
-                    'ol_email': info['ol_email'],
-                    'has_ai_email': has_ai_email
-                })
-
-        return jsonify({
-            'success': True,
-            'schools': schools,
-            'total': len(schools),
-            'with_ai_emails': sum(1 for s in schools if s['has_ai_email']),
-            'needing_ai_emails': sum(1 for s in schools if not s['has_ai_email'])
-        })
-    except Exception as e:
-        logger.error(f"Error getting AI email schools: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-
-@app.route('/api/ai-emails/generate', methods=['POST'])
-def api_ai_emails_generate():
-    """Generate AI emails for schools."""
-    data = request.get_json() or {}
-    school_name = data.get('school')  # Optional: specific school
-    limit = data.get('limit', 5)  # Max schools to process
-
-    if not SUPABASE_AVAILABLE or not _supabase_db:
-        return jsonify({'success': False, 'error': 'Database not connected'})
-
-    try:
-        from enterprise.email_generator import get_email_generator, APILimitReached, get_remaining_schools_today
-        generator = get_email_generator()
-
-        # Check API limits
-        remaining = get_remaining_schools_today()
-        if remaining == 0:
-            return jsonify({
-                'success': False,
-                'error': 'Daily API limit reached. Try again tomorrow.',
-                'remaining_schools': 0
-            })
-
-        all_coaches = _supabase_db.get_all_coaches_with_schools()
-
-        # Group by school
-        school_map = {}
-        for c in all_coaches:
-            school = c.get('school_name', '')
-            if not school:
-                continue
-            if school not in school_map:
-                school_map[school] = {}
-            role = (c.get('role') or '').lower()
-            school_map[school][role] = c
-
-        generated = []
-        errors = []
-        actual_limit = min(limit, remaining)
-        processed = 0
-
-        for school, coaches in school_map.items():
-            if processed >= actual_limit:
-                break
-
-            if school_name and school.lower() != school_name.lower():
-                continue
-
-            # Skip if already has AI email
-            if school.lower() in [s.lower() for s in generator.pregenerated.keys()]:
-                continue
-
-            rc = coaches.get('rc', {})
-            ol = coaches.get('ol', {})
-            rc_email = rc.get('email', '')
-            ol_email = ol.get('email', '')
-
-            if rc_email and '@' in rc_email:
-                coach_email = rc_email
-                coach_name = rc.get('name', 'Coach')
-            elif ol_email and '@' in ol_email:
-                coach_email = ol_email
-                coach_name = ol.get('name', 'Coach')
-            else:
-                continue
-
-            try:
-                emails = generator.pregenerate_for_school(
-                    school=school,
-                    coach_name=coach_name,
-                    coach_email=coach_email,
-                    num_emails=2
-                )
-                generated.append({
-                    'school': school,
-                    'coach': coach_name,
-                    'emails_generated': len(emails)
-                })
-                processed += 1
-                logger.info(f"Generated AI emails for {school}")
-            except APILimitReached as e:
-                errors.append(f"API limit reached after {school}")
-                break
-            except Exception as e:
-                errors.append(f"{school}: {str(e)}")
-                logger.error(f"Error generating for {school}: {e}")
-
-        return jsonify({
-            'success': True,
-            'generated': generated,
-            'count': len(generated),
-            'errors': errors,
-            'remaining_schools': get_remaining_schools_today()
-        })
-    except ImportError as e:
-        return jsonify({'success': False, 'error': f'AI email module not available: {e}'})
-    except Exception as e:
-        logger.error(f"Error generating AI emails: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-
-@app.route('/api/ai-emails/status')
-def api_ai_emails_status():
-    """Get AI email generation status."""
-    try:
-        from enterprise.email_generator import (
-            get_email_generator, get_api_usage_today,
-            get_remaining_api_calls, get_remaining_schools_today,
-            DAILY_API_LIMIT
-        )
-
-        generator = get_email_generator()
-        stats = generator.get_stats()
-
-        return jsonify({
-            'success': True,
-            'stats': stats,
-            'api_usage': {
-                'used_today': get_api_usage_today(),
-                'limit': DAILY_API_LIMIT,
-                'remaining_calls': get_remaining_api_calls(),
-                'remaining_schools': get_remaining_schools_today()
-            }
-        })
-    except ImportError:
-        return jsonify({
-            'success': True,
-            'stats': {'schools_with_emails': 0, 'total_pregenerated': 0},
-            'note': 'AI email module not available'
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
-
-@app.route('/api/ai-emails/preview/<school>')
-def api_ai_emails_preview(school):
-    """Preview AI-generated emails for a school."""
-    try:
-        from enterprise.email_generator import get_email_generator
-        generator = get_email_generator()
-
-        # Get pregenerated emails for this school
-        emails = generator.pregenerated.get(school.lower(), [])
-        if not emails:
-            # Try exact match
-            for key in generator.pregenerated.keys():
-                if key.lower() == school.lower():
-                    emails = generator.pregenerated[key]
-                    break
-
-        if not emails:
-            return jsonify({
-                'success': False,
-                'error': f'No AI emails found for {school}',
-                'hint': 'Generate AI emails first using /api/ai-emails/generate'
-            })
-
-        return jsonify({
-            'success': True,
-            'school': school,
-            'emails': [
-                {
-                    'type': e.email_type,
-                    'coach_name': e.coach_name,
-                    'content': e.personalized_content,
-                    'research_used': e.research_used,
-                    'generated_at': e.generated_at,
-                    'used': e.used
-                } for e in emails
-            ]
-        })
-    except ImportError:
-        return jsonify({'success': False, 'error': 'AI email module not available'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -8806,7 +8999,7 @@ def api_admin_missing_coaches():
 @app.route('/api/athlete/request-school', methods=['POST'])
 @login_required
 def api_athlete_request_school():
-    """Athlete requests a school that's not in the database."""
+    """Athlete requests a school that's not in the database. Auto-scrapes for coach info."""
     try:
         data = request.json or {}
         school_name = data.get('school_name', '').strip()
@@ -8824,12 +9017,29 @@ def api_athlete_request_school():
         athlete = _supabase_db.get_athlete_by_id(g.athlete_id)
         athlete_name = athlete.get('name', 'Unknown') if athlete else 'Unknown'
 
+        # AUTO-SCRAPE: Try to find coach info automatically
+        scrape_result = None
+        try:
+            logger.info(f"Auto-scraping school: {school_name}")
+            scrape_result = auto_scrape_school(school_name)
+            logger.info(f"Scrape result: {scrape_result}")
+        except Exception as scrape_err:
+            logger.warning(f"Auto-scrape failed for {school_name}: {scrape_err}")
+            scrape_result = {'success': False, 'error': str(scrape_err), 'needs_manual': True}
+
+        # Build notes with scraped data (JSON encoded)
+        scraped_data_json = json.dumps(scrape_result) if scrape_result else None
+        combined_notes = notes
+        if scraped_data_json:
+            # Store scraped data in notes as JSON block
+            combined_notes = f"[SCRAPED_DATA]{scraped_data_json}[/SCRAPED_DATA]\n{notes}" if notes else f"[SCRAPED_DATA]{scraped_data_json}[/SCRAPED_DATA]"
+
         # Create request record
         request_data = {
             'athlete_id': g.athlete_id,
             'athlete_name': athlete_name,
             'school_name': school_name,
-            'notes': notes,
+            'notes': combined_notes,
             'status': 'pending',
             'created_at': datetime.now(timezone.utc).isoformat(),
         }
@@ -8841,15 +9051,42 @@ def api_athlete_request_school():
             logger.error(f"School request DB error (table might not exist): {db_err}")
             return jsonify({'error': 'School request feature is being set up. Please try again later or contact admin.'}), 500
 
+        # Build notification message with scrape results
+        notification_msg = f"{athlete_name} requested: {school_name}"
+        if scrape_result:
+            if scrape_result.get('success'):
+                coaches_found = []
+                if scrape_result.get('ol_coach'):
+                    ol = scrape_result['ol_coach']
+                    coaches_found.append(f"OL: {ol.get('name', '?')} ({ol.get('email', 'no email')})")
+                if scrape_result.get('rc'):
+                    rc = scrape_result['rc']
+                    coaches_found.append(f"RC: {rc.get('name', '?')} ({rc.get('email', 'no email')})")
+                notification_msg += f"\n✅ AUTO-SCRAPED: {', '.join(coaches_found)}"
+            else:
+                notification_msg += f"\n⚠️ Scrape failed: {scrape_result.get('error', 'unknown')}"
+                if scrape_result.get('staff_url'):
+                    notification_msg += f"\nURL: {scrape_result['staff_url']}"
+
         # Send notification to admin
         current_settings = load_settings()
         if current_settings.get('notifications', {}).get('enabled'):
             send_phone_notification(
-                title="New School Request",
-                message=f"{athlete_name} requested: {school_name}"
+                title="New School Request" + (" ✅" if scrape_result and scrape_result.get('success') else " ⚠️"),
+                message=notification_msg
             )
 
-        return jsonify({'success': True, 'message': 'School request submitted. Admin will add it soon.'})
+        response_msg = 'School request submitted.'
+        if scrape_result and scrape_result.get('success'):
+            response_msg += ' Coach info was found automatically - admin will review and approve.'
+        else:
+            response_msg += ' Admin will add the school soon.'
+
+        return jsonify({
+            'success': True,
+            'message': response_msg,
+            'scraped': scrape_result.get('success', False) if scrape_result else False
+        })
     except Exception as e:
         logger.error(f"School request error: {e}")
         return jsonify({'error': str(e)}), 500
