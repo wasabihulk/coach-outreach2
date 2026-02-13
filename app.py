@@ -71,7 +71,7 @@ CONFIG_FILE = CONFIG_DIR / 'settings.json'
 CREDENTIALS_FILE = CONFIG_DIR / 'google_credentials.json'
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-# Cloud settings keys that persist in Google Sheets (survive Railway deploys)
+# Cloud settings keys that persist in Supabase (survive Railway deploys)
 CLOUD_SETTINGS_KEYS = ['paused_until', 'holiday_mode', 'auto_send_enabled', 'auto_send_count', 'days_between_emails']
 
 # ============================================================================
@@ -143,7 +143,6 @@ DEFAULT_SETTINGS = {
         'holiday_mode': False,       # No follow-ups, max 5 intros/day
         'paused_until': None,        # ISO date string when pause ends (e.g., '2025-01-04')
     },
-    'sheets': {'spreadsheet_name': 'bardeen', 'credentials_configured': False},
     'scraper': {'start_from_bottom': False, 'batch_size': 10, 'min_delay': 2.0, 'max_delay': 5.0},
     'notifications': {'enabled': ENV_NOTIFICATIONS, 'channel': ENV_NTFY_CHANNEL},
     'setup_complete': True, 'first_run': False,
@@ -236,7 +235,7 @@ def save_settings(s: Dict):
 
 
 # ============================================================================
-# SETTINGS (Supabase-backed, no more Google Sheets)
+# SETTINGS (Supabase-backed)
 # ============================================================================
 
 settings = load_settings()
@@ -804,35 +803,6 @@ def send_email_auto(to_email: str, subject: str, body: str, from_email: str = No
 # ============================================================================
 # OPTIONAL IMPORTS
 # ============================================================================
-
-HAS_SCRAPER = False
-HAS_TWITTER_SCRAPER = False
-HAS_EMAIL_SCRAPER = False
-HAS_SHEETS = False
-
-try:
-    from scrapers import CoachScraper, ScraperConfig
-    HAS_SCRAPER = True
-except Exception as e:
-    logger.warning(f"Name scraper unavailable: {e}")
-
-try:
-    from scrapers import TwitterScraper, TwitterScraperConfig
-    HAS_TWITTER_SCRAPER = True
-except Exception as e:
-    logger.warning(f"Twitter scraper unavailable: {e}")
-
-try:
-    from scrapers import EmailScraper, EmailScraperConfig
-    HAS_EMAIL_SCRAPER = True
-except Exception as e:
-    logger.warning(f"Email scraper unavailable: {e}")
-
-HAS_SHEETS = False  # Google Sheets removed — Supabase is now the sole data store
-
-def get_sheet():
-    """Legacy stub — returns None. All data is now in Supabase."""
-    return None
 
 def is_railway_deployment():
     """Check if we're running on Railway."""
@@ -4024,54 +3994,24 @@ HTML_TEMPLATE = '''
             }
         }
         
-        // ========== SHEETS CONNECTION FUNCTIONS ==========
+        // ========== DATABASE CONNECTION FUNCTIONS ==========
         async function testSheetConnection() {
-            showToast('Testing connection...', 'success');
+            showToast('Testing database connection...', 'success');
             try {
                 const res = await fetch('/api/sheets/test');
                 const data = await res.json();
                 
                 const el = document.getElementById('sheets-connection-text');
                 if (data.connected) {
-                    el.innerHTML = '<span style="color:var(--success)">● Connected</span> - ' + data.rows + ' rows in sheet';
-                    showToast('Connected to Google Sheets!', 'success');
+                    el.innerHTML = '<span style="color:var(--success)">● Connected</span> - ' + (data.schools || 0) + ' schools, ' + (data.coaches || 0) + ' coaches in Supabase';
+                    showToast('Connected to Supabase!', 'success');
                 } else {
-                    el.innerHTML = '<span style="color:var(--err)">● Not connected</span> - ' + (data.error || 'Check credentials');
+                    el.innerHTML = '<span style="color:var(--err)">● Not connected</span> - ' + (data.error || 'Check Supabase config');
                     showToast('Connection failed: ' + (data.error || 'Unknown'), 'error');
                 }
             } catch(e) {
                 showToast('Connection test failed', 'error');
             }
-        }
-        
-        async function uploadCredentials() {
-            const input = document.getElementById('credentials-file');
-            if (!input.files.length) {
-                showToast('Select a file first', 'error');
-                return;
-            }
-            
-            const file = input.files[0];
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const content = e.target.result;
-                    const res = await fetch('/api/sheets/credentials', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ credentials: content })
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        showToast('Credentials saved! Test connection now.', 'success');
-                    } else {
-                        showToast(data.error || 'Failed to save', 'error');
-                    }
-                } catch(e) {
-                    showToast('Failed to upload credentials', 'error');
-                }
-            };
-            reader.readAsText(file);
         }
         
         async function testInboxConnection() {
@@ -4099,7 +4039,7 @@ HTML_TEMPLATE = '''
             setTimeout(() => el.style.display = 'none', 3000);
         }
         
-        // Check sheet connection and update header
+        // Check database connection and update header
         async function checkSheetConnection() {
             try {
                 const res = await fetch('/api/sheets/test');
@@ -5996,29 +5936,8 @@ def api_coach_mark_replied():
 
 @app.route('/api/connections/sheets', methods=['POST'])
 def api_connections_sheets():
-    global settings
-    
-    try:
-        data = request.get_json()
-        creds_json = data.get('credentials', '')
-        sheet_name = data.get('spreadsheet_name', 'bardeen')
-        
-        if creds_json:
-            creds = json.loads(creds_json)
-            with open(CREDENTIALS_FILE, 'w') as f:
-                json.dump(creds, f)
-            
-            settings['sheets']['credentials_configured'] = True
-            settings['sheets']['spreadsheet_name'] = sheet_name
-            save_settings(settings)
-            
-            return jsonify({'success': True})
-        
-        return jsonify({'success': False, 'error': 'No credentials provided'})
-    except json.JSONDecodeError:
-        return jsonify({'success': False, 'error': 'Invalid JSON'})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+    """Deprecated — Google Sheets is no longer used. All data in Supabase."""
+    return jsonify({'success': True, 'message': 'Google Sheets integration removed — all data is in Supabase'})
 
 
 @app.route('/api/email/connection-test', methods=['POST'])
@@ -6221,11 +6140,6 @@ def api_test_tracking():
 # CLOUD EMAIL STORAGE API
 # ============================================================================
 
-@app.route('/api/cloud-emails/sync', methods=['POST'])
-def api_cloud_emails_sync():
-    """Cloud sync is no longer needed - Supabase is the single source of truth."""
-    return jsonify({'success': True, 'message': 'Supabase is the data store - no sync needed', 'synced': 0})
-
 
 @app.route('/api/cloud-emails/stats')
 def api_cloud_emails_stats():
@@ -6297,157 +6211,21 @@ def api_email_tomorrow_preview():
         return jsonify({'success': False, 'error': str(e)})
 
 
-def mark_coach_replied_in_sheet(sheet, coach_email: str, school_name: str, sentiment: str = 'positive'):
-    """Mark a coach as REPLIED in Supabase and update all tracking systems."""
+def mark_coach_replied(coach_email: str, school_name: str, sentiment: str = 'positive'):
+    """Mark a coach as REPLIED in Supabase."""
     try:
-        # Track reply in Supabase
         if _supabase_db:
-            try:
-                _supabase_db.track_reply(coach_email, sentiment=sentiment, snippet=f"Reply from {school_name}")
-                # Also mark coach as responded
-                coach = _supabase_db.find_coach_by_email(coach_email)
-                if coach:
-                    _supabase_db.mark_coach_responded(coach['id'], sentiment=sentiment)
-            except Exception as sb_e:
-                logger.warning(f"Supabase track_reply error: {sb_e}")
-
-        # Reset scheduler AI cycle for this coach
-        try:
-            from scheduler.email_scheduler import SchedulerState
-            state = SchedulerState('email_scheduler_state.json')
-            state.mark_response_received(coach_email)
-        except Exception as e:
-            logger.warning(f"Could not reset AI cycle: {e}")
-
-        # Legacy sheet handling - skip if no sheet passed
-        if not sheet:
-            return
-        try:
-            all_data = sheet.get_all_values()
-        except:
-            return
-        if len(all_data) < 2:
-            return
-
-        headers = all_data[0]
-
-        def find_col(keywords):
-            for i, h in enumerate(headers):
-                h_lower = h.lower()
-                for kw in keywords:
-                    if kw in h_lower:
-                        return i
-            return -1
-
-        school_col = find_col(['school'])
-        rc_email_col = find_col(['rc email'])
-        ol_email_col = find_col(['ol email', 'oc email'])
-        rc_contacted_col = find_col(['rc contacted'])
-        ol_contacted_col = find_col(['ol contacted', 'oc contacted'])
-        rc_notes_col = find_col(['rc notes'])
-        ol_notes_col = find_col(['ol notes', 'oc notes'])
-        rc_responded_col = find_col(['rc responded'])
-        ol_responded_col = find_col(['ol responded', 'oc responded'])
-
-        logger.info(f"mark_coach_replied columns: school={school_col}, rc_email={rc_email_col}, ol_email={ol_email_col}, rc_responded={rc_responded_col}, ol_responded={ol_responded_col}")
-
-        coach_email_lower = coach_email.lower().strip()
-        school_name_lower = school_name.lower().strip() if school_name else ''
-
-        def mark_row_replied(row_idx, contacted_col, notes_col, responded_col, coach_type, row_school):
-            """Helper to mark a row as replied."""
-            from datetime import datetime
-            now_str = datetime.now().strftime('%m/%d/%Y')
-            write_count = 0
-
-            # Write to the dedicated "responded" column if it exists
-            if responded_col >= 0:
-                try:
-                    sheet.update_cell(row_idx, responded_col + 1, f"Yes - {now_str}")
-                    write_count += 1
-                    logger.info(f"Wrote responded column (row {row_idx}, col {responded_col + 1}) for {row_school}")
-                except Exception as e:
-                    logger.error(f"FAILED to write responded column for {row_school}: {e}")
-
-            # Also mark the contacted column with REPLIED
-            if contacted_col >= 0:
-                try:
-                    current = sheet.cell(row_idx, contacted_col + 1).value or ''
-                    if 'REPLIED' not in current.upper():
-                        new_val = 'REPLIED' if not current else current + ', REPLIED'
-                        sheet.update_cell(row_idx, contacted_col + 1, new_val)
-                        write_count += 1
-                        logger.info(f"Wrote contacted column (row {row_idx}, col {contacted_col + 1}) = '{new_val}' for {row_school}")
-                except Exception as e:
-                    logger.error(f"FAILED to write contacted column for {row_school}: {e}")
-
-            if notes_col >= 0:
-                try:
-                    current = sheet.cell(row_idx, notes_col + 1).value or ''
-                    note = f"Response received {now_str} ({sentiment})"
-                    if 'response received' not in current.lower():
-                        new_val = note if not current else note + '; ' + current
-                        sheet.update_cell(row_idx, notes_col + 1, new_val)
-                        write_count += 1
-                        logger.info(f"Wrote notes column (row {row_idx}, col {notes_col + 1}) for {row_school}")
-                except Exception as e:
-                    logger.error(f"FAILED to write notes column for {row_school}: {e}")
-
-            logger.info(f"Marked {coach_type} at {row_school} as REPLIED ({sentiment}) - {write_count} columns updated")
-
-        # Pass 1: Try exact email match
-        for row_idx, row in enumerate(all_data[1:], start=2):
-            row_school = row[school_col].strip() if school_col >= 0 and school_col < len(row) else ''
-
-            # Check RC email
-            rc_email = row[rc_email_col].strip().lower() if rc_email_col >= 0 and rc_email_col < len(row) else ''
-            if rc_email and rc_email == coach_email_lower:
-                mark_row_replied(row_idx, rc_contacted_col, rc_notes_col, rc_responded_col, 'RC', row_school)
-                return
-
-            # Check OL email
-            ol_email = row[ol_email_col].strip().lower() if ol_email_col >= 0 and ol_email_col < len(row) else ''
-            if ol_email and ol_email == coach_email_lower:
-                mark_row_replied(row_idx, ol_contacted_col, ol_notes_col, ol_responded_col, 'OL', row_school)
-                return
-
-        # Pass 2: Try fuzzy email match (handles hidden chars, encoding issues)
-        for row_idx, row in enumerate(all_data[1:], start=2):
-            row_school = row[school_col].strip() if school_col >= 0 and school_col < len(row) else ''
-
-            rc_email = row[rc_email_col].strip().lower() if rc_email_col >= 0 and rc_email_col < len(row) else ''
-            if rc_email and (coach_email_lower in rc_email or rc_email in coach_email_lower):
-                logger.info(f"Fuzzy email match: '{coach_email_lower}' ~ '{rc_email}' at {row_school}")
-                mark_row_replied(row_idx, rc_contacted_col, rc_notes_col, rc_responded_col, 'RC', row_school)
-                return
-
-            ol_email = row[ol_email_col].strip().lower() if ol_email_col >= 0 and ol_email_col < len(row) else ''
-            if ol_email and (coach_email_lower in ol_email or ol_email in coach_email_lower):
-                logger.info(f"Fuzzy email match: '{coach_email_lower}' ~ '{ol_email}' at {row_school}")
-                mark_row_replied(row_idx, ol_contacted_col, ol_notes_col, ol_responded_col, 'OL', row_school)
-                return
-
-        # Pass 3: Match by school name as last resort
-        if school_name_lower:
-            for row_idx, row in enumerate(all_data[1:], start=2):
-                row_school = row[school_col].strip() if school_col >= 0 and school_col < len(row) else ''
-                if row_school.lower() == school_name_lower:
-                    # Mark whichever coach column has an email
-                    rc_email = row[rc_email_col].strip() if rc_email_col >= 0 and rc_email_col < len(row) else ''
-                    ol_email = row[ol_email_col].strip() if ol_email_col >= 0 and ol_email_col < len(row) else ''
-                    if rc_email and '@' in rc_email:
-                        logger.info(f"School-name match for {school_name} (email: {coach_email} not found, marking RC)")
-                        mark_row_replied(row_idx, rc_contacted_col, rc_notes_col, rc_responded_col, 'RC', row_school)
-                    if ol_email and '@' in ol_email:
-                        logger.info(f"School-name match for {school_name} (email: {coach_email} not found, marking OL)")
-                        mark_row_replied(row_idx, ol_contacted_col, ol_notes_col, ol_responded_col, 'OL', row_school)
-                    return
-
-        logger.warning(f"Could not find {coach_email} ({school_name}) in sheet to mark as replied")
+            _supabase_db.track_reply(coach_email, sentiment=sentiment, snippet=f"Reply from {school_name}")
+            coach = _supabase_db.find_coach_by_email(coach_email)
+            if coach:
+                _supabase_db.mark_coach_responded(coach['id'], sentiment=sentiment)
     except Exception as e:
         logger.error(f"Error marking coach replied: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+
+
+# Legacy alias for callers that still pass a sheet argument
+def mark_coach_replied_in_sheet(sheet, coach_email: str, school_name: str, sentiment: str = 'positive'):
+    mark_coach_replied(coach_email, school_name, sentiment)
 
 
 @app.route('/api/email/settings', methods=['GET', 'POST'])
@@ -6529,15 +6307,7 @@ def run_task(tool: str):
     try:
         event_queue.put({'type': 'progress', 'data': {'percent': 0, 'title': 'Starting...'}})
         
-        if tool == 'staff':
-            run_staff_scraper()
-        elif tool == 'twitter':
-            run_twitter_scraper()
-        elif tool == 'email':
-            run_email_scraper()
-        elif tool == 'pipeline':
-            run_pipeline()
-        elif tool == 'email_send':
+        if tool == 'email_send':
             run_email_send()
         else:
             add_log(f"Unknown tool: {tool}", 'error')
@@ -6547,167 +6317,6 @@ def run_task(tool: str):
     finally:
         active_task = None
         event_queue.put({'type': 'done'})
-
-
-def run_staff_scraper():
-    global stop_requested
-    
-    if not HAS_SCRAPER:
-        add_log("Staff scraper not available - install selenium", 'error')
-        return
-    
-    add_log("Starting staff name scraper...")
-    
-    found = 0
-    total = 0
-    
-    def callback(event, data):
-        nonlocal found, total
-        
-        if stop_requested:
-            raise KeyboardInterrupt()
-        
-        if event == 'schools_found':
-            total = data.get('count', 0)
-            add_log(f"Found {total} schools to process")
-        elif event == 'processing':
-            current = data.get('current', 0)
-            school = data.get('school', '?')
-            add_log(f"[{current}/{total}] {school}")
-            if total > 0:
-                event_queue.put({'type': 'progress', 'data': {'percent': int((current/total)*100)}})
-        elif event == 'school_processed':
-            if data.get('ol_found') or data.get('rc_found'):
-                found += 1
-                add_log(f"✓ {data.get('school', '?')}", 'success')
-                # Sync scraped data to Supabase
-                if SUPABASE_AVAILABLE and _supabase_db:
-                    try:
-                        school_name = data.get('school', '')
-                        if school_name:
-                            _supabase_db.add_school(name=school_name, staff_url=data.get('url'))
-                        if data.get('rc_found') and data.get('rc_name'):
-                            _supabase_db.add_coach(school_name, data['rc_name'], 'rc',
-                                                   email=data.get('rc_email'), twitter=data.get('rc_twitter'))
-                        if data.get('ol_found') and data.get('ol_name'):
-                            _supabase_db.add_coach(school_name, data['ol_name'], 'ol',
-                                                   email=data.get('ol_email'), twitter=data.get('ol_twitter'))
-                    except Exception as sb_e:
-                        logger.warning(f"Supabase scraper sync error: {sb_e}")
-
-    try:
-        config = ScraperConfig(reverse=settings['scraper'].get('start_from_bottom', False))
-        scraper = CoachScraper(config)
-        scraper.run(callback=callback)
-        add_log(f"Done! Found {found} coaches", 'success')
-    except KeyboardInterrupt:
-        add_log("Stopped by user")
-    except Exception as e:
-        add_log(f"Scraper error: {e}", 'error')
-
-
-def run_twitter_scraper():
-    global stop_requested
-    
-    if not HAS_TWITTER_SCRAPER:
-        add_log("Twitter scraper not available", 'error')
-        return
-    
-    add_log("Starting Twitter handle scraper...")
-    
-    found = 0
-    total = 0
-    
-    def callback(event, data):
-        nonlocal found, total
-        
-        if stop_requested:
-            raise KeyboardInterrupt()
-        
-        if event == 'schools_found':
-            total = data.get('count', 0)
-            add_log(f"Found {total} schools needing Twitter handles")
-        elif event == 'processing':
-            current = data.get('current', 0)
-            if total > 0:
-                event_queue.put({'type': 'progress', 'data': {'percent': int((current/total)*100)}})
-        elif event == 'found':
-            found += 1
-            add_log(f"✓ {data.get('school')} - {data.get('type')}: {data.get('handle')}", 'success')
-            # Sync twitter handle to Supabase coach record
-            if SUPABASE_AVAILABLE and _supabase_db:
-                try:
-                    school_name = data.get('school', '')
-                    handle = data.get('handle', '')
-                    coach_type = data.get('type', '').lower()
-                    role = 'rc' if 'rc' in coach_type else 'ol'
-                    coaches = _supabase_db.get_coaches_for_school(school_name)
-                    for c in coaches:
-                        if c.get('role') == role and not c.get('twitter'):
-                            _supabase_db.update_coach(c['id'], twitter=handle)
-                            break
-                except Exception as sb_e:
-                    logger.warning(f"Supabase twitter sync error: {sb_e}")
-
-    try:
-        config = TwitterScraperConfig(reverse=settings['scraper'].get('start_from_bottom', False))
-        scraper = TwitterScraper(config)
-        scraper.run(callback=callback)
-        add_log(f"Done! Found {found} handles", 'success')
-    except KeyboardInterrupt:
-        add_log("Stopped by user")
-    except Exception as e:
-        add_log(f"Twitter scraper error: {e}", 'error')
-
-
-def run_email_scraper():
-    global stop_requested
-    
-    if not HAS_EMAIL_SCRAPER:
-        add_log("Email scraper not available", 'error')
-        return
-    
-    add_log("Starting email scraper...")
-    
-    found = 0
-    total = 0
-    
-    def callback(event, data):
-        nonlocal found, total
-        
-        if stop_requested:
-            raise KeyboardInterrupt()
-        
-        if event == 'schools_found':
-            total = data.get('count', 0)
-            add_log(f"Found {total} schools needing emails")
-        elif event == 'processing':
-            current = data.get('current', 0)
-            if total > 0:
-                event_queue.put({'type': 'progress', 'data': {'percent': int((current/total)*100)}})
-        elif event == 'found':
-            found += 1
-            add_log(f"✓ {data.get('school')} - {data.get('email')}", 'success')
-    
-    try:
-        config = EmailScraperConfig(reverse=settings['scraper'].get('start_from_bottom', False))
-        scraper = EmailScraper(config)
-        scraper.run(callback=callback)
-        add_log(f"Done! Found {found} emails", 'success')
-    except KeyboardInterrupt:
-        add_log("Stopped by user")
-    except Exception as e:
-        add_log(f"Email scraper error: {e}", 'error')
-
-
-def run_pipeline():
-    add_log("Starting full pipeline...")
-    run_staff_scraper()
-    if not stop_requested:
-        run_email_scraper()
-    if not stop_requested:
-        run_twitter_scraper()
-    add_log("Pipeline complete!", 'success')
 
 
 def run_email_send():
@@ -8125,9 +7734,9 @@ def api_email_test():
 # DATABASE CONNECTION ROUTES
 # ============================================================================
 
-@app.route('/api/sheets/test')
-def api_sheets_test():
-    """Test database connection (Supabase)."""
+@app.route('/api/sheets/test')  # Legacy URL kept for frontend compat
+def api_db_test():
+    """Test Supabase database connection."""
     if _supabase_db:
         try:
             schools = _supabase_db.client.table('schools').select('id', count='exact').limit(0).execute()
@@ -8145,27 +7754,8 @@ def api_sheets_test():
 
 @app.route('/api/sheets/credentials', methods=['POST'])
 def api_sheets_credentials():
-    """Save Google Sheets credentials."""
-    data = request.get_json() or {}
-    credentials_content = data.get('credentials', '')
-    
-    if not credentials_content:
-        return jsonify({'success': False, 'error': 'No credentials provided'})
-    
-    try:
-        # Validate JSON
-        creds = json.loads(credentials_content)
-        
-        # Save to credentials.json
-        creds_path = Path('credentials.json')
-        with open(creds_path, 'w') as f:
-            json.dump(creds, f, indent=2)
-        
-        return jsonify({'success': True, 'message': 'Credentials saved'})
-    except json.JSONDecodeError:
-        return jsonify({'success': False, 'error': 'Invalid JSON'})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+    """Deprecated — Google Sheets is no longer used."""
+    return jsonify({'success': True, 'message': 'Google Sheets removed — all data is in Supabase'})
 
 
 # ============================================================================
@@ -8473,7 +8063,7 @@ def check_responses_background():
 
                             # CRITICAL: Mark coach as replied in sheet so they don't get more emails
                             try:
-                                mark_coach_replied_in_sheet(None, coach['email'], coach['school'])
+                                mark_coach_replied(coach['email'], coach['school'])
                             except Exception as mark_err:
                                 logger.error(f"Failed to mark {coach['school']} as replied: {mark_err}")
                     except Exception as e:
@@ -8529,7 +8119,7 @@ def check_responses_background():
                             for coach in coach_emails:
                                 if coach['school'].lower() == school.lower():
                                     try:
-                                        mark_coach_replied_in_sheet(None, coach['email'], coach['school'])
+                                        mark_coach_replied(coach['email'], coach['school'])
                                     except Exception as mark_err:
                                         logger.error(f"Failed to mark {coach['school']} as replied: {mark_err}")
                             break  # One match per school is enough
@@ -8620,7 +8210,7 @@ def start_auto_send_scheduler():
 
         while True:
             try:
-                # Load cloud settings on each loop iteration (fresh from Google Sheets)
+                # Load cloud settings on each loop iteration (fresh from Supabase)
                 ensure_cloud_settings()
                 current_settings = load_settings()
                 today = datetime.now().date()
@@ -9390,9 +8980,6 @@ def api_admin_scrape_school():
             return jsonify({'error': 'staff_url required'}), 400
         if not school_name:
             return jsonify({'error': 'school_name required'}), 400
-
-        if not HAS_SCRAPER:
-            return jsonify({'error': 'Scraper not available on this server. Please add coaches manually.'}), 400
 
         # Try to scrape the page
         import requests

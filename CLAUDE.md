@@ -13,23 +13,16 @@ Sends personalized AI-generated emails to college football coaches via Gmail API
 - Supabase URL: `https://sdugzlvnlfejiwmrrysf.supabase.co`
 
 ### Cloud (Railway)
-- **Flask app** (`app.py`) — main web app, ~8500 lines
+- **Flask app** (`app.py`) — main web app
 - Serves the full single-page app (HTML/CSS/JS inline in Python template)
 - Gmail API for sending emails
 - Auto-send scheduler runs in background thread
 - Open/click tracking via pixel + redirect
 
-### Local (MacBook)
-- **Ollama** generates personalized AI emails (llama3.2:3b model)
-- **LaunchAgent** triggers on wake/login: `com.coachoutreach.daily.plist`
-- Scripts: `run_daily_emails.sh`, `daily_generate.py`, `daily_send.py`
-
 ### Data Flow
 ```
-MacBook wakes
-  → daily_generate.py (Ollama creates AI emails)
-  → Saves to Supabase (ai_emails in outreach_tracking or local cache)
-  → Railway auto-send scheduler picks up emails
+Railway auto-send scheduler
+  → Picks coaches from Supabase (per-athlete school selections)
   → Sends at optimal time via Gmail API (per-athlete credentials)
   → Tracks opens via pixel, stores in Supabase
 ```
@@ -84,15 +77,13 @@ athlete_schools (athlete_id, school_id, coach_preference)
 
 | File | Purpose |
 |------|---------|
-| `app.py` | Main Flask app — routes, templates, JS, all in one (~8500 lines) |
+| `app.py` | Main Flask app — routes, templates, JS, all in one |
 | `db/supabase_client.py` | Supabase database client — all DB operations |
-| `daily_generate.py` | AI email generation with Ollama (local) |
-| `daily_send.py` | Verifies cloud sync status |
-| `run_daily_emails.sh` | LaunchAgent trigger script |
 | `enterprise/email_generator.py` | AI email generation engine |
+| `enterprise/responses.py` | Email response tracking |
+| `enterprise/routes.py` | Enterprise feature routes |
+| `config/settings.py` | App settings dataclasses |
 | `scripts/setup_multitenant.py` | Setup script for password + credential migration |
-| `supabase_migration_multitenant.sql` | SQL migration for multi-tenant tables |
-| `supabase_migration_v3.sql` | SQL migration for coach tracking columns |
 
 ## Key Methods in `db/supabase_client.py`
 
@@ -117,9 +108,9 @@ athlete_schools (athlete_id, school_id, coach_preference)
 - `get_athlete_stats_summary(athlete_id)` — sent/replied/schools/gmail/profile stats
 - `get_missing_coaches_for_athlete(athlete_id)` — alerts for missing data
 
-### Core (existing)
+### Core
 - `search_schools(query, division, state, conference, limit)`
-- `get_coaches_to_email(limit, days_between)` — legacy, still works
+- `get_coaches_to_email(limit, days_between)` — legacy fallback
 - `record_email_sent(coach_id, school_name, ...)`
 - `save_settings(settings)` / `get_settings()`
 
@@ -189,7 +180,6 @@ git push
 ### School search returns no results
 - Search now uses Supabase, not local data file
 - Schools must exist in Supabase `schools` table
-- Run scraper to populate if empty
 
 ### Adding a new athlete (full flow)
 1. Login as admin (Keelan)
@@ -201,8 +191,9 @@ git push
 
 ## Migration History
 1. **v1-v2**: Google Sheets for everything
-2. **v3** (Jan 2026): Migrated to Supabase — all data in PostgreSQL, removed all Google Sheets code
+2. **v3** (Jan 2026): Migrated to Supabase — all data in PostgreSQL
 3. **v4** (Feb 2026): Multi-tenant — login system, admin panel, per-athlete schools, encrypted Gmail credentials
+4. **v5** (Feb 2026): Removed all legacy Google Sheets code, local AI generation scripts, and sheets-based scrapers
 
 ## Project Structure
 ```
@@ -211,17 +202,22 @@ coach-outreach-project/
 ├── db/
 │   └── supabase_client.py          # All database operations
 ├── enterprise/
-│   └── email_generator.py          # AI email generation
+│   ├── email_generator.py          # AI email generation
+│   ├── responses.py                # Email response tracking
+│   ├── routes.py                   # Enterprise feature routes
+│   ├── crm.py                      # CRM features
+│   └── ai_hooks.py                 # AI personalization hooks
+├── config/
+│   └── settings.py                 # App settings dataclasses
+├── outreach/
+│   ├── email_sender.py             # Email sending utilities
+│   └── twitter_sender.py           # Twitter DM integration
+├── scrapers/
+│   └── unified_scraper.py          # HTML coach extraction (no sheets)
 ├── scripts/
 │   └── setup_multitenant.py        # Multi-tenant setup script
-├── data/
-│   └── schools.py                  # Local school database (legacy, search now uses Supabase)
-├── daily_generate.py               # Local AI email generation
-├── daily_send.py                   # Cloud sync verification
-├── run_daily_emails.sh             # LaunchAgent trigger
 ├── requirements.txt                # Python dependencies
-├── supabase_migration_v3.sql       # Coach tracking migration
-├── supabase_migration_multitenant.sql  # Multi-tenant migration
 ├── Procfile                        # Railway deployment
+├── SECURITY_NOTES.md               # Pre-production security checklist
 └── CLAUDE.md                       # This file
 ```

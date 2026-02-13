@@ -10,7 +10,7 @@ Features:
 - Easy access throughout app
 
 Author: Coach Outreach System
-Version: 3.0.0
+Version: 4.0.0
 ============================================================================
 """
 
@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 # Config directory
 CONFIG_DIR = Path.home() / '.coach_outreach'
 CONFIG_FILE = CONFIG_DIR / 'settings.json'
-CREDENTIALS_FILE = CONFIG_DIR / 'google_credentials.json'
 
 
 @dataclass
@@ -83,26 +82,6 @@ class EmailSettings:
         return bool(self.email_address and self.app_password)
 
 
-@dataclass
-class SheetSettings:
-    """Google Sheets configuration."""
-    spreadsheet_name: str = "bardeen"
-    sheet_name: str = "Sheet1"
-    credentials_configured: bool = False
-    
-    # Column mappings (can be customized)
-    school_column: str = "School"
-    url_column: str = "URL"
-    rc_name_column: str = "recruiting coordinator name"
-    ol_name_column: str = "Oline Coach"
-    rc_twitter_column: str = "RC twitter"
-    ol_twitter_column: str = "OC twitter"
-    rc_email_column: str = "RC email"
-    ol_email_column: str = "OC email"
-    rc_contacted_column: str = "RC Contacted"
-    ol_contacted_column: str = "OL Contacted"
-
-
 @dataclass 
 class ScraperSettings:
     """Scraper behavior configuration."""
@@ -126,21 +105,19 @@ class AppSettings:
     """Main application settings."""
     athlete: AthleteProfile = field(default_factory=AthleteProfile)
     email: EmailSettings = field(default_factory=EmailSettings)
-    sheets: SheetSettings = field(default_factory=SheetSettings)
     scraper: ScraperSettings = field(default_factory=ScraperSettings)
     
     # App state
     setup_complete: bool = False
     first_run: bool = True
     last_updated: str = ""
-    version: str = "3.0.0"
+    version: str = "4.0.0"
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization."""
         return {
             'athlete': asdict(self.athlete),
             'email': asdict(self.email),
-            'sheets': asdict(self.sheets),
             'scraper': asdict(self.scraper),
             'setup_complete': self.setup_complete,
             'first_run': self.first_run,
@@ -162,24 +139,19 @@ class AppSettings:
             settings.athlete = AthleteProfile(**_filter_fields(AthleteProfile, data['athlete']))
         if 'email' in data:
             settings.email = EmailSettings(**_filter_fields(EmailSettings, data['email']))
-        if 'sheets' in data:
-            settings.sheets = SheetSettings(**_filter_fields(SheetSettings, data['sheets']))
         if 'scraper' in data:
             settings.scraper = ScraperSettings(**_filter_fields(ScraperSettings, data['scraper']))
         
         settings.setup_complete = data.get('setup_complete', False)
         settings.first_run = data.get('first_run', True)
         settings.last_updated = data.get('last_updated', '')
-        settings.version = data.get('version', '3.0.0')
+        settings.version = data.get('version', '4.0.0')
         
         return settings
     
     def is_ready(self) -> bool:
         """Check if app is ready to use."""
-        return (
-            self.sheets.credentials_configured and
-            self.athlete.is_complete()
-        )
+        return self.athlete.is_complete()
 
 
 class SettingsManager:
@@ -254,51 +226,6 @@ class SettingsManager:
         """Reset to default settings."""
         self.settings = AppSettings()
         self.save()
-    
-    def save_google_credentials(self, credentials_json: str) -> bool:
-        """Save Google service account credentials."""
-        try:
-            # Validate JSON
-            creds = json.loads(credentials_json)
-            
-            # Check required fields
-            required = ['type', 'project_id', 'private_key', 'client_email']
-            for field in required:
-                if field not in creds:
-                    raise ValueError(f"Missing required field: {field}")
-            
-            # Save to file
-            with open(CREDENTIALS_FILE, 'w') as f:
-                json.dump(creds, f, indent=2)
-            
-            self.settings.sheets.credentials_configured = True
-            self.save()
-            
-            logger.info("Google credentials saved successfully")
-            return True
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Error saving credentials: {e}")
-            return False
-    
-    def get_credentials_path(self) -> Optional[str]:
-        """Get path to credentials file if it exists."""
-        if CREDENTIALS_FILE.exists():
-            return str(CREDENTIALS_FILE)
-        
-        # Fall back to local credentials.json
-        local_creds = Path('credentials.json')
-        if local_creds.exists():
-            return str(local_creds)
-        
-        return None
-    
-    def has_credentials(self) -> bool:
-        """Check if Google credentials are configured."""
-        return self.get_credentials_path() is not None
 
 
 # Global instance

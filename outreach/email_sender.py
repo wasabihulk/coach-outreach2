@@ -686,7 +686,7 @@ class SmartEmailSender:
     def send_to_coaches(
         self,
         coaches: List[Dict],
-        sheet,  # gspread sheet object for updating contacted columns
+        sheet=None,  # deprecated — kept for API compat
         callback: Optional[Callable[[str, Dict], None]] = None
     ) -> Dict[str, int]:
         """
@@ -694,7 +694,7 @@ class SmartEmailSender:
         
         Args:
             coaches: List from get_coaches_to_email()
-            sheet: gspread sheet to update contacted columns
+            sheet: Deprecated, unused. Kept for backward compatibility.
             callback: Progress callback
         
         Returns:
