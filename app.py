@@ -332,6 +332,32 @@ def _run_startup_tasks():
 # Start background startup tasks (don't block server start)
 threading.Thread(target=_run_startup_tasks, daemon=True).start()
 
+# Start scheduler on module load (needed for gunicorn which doesn't run __main__)
+# Only start in ONE worker to avoid duplicate emails. Use a simple file lock.
+def _deferred_scheduler_start():
+    """Start scheduler after a brief delay. Only one worker grabs the lock."""
+    time.sleep(3)
+    lock_path = Path('/tmp/.recruitsignal_scheduler.lock')
+    try:
+        # Try to create lock file exclusively — only the first worker succeeds
+        import fcntl
+        lock_file = open(lock_path, 'w')
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_file.write(str(os.getpid()))
+        lock_file.flush()
+        # We got the lock — this worker runs the scheduler
+        logger.info(f"Scheduler lock acquired by worker PID {os.getpid()}")
+        ensure_scheduler_started()
+    except (IOError, OSError):
+        # Another worker already has the lock — skip scheduler in this one
+        logger.info(f"Scheduler already running in another worker, skipping in PID {os.getpid()}")
+    except Exception as e:
+        # Fallback: just start it (better than no scheduler)
+        logger.warning(f"Scheduler lock failed ({e}), starting anyway")
+        ensure_scheduler_started()
+
+threading.Thread(target=_deferred_scheduler_start, daemon=True).start()
+
 # ============================================================================
 # AUTHENTICATION
 # ============================================================================
