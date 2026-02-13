@@ -87,7 +87,7 @@ def get_env(key: str, default: str = '') -> str:
 # Sensitive credentials from environment (NEVER hardcode in production)
 ENV_EMAIL_ADDRESS = get_env('EMAIL_ADDRESS', '')
 ENV_APP_PASSWORD = get_env('APP_PASSWORD', '')
-ENV_GOOGLE_CREDENTIALS = get_env('GOOGLE_CREDENTIALS', '')  # JSON string of service account
+ENV_GOOGLE_CREDENTIALS = get_env('GOOGLE_CREDENTIALS', '')  # Deprecated — was for Sheets service account
 ENV_NTFY_CHANNEL = get_env('NTFY_CHANNEL', '')
 
 # Gmail API credentials (for Railway - SMTP is blocked)
@@ -2856,7 +2856,7 @@ HTML_TEMPLATE = '''
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ schools: [schoolName] })
                 });
-                showToast('Added to sheet', 'success');
+                showToast('School added to database', 'success');
             } catch(e) { showToast('Failed to add', 'error'); }
         }
         
@@ -3432,31 +3432,19 @@ HTML_TEMPLATE = '''
             } catch(e) { showToast('Failed to save', 'error'); }
         }
         
-        // Find coaches for a school (Fix #3)
+        // Find coaches for a school
         async function findCoaches(schoolName) {
-            showToast('Finding coaches for ' + schoolName + '...');
+            showToast('Adding school to database...', 'success');
             try {
-                // First add school to sheet, then scrape
+                // Add school to Supabase
                 await fetch('/api/schools/add-to-sheet', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ schools: [schoolName] })
                 });
-                
-                // Trigger scraper for this school
-                const res = await fetch('/api/run', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ task: 'scrape_emails', school: schoolName })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    showToast('Scraping started - check Email tab soon', 'success');
-                } else {
-                    showToast('Added to sheet. Run scraper manually.', 'success');
-                }
+                showToast('School added! Add coaches from the admin panel.', 'success');
             } catch(e) { 
-                showToast('Added to sheet', 'success');
+                showToast('Failed to add school', 'error');
             }
         }
         
